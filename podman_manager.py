@@ -7,19 +7,18 @@ Refactored modular version of the original podman-manager.py
 import argparse
 import os
 import sys
-from pathlib import Path
 
-from manager import PodmanManager
 from config import console
 from container_ops import ContainerOperations
 from display import DisplayManager
+from manager import PodmanManager
 
 
 def show_rich_help():
     """Show beautiful Rich-formatted help"""
     from rich.panel import Panel
     from rich.table import Table
-    
+
     console.print()
     console.print(
         Panel.fit("Podman Container Manager", style="bold blue", padding=(1, 2))
@@ -51,16 +50,50 @@ def show_rich_help():
         (
             "Status & Information",
             [
-                ("status", "Show projects and services tree", "python podman_manager.py status"),
-                ("ps", "Container status table", "python podman_manager.py ps"),
+                ("status", "Show projects and services tree", "pm status"),
+                ("ps", "Container status table", "pm ps"),
+                ("images [--all]", "Show container images", "pm images"),
+                ("stats [--follow]", "Show container resource usage", "pm stats"),
+                ("events [--since TIME]", "Show container events", "pm events"),
             ],
         ),
         (
             "Container Lifecycle",
             [
-                ("reinit TARGET", "Remove and recreate containers", "python podman_manager.py reinit ollama"),
-                ("restart TARGET", "Quick restart containers", "python podman_manager.py restart app"),
-                ("stop TARGET", "Gracefully stop containers", "python podman_manager.py stop vllm-models"),
+                ("reinit TARGET", "Remove and recreate containers", "pm reinit ollama"),
+                ("restart TARGET", "Quick restart containers", "pm restart app"),
+                ("stop TARGET", "Gracefully stop containers", "pm stop vllm-models"),
+                ("remove TARGET", "Remove containers", "pm remove old-service"),
+                ("pull TARGET", "Pull latest images", "pm pull app"),
+            ],
+        ),
+        (
+            "Build & Images",
+            [
+                (
+                    "build TARGET [--no-cache]",
+                    "Build container images",
+                    "pm build app --no-cache",
+                ),
+                ("prune", "Remove unused images and containers", "pm prune"),
+                ("system-df", "Show disk usage", "pm system-df"),
+            ],
+        ),
+        (
+            "Resources",
+            [
+                ("volumes", "List volumes", "pm volumes"),
+                ("networks", "List networks", "pm networks"),
+                (
+                    "logs TARGET [--follow]",
+                    "Show container logs",
+                    "pm logs app --follow",
+                ),
+                (
+                    "exec TARGET COMMAND",
+                    "Execute command in container",
+                    "pm exec app bash",
+                ),
             ],
         ),
     ]
@@ -84,6 +117,30 @@ def show_rich_help():
     console.print(
         "                        [dim](default: ~/srv/local-ai-packaged)[/dim]"
     )
+
+    console.print()
+    console.print("[bold]EXAMPLES:[/bold]")
+    examples_table = Table(show_header=False, box=None, padding=(0, 2))
+    examples_table.add_column("Command", style="cyan", width=35)
+    examples_table.add_column("Description", style="white")
+    examples_table.add_row("pm status", "Show all projects and their services")
+    examples_table.add_row(
+        "pm reinit ollama --build", "Rebuild and restart ollama service"
+    )
+    examples_table.add_row("pm logs app --follow", "Follow logs for app service")
+    examples_table.add_row("pm stats --follow", "Monitor resource usage in real-time")
+    examples_table.add_row("pm exec app bash", "Open bash shell in app container")
+    console.print(examples_table)
+
+    console.print()
+    console.print("[bold]TIPS:[/bold]")
+    console.print(
+        "  • Use [cyan]--dry-run[/cyan] with reinit to see what would be done"
+    )
+    console.print("  • TARGET can be a project name or specific service name")
+    console.print("  • Use [cyan]--remove-orphans[/cyan] to clean up unused containers")
+    console.print("  • Press [cyan]Ctrl+C[/cyan] to interrupt long-running operations")
+    console.print("  • Check [cyan]pm status[/cyan] first to see available targets")
 
 
 def main():
@@ -165,13 +222,17 @@ def main():
             if not args.target:
                 display.show_available_targets("restart")
                 sys.exit(1)
-            success = container_ops.restart(args.target, remove_orphans=args.remove_orphans)
+            success = container_ops.restart(
+                args.target, remove_orphans=args.remove_orphans
+            )
             sys.exit(0 if success else 1)
         elif args.command == "stop":
             if not args.target:
                 display.show_available_targets("stop")
                 sys.exit(1)
-            success = container_ops.stop(args.target, remove_orphans=args.remove_orphans)
+            success = container_ops.stop(
+                args.target, remove_orphans=args.remove_orphans
+            )
             sys.exit(0 if success else 1)
         else:
             console.print(f"[red]Unknown command: {args.command}[/red]")

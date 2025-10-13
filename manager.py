@@ -8,9 +8,10 @@ from typing import Dict, List, Optional, Tuple
 
 import yaml
 from loguru import logger
-from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from config import console
+
+# Progress imports removed - not used in this module
 
 
 class PodmanManager:

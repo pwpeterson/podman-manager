@@ -1,7 +1,7 @@
 """Rich UI display components."""
 
 import subprocess
-from typing import Dict, List
+from typing import Optional
 
 from rich.panel import Panel
 from rich.table import Table
@@ -52,7 +52,9 @@ class DisplayManager:
         projects = self.manager._parse_compose_files()
 
         if not projects:
-            console.print(f"[red]No compose files found in {self.manager.compose_dir}[/red]")
+            console.print(
+                f"[red]No compose files found in {self.manager.compose_dir}[/red]"
+            )
             return False
 
         console.print(
@@ -284,7 +286,7 @@ class DisplayManager:
             console.print(f"[red]Failed to get system disk usage: {error_msg}[/red]")
             return False
 
-    def show_events(self, since: str = None):
+    def show_events(self, since: Optional[str] = None):
         """Stream real-time podman events"""
         console.print(Panel.fit("Podman Events Stream", style="bold blue"))
 

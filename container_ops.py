@@ -2,13 +2,8 @@
 
 import subprocess
 import time
-from pathlib import Path
-from typing import Optional
 
-from loguru import logger
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
-from rich.panel import Panel
-from rich.prompt import Confirm
 
 from config import console
 
