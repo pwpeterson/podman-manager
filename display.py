@@ -3,7 +3,6 @@
 import subprocess
 from typing import Optional
 
-from rich.panel import Panel
 from rich.table import Table
 from rich.tree import Tree
 
@@ -36,9 +35,11 @@ class DisplayManager:
                     if target in project_info["services"]:
                         filtered_projects[project_name] = project_info
                 projects = filtered_projects
-                
+
             if not projects:
-                console.print(f"[red]No project or service found matching '{target}'[/red]")
+                console.print(
+                    f"[red]No project or service found matching '{target}'[/red]"
+                )
                 return
 
         tree = Tree("Projects & Services", style="cyan")
