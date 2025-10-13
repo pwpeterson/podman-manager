@@ -16,13 +16,30 @@ class DisplayManager:
     def __init__(self, manager):
         self.manager = manager
 
-    def show_status(self):
+    def show_status(self, target=None):
         """Show status of all projects and services"""
         projects = self.manager._parse_compose_files()
 
         if not projects:
             console.print("[red]No compose files found![/red]")
             return
+
+        # Filter by target if specified
+        if target:
+            # Check if target is a project name
+            if target in projects:
+                projects = {target: projects[target]}
+            else:
+                # Check if target is a service name in any project
+                filtered_projects = {}
+                for project_name, project_info in projects.items():
+                    if target in project_info["services"]:
+                        filtered_projects[project_name] = project_info
+                projects = filtered_projects
+                
+            if not projects:
+                console.print(f"[red]No project or service found matching '{target}'[/red]")
+                return
 
         tree = Tree("Projects & Services", style="cyan")
 
