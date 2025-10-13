@@ -451,7 +451,6 @@ class PodmanManager:
             matches = re.findall(dep_pattern, error_msg)
 
             if matches:
-
                 # Get names of dependent containers and remove them
                 for dep_id in matches:
                     name_cmd = [
@@ -693,6 +692,7 @@ class PodmanManager:
         info_table.add_row(
             "inspect TARGET", "Show detailed container or image information"
         )
+        info_table.add_row("config TARGET", "Show compose configuration for project")
         info_table.add_row("help", "Show this help message")
         console.print(info_table)
 
@@ -702,6 +702,11 @@ class PodmanManager:
         lifecycle_table = Table(show_header=False, box=None, padding=(0, 2))
         lifecycle_table.add_column("Command", style="green", width=20)
         lifecycle_table.add_column("Description", style="white")
+        lifecycle_table.add_row(
+            "up TARGET", "Start services (create and start containers)"
+        )
+        lifecycle_table.add_row("down TARGET", "Stop and remove services/projects")
+        lifecycle_table.add_row("start TARGET", "Start stopped containers")
         lifecycle_table.add_row(
             "reinit TARGET", "Remove and recreate containers (fresh start)"
         )
@@ -714,6 +719,7 @@ class PodmanManager:
         )
         lifecycle_table.add_row("pause TARGET", "Pause running containers")
         lifecycle_table.add_row("unpause TARGET", "Unpause paused containers")
+        lifecycle_table.add_row("kill TARGET", "Force kill containers with signal")
         console.print(lifecycle_table)
 
         # Build & Images Commands
@@ -724,6 +730,7 @@ class PodmanManager:
         build_table.add_column("Description", style="white")
         build_table.add_row("build TARGET", "Build images for project or service")
         build_table.add_row("pull TARGET", "Pull latest images from registry")
+        build_table.add_row("push TARGET", "Push images to registry")
         build_table.add_row("images", "List all images with details")
         build_table.add_row("prune", "Clean up unused resources")
         console.print(build_table)
@@ -740,10 +747,12 @@ class PodmanManager:
         monitor_table.add_row(
             "exec SERVICE CMD", "Execute command in running container"
         )
+        monitor_table.add_row("run SERVICE CMD", "Run one-off command in new container")
         monitor_table.add_row("stats", "Show resource usage statistics")
         monitor_table.add_row("top SERVICE", "Show running processes in container")
         monitor_table.add_row("port SERVICE", "Show port mappings")
         monitor_table.add_row("events", "Stream real-time podman events")
+        monitor_table.add_row("wait TARGET", "Wait for containers to stop")
         console.print(monitor_table)
 
         # Resource Management Commands
@@ -758,6 +767,7 @@ class PodmanManager:
         resource_table.add_row(
             "remove-orphans", "Clean up project-specific orphaned resources"
         )
+        resource_table.add_row("systemd ACTION", "Create systemd unit files")
         console.print(resource_table)
 
         # Usage Examples with better formatting
@@ -882,12 +892,16 @@ class PodmanManager:
 
         tree = Tree("Projects & Services", style="cyan")
 
-        for project_name, project_info in projects.items():
+        # Sort projects alphabetically
+        for project_name in sorted(projects.keys()):
+            project_info = projects[project_name]
             # Make project names green
             project_node = tree.add(f"[cyan]{project_name}[/cyan]")
 
             if project_info["services"]:
-                for service_name, service_config in project_info["services"].items():
+                # Sort services alphabetically
+                for service_name in sorted(project_info["services"].keys()):
+                    service_config = project_info["services"][service_name]
                     profiles = service_config.get("profiles", [])
                     profile_str = (
                         f" [dim]({', '.join(profiles)})[/dim]" if profiles else ""
@@ -898,6 +912,53 @@ class PodmanManager:
                 project_node.add("[dim](no services found)[/dim]")
 
         console.print(tree)
+
+    def show_available_targets(self, command_name: str = "command"):
+        """Show available projects and services when no target is specified"""
+        projects = self._parse_compose_files()
+
+        if not projects:
+            console.print(f"[red]No compose files found in {self.compose_dir}[/red]")
+            return False
+
+        console.print(
+            f"[yellow]No target specified for '{command_name}' command.[/yellow]"
+        )
+        console.print("\n[bold cyan]Available targets:[/bold cyan]")
+
+        # Create a tree showing projects and their services
+        tree = Tree("Projects & Services", style="cyan")
+
+        # Sort projects alphabetically
+        for project_name in sorted(projects.keys()):
+            project_info = projects[project_name]
+            # Make project names cyan
+            project_node = tree.add(f"[cyan]{project_name}[/cyan]")
+
+            if project_info["services"]:
+                # Sort services alphabetically
+                for service_name in sorted(project_info["services"].keys()):
+                    service_config = project_info["services"][service_name]
+                    profiles = service_config.get("profiles", [])
+                    profile_str = (
+                        f" [dim]({', '.join(profiles)})[/dim]" if profiles else ""
+                    )
+                    # Make service names yellow
+                    project_node.add(f"[yellow]{service_name}{profile_str}[/yellow]")
+            else:
+                project_node.add("[dim](no services found)[/dim]")
+
+        console.print(tree)
+
+        console.print("\n[bold]Usage examples:[/bold]")
+        console.print(f"  pm {command_name} <project_name> # Operate on entire project")
+        console.print(
+            f"  pm {command_name} <service_name> # Operate on specific service"
+        )
+        console.print(
+            "\n[dim]Use 'pm status' to see the full project/service tree.[/dim]"
+        )
+        return True
 
     def show_ps(self):
         """Show container status in a rich table"""
@@ -932,6 +993,8 @@ class PodmanManager:
         table.add_column("Status", no_wrap=True)
         table.add_column("Ports", style="blue", max_width=30)
 
+        # Parse and collect container data
+        containers = []
         for line in result.stdout.strip().split("\n"):
             if not line.strip():
                 continue
@@ -942,13 +1005,20 @@ class PodmanManager:
 
                 # Color code status
                 if "Up" in status or "running" in status.lower():
-                    status = f"[green]{status}[/green]"
+                    colored_status = f"[green]{status}[/green]"
                 elif "Exited" in status:
-                    status = f"[red]{status}[/red]"
+                    colored_status = f"[red]{status}[/red]"
                 else:
-                    status = f"[yellow]{status}[/yellow]"
+                    colored_status = f"[yellow]{status}[/yellow]"
 
-                table.add_row(name, image, status, ports)
+                containers.append((name, image, colored_status, ports))
+
+        # Sort containers alphabetically by name
+        containers.sort(key=lambda x: x[0].lower())
+
+        # Add sorted rows to table
+        for name, image, status, ports in containers:
+            table.add_row(name, image, status, ports)
 
         console.print(table)
 
@@ -1398,9 +1468,7 @@ class PodmanManager:
                     console.print(
                         f"[green]Building images for service: {service}[/green]"
                     )
-                    build_cmd = (
-                        f"{base_cmd} build --no-cache {service}"
-                    )
+                    build_cmd = f"{base_cmd} build --no-cache {service}"
                     console.print(f"  [white]exec: {build_cmd}[/white]")
 
                     # Stream build output live
@@ -1644,65 +1712,1162 @@ class PodmanManager:
 
             return True
 
-    # Placeholder methods for commands that would be implemented fully
     def restart(self, target: str, remove_orphans: bool = False):
         """Restart services or projects"""
-        console.print(
-            f"[yellow]Restart command: {target} (placeholder - not fully implemented)[/yellow]"
-        )
-        return True
+        with logger.contextualize(target=target, remove_orphans=remove_orphans):
+            logger.debug("Starting restart operation for target: {}", target)
+
+            # Parse arguments to determine project/service
+            projects = self._parse_compose_files()
+            project = None
+            service = None
+            compose_file = None
+
+            # Check if target is a project
+            if target in projects:
+                project = target
+                compose_file = projects[target]["file"]
+            else:
+                # Check if target is a service
+                found_file = self._find_service_project(target)
+                if found_file:
+                    service = target
+                    for proj_name, proj_info in projects.items():
+                        if proj_info["file"].name == found_file:
+                            project = proj_name
+                            compose_file = proj_info["file"]
+                            break
+                else:
+                    logger.error("Could not find project or service: {}", target)
+                    console.print(
+                        f"[red]Could not find project or service: {target}[/red]"
+                    )
+                    console.print("\n[dim]Available projects:[/dim]")
+                    for project_name in projects.keys():
+                        console.print(f"  - {project_name}")
+                    return False
+
+            if not compose_file:
+                logger.error("Could not determine compose file for: {}", target)
+                return False
+
+            # Setup compose command
+            profile_args = ""
+            if service and project:
+                service_config = projects[project]["services"].get(service, {})
+                profiles = service_config.get("profiles", [])
+                if profiles:
+                    profile_args = f"--profile {','.join(profiles)}"
+                    console.print(
+                        f"[dim]Auto-detected profiles [{','.join(profiles)}] for service [{service}][/dim]"
+                    )
+                    logger.debug("Auto-detected profiles for {}: {}", service, profiles)
+
+            base_cmd, orphan_args = self._setup_compose_command(
+                project, compose_file, profile_args, remove_orphans
+            )
+
+            # Execute the restart process
+            if service:
+                # Service-specific restart
+                console.print(f"[green]Restarting service: {service}[/green]")
+
+                # Check dependencies
+                missing_deps = self._check_dependencies(compose_file, service)
+                if missing_deps:
+                    logger.warning(
+                        "Service {} has missing dependencies: {}",
+                        service,
+                        missing_deps,
+                    )
+                    console.print(
+                        f"[yellow]Warning: Missing dependencies: {', '.join(missing_deps)}[/yellow]"
+                    )
+                    console.print(
+                        f"[green]Start them with: pm reinit {' '.join(missing_deps)}[/green]"
+                    )
+
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    TimeElapsedColumn(),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task(
+                        f"Restarting service: {service}", total=None
+                    )
+                    restart_cmd = f"{base_cmd} restart {service}"
+                    if remove_orphans:
+                        restart_cmd += f" {orphan_args}"
+
+                    result = self._run_compose_command(
+                        restart_cmd, f"restart service: {service}"
+                    )
+                    progress.remove_task(task)
+
+                    if result.returncode == 0:
+                        console.print(
+                            f"[green]Successfully restarted {service}[/green]"
+                        )
+                        return True
+                    else:
+                        console.print(Panel(result.stderr, title="Error", style="red"))
+                        return False
+
+            else:
+                # Project-wide restart
+                console.print(f"[green]Restarting project: {project}[/green]")
+
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    TimeElapsedColumn(),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task(
+                        f"Restarting all services in {project}", total=None
+                    )
+                    restart_cmd = f"{base_cmd} restart"
+                    if remove_orphans:
+                        restart_cmd += f" {orphan_args}"
+
+                    result = self._run_compose_command(restart_cmd, "restart services")
+                    progress.remove_task(task)
+
+                    if result.returncode == 0:
+                        console.print(
+                            f"[green]Successfully restarted {project}[/green]"
+                        )
+                        return True
+                    else:
+                        console.print(Panel(result.stderr, title="Error", style="red"))
+                        return False
 
     def stop(self, target: str, remove_orphans: bool = False):
         """Stop services or projects"""
-        console.print(
-            f"[yellow]Stop command: {target} (placeholder - not fully implemented)[/yellow]"
-        )
-        return True
+        with logger.contextualize(target=target, remove_orphans=remove_orphans):
+            logger.debug("Starting stop operation for target: {}", target)
+
+            # Parse arguments to determine project/service
+            projects = self._parse_compose_files()
+            project = None
+            service = None
+            compose_file = None
+
+            # Check if target is a project
+            if target in projects:
+                project = target
+                compose_file = projects[target]["file"]
+            else:
+                # Check if target is a service
+                found_file = self._find_service_project(target)
+                if found_file:
+                    service = target
+                    for proj_name, proj_info in projects.items():
+                        if proj_info["file"].name == found_file:
+                            project = proj_name
+                            compose_file = proj_info["file"]
+                            break
+                else:
+                    logger.error("Could not find project or service: {}", target)
+                    console.print(
+                        f"[red]Could not find project or service: {target}[/red]"
+                    )
+                    console.print("\n[dim]Available projects:[/dim]")
+                    for project_name in projects.keys():
+                        console.print(f"  - {project_name}")
+                    return False
+
+            if not compose_file:
+                logger.error("Could not determine compose file for: {}", target)
+                return False
+
+            # Setup compose command
+            profile_args = ""
+            if service and project:
+                service_config = projects[project]["services"].get(service, {})
+                profiles = service_config.get("profiles", [])
+                if profiles:
+                    profile_args = f"--profile {','.join(profiles)}"
+                    console.print(
+                        f"[dim]Auto-detected profiles [{','.join(profiles)}] for service [{service}][/dim]"
+                    )
+                    logger.debug("Auto-detected profiles for {}: {}", service, profiles)
+
+            base_cmd, orphan_args = self._setup_compose_command(
+                project, compose_file, profile_args, remove_orphans
+            )
+
+            # Execute the stop process
+            if service:
+                # Service-specific stop
+                console.print(f"[green]Stopping service: {service}[/green]")
+
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    TimeElapsedColumn(),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task(f"Stopping service: {service}", total=None)
+                    stop_cmd = f"{base_cmd} stop {service}"
+                    if remove_orphans:
+                        stop_cmd += f" {orphan_args}"
+
+                    result = self._run_compose_command(
+                        stop_cmd, f"stop service: {service}"
+                    )
+                    progress.remove_task(task)
+
+                    if result.returncode == 0:
+                        console.print(f"[green]Successfully stopped {service}[/green]")
+                        return True
+                    else:
+                        console.print(Panel(result.stderr, title="Error", style="red"))
+                        return False
+
+            else:
+                # Project-wide stop
+                console.print(f"[green]Stopping project: {project}[/green]")
+
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    TimeElapsedColumn(),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task(
+                        f"Stopping all services in {project}", total=None
+                    )
+                    stop_cmd = f"{base_cmd} stop"
+                    if remove_orphans:
+                        stop_cmd += f" {orphan_args}"
+
+                    result = self._run_compose_command(stop_cmd, "stop services")
+                    progress.remove_task(task)
+
+                    if result.returncode == 0:
+                        console.print(f"[green]Successfully stopped {project}[/green]")
+                        return True
+                    else:
+                        console.print(Panel(result.stderr, title="Error", style="red"))
+                        return False
 
     def remove(self, target: str, remove_orphans: bool = False):
         """Remove services or projects"""
-        console.print(
-            f"[yellow]Remove command: {target} (placeholder - not fully implemented)[/yellow]"
-        )
-        return True
+        with logger.contextualize(target=target, remove_orphans=remove_orphans):
+            logger.debug("Starting remove operation for target: {}", target)
+
+            # Parse arguments to determine project/service
+            projects = self._parse_compose_files()
+            project = None
+            service = None
+            compose_file = None
+
+            # Check if target is a project
+            if target in projects:
+                project = target
+                compose_file = projects[target]["file"]
+            else:
+                # Check if target is a service
+                found_file = self._find_service_project(target)
+                if found_file:
+                    service = target
+                    for proj_name, proj_info in projects.items():
+                        if proj_info["file"].name == found_file:
+                            project = proj_name
+                            compose_file = proj_info["file"]
+                            break
+                else:
+                    logger.error("Could not find project or service: {}", target)
+                    console.print(
+                        f"[red]Could not find project or service: {target}[/red]"
+                    )
+                    console.print("\n[dim]Available projects:[/dim]")
+                    for project_name in projects.keys():
+                        console.print(f"  - {project_name}")
+                    return False
+
+            if not compose_file:
+                logger.error("Could not determine compose file for: {}", target)
+                return False
+
+            # Setup compose command
+            profile_args = ""
+            if service and project:
+                service_config = projects[project]["services"].get(service, {})
+                profiles = service_config.get("profiles", [])
+                if profiles:
+                    profile_args = f"--profile {','.join(profiles)}"
+                    console.print(
+                        f"[dim]Auto-detected profiles [{','.join(profiles)}] for service [{service}][/dim]"
+                    )
+                    logger.debug("Auto-detected profiles for {}: {}", service, profiles)
+
+            base_cmd, orphan_args = self._setup_compose_command(
+                project, compose_file, profile_args, remove_orphans
+            )
+
+            # Execute the remove process
+            if service:
+                # Service-specific remove
+                console.print(f"[green]Removing service: {service}[/green]")
+
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    TimeElapsedColumn(),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task(f"Removing service: {service}", total=None)
+                    remove_cmd = f"{base_cmd} rm -s -f {service}"
+                    if remove_orphans:
+                        remove_cmd += f" {orphan_args}"
+
+                    result = self._run_compose_command(
+                        remove_cmd, f"remove service: {service}"
+                    )
+                    progress.remove_task(task)
+
+                    if result.returncode == 0:
+                        console.print(f"[green]Successfully removed {service}[/green]")
+                        return True
+                    else:
+                        console.print(Panel(result.stderr, title="Error", style="red"))
+                        return False
+
+            else:
+                # Project-wide remove
+                console.print(f"[green]Removing project: {project}[/green]")
+
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    TimeElapsedColumn(),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task(
+                        f"Removing all services in {project}", total=None
+                    )
+                    remove_cmd = f"{base_cmd} rm -s -f"
+                    if remove_orphans:
+                        remove_cmd += f" {orphan_args}"
+
+                    result = self._run_compose_command(remove_cmd, "remove services")
+                    progress.remove_task(task)
+
+                    if result.returncode == 0:
+                        console.print(f"[green]Successfully removed {project}[/green]")
+                        return True
+                    else:
+                        console.print(Panel(result.stderr, title="Error", style="red"))
+                        return False
 
     def show_top(self, service: str):
-        console.print(f"[yellow]Top command for {service} (not implemented)[/yellow]")
-        return True
+        """Show running processes in container"""
+        # Check if container is running
+        check_cmd = [
+            "podman",
+            "ps",
+            "--filter",
+            f"name={service}",
+            "--filter",
+            "status=running",
+            "--format",
+            "{{.Names}}",
+        ]
+        result = subprocess.run(check_cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            console.print(
+                f"[red]Error checking container status: {result.stderr.strip()}[/red]"
+            )
+            return False
+
+        if service not in result.stdout:
+            console.print(f"[red]Container {service} is not running[/red]")
+            return False
+
+        console.print(Panel.fit(f"Processes in: {service}", style="bold blue"))
+
+        top_cmd = ["podman", "top", service]
+        console.print(f"  [white]exec: {' '.join(top_cmd)}[/white]")
+
+        result = subprocess.run(top_cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            console.print(result.stdout)
+            return True
+        else:
+            error_msg = (
+                result.stderr.strip() if result.stderr.strip() else "Unknown error"
+            )
+            console.print(
+                f"[red]Failed to show processes for {service}: {error_msg}[/red]"
+            )
+            return False
 
     def show_ports(self, service: str):
-        console.print(f"[yellow]Port command for {service} (not implemented)[/yellow]")
-        return True
+        """Show port mappings for container"""
+        # Check if container exists
+        check_cmd = [
+            "podman",
+            "ps",
+            "-a",
+            "--filter",
+            f"name={service}",
+            "--format",
+            "{{.Names}} {{.Status}}",
+        ]
+        result = subprocess.run(check_cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            console.print(
+                f"[red]Error checking container status: {result.stderr.strip()}[/red]"
+            )
+            return False
+
+        if not result.stdout.strip():
+            console.print(f"[red]Container {service} not found[/red]")
+            return False
+
+        console.print(Panel.fit(f"Port mappings for: {service}", style="bold blue"))
+
+        port_cmd = ["podman", "port", service]
+        console.print(f"  [white]exec: {' '.join(port_cmd)}[/white]")
+
+        result = subprocess.run(port_cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            if result.stdout.strip():
+                console.print(result.stdout)
+            else:
+                console.print(f"[dim]No port mappings found for {service}[/dim]")
+            return True
+        else:
+            error_msg = (
+                result.stderr.strip() if result.stderr.strip() else "Unknown error"
+            )
+            console.print(f"[red]Failed to show ports for {service}: {error_msg}[/red]")
+            return False
 
     def show_events(self, since: Optional[str] = None):
-        console.print("[yellow]Events command (not implemented)[/yellow]")
-        return True
+        """Stream real-time podman events"""
+        console.print(Panel.fit("Podman Events Stream", style="bold blue"))
+
+        events_cmd = ["podman", "events"]
+        if since:
+            events_cmd.extend(["--since", since])
+
+        console.print(f"  [white]exec: {' '.join(events_cmd)}[/white]")
+        console.print("[dim]Press Ctrl+C to stop streaming events[/dim]")
+
+        try:
+            result = subprocess.run(events_cmd, text=True)
+            return result.returncode == 0
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Event streaming stopped[/yellow]")
+            return True
+        except Exception as e:
+            console.print(f"[red]Error streaming events: {e}[/red]")
+            return False
 
     def show_system_df(self):
-        console.print("[yellow]System-df command (not implemented)[/yellow]")
-        return True
+        """Show system disk usage"""
+        console.print(Panel.fit("Podman System Disk Usage", style="bold blue"))
+
+        df_cmd = ["podman", "system", "df"]
+        console.print(f"  [white]exec: {' '.join(df_cmd)}[/white]")
+
+        result = subprocess.run(df_cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            console.print(result.stdout)
+            return True
+        else:
+            error_msg = (
+                result.stderr.strip() if result.stderr.strip() else "Unknown error"
+            )
+            console.print(f"[red]Failed to get system disk usage: {error_msg}[/red]")
+            return False
 
     def remove_orphans(self, project: str):
-        console.print(
-            f"[yellow]Remove-orphans for {project} (not implemented)[/yellow]"
+        """Remove orphaned containers for a project"""
+        projects = self._parse_compose_files()
+
+        if project not in projects:
+            console.print(f"[red]Project not found: {project}[/red]")
+            console.print("\n[dim]Available projects:[/dim]")
+            for project_name in projects.keys():
+                console.print(f"  - {project_name}")
+            return False
+
+        compose_file = projects[project]["file"]
+        base_cmd, orphan_args = self._setup_compose_command(
+            project, compose_file, "", True
         )
-        return True
+
+        console.print(
+            f"[green]Removing orphaned containers for project: {project}[/green]"
+        )
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task(f"Removing orphans for {project}", total=None)
+            remove_cmd = f"{base_cmd} down {orphan_args}"
+
+            result = self._run_compose_command(
+                remove_cmd, f"remove orphans for {project}"
+            )
+            progress.remove_task(task)
+
+            if result.returncode == 0:
+                console.print(
+                    f"[green]Successfully removed orphans for {project}[/green]"
+                )
+                return True
+            else:
+                console.print(Panel(result.stderr, title="Error", style="red"))
+                return False
 
     def pause(self, target: str):
-        console.print(f"[yellow]Pause command for {target} (not implemented)[/yellow]")
-        return True
+        """Pause containers"""
+        # Check if container exists and is running
+        check_cmd = [
+            "podman",
+            "ps",
+            "--filter",
+            f"name={target}",
+            "--filter",
+            "status=running",
+            "--format",
+            "{{.Names}}",
+        ]
+        result = subprocess.run(check_cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            console.print(
+                f"[red]Error checking container status: {result.stderr.strip()}[/red]"
+            )
+            return False
+
+        if target not in result.stdout:
+            console.print(f"[red]Container {target} is not running[/red]")
+            return False
+
+        console.print(f"[green]Pausing container: {target}[/green]")
+        pause_cmd = ["podman", "pause", target]
+        console.print(f"  [white]exec: {' '.join(pause_cmd)}[/white]")
+
+        result = subprocess.run(pause_cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            console.print(f"[green]Successfully paused {target}[/green]")
+            return True
+        else:
+            error_msg = (
+                result.stderr.strip() if result.stderr.strip() else "Unknown error"
+            )
+            console.print(f"[red]Failed to pause {target}: {error_msg}[/red]")
+            return False
 
     def unpause(self, target: str):
-        console.print(
-            f"[yellow]Unpause command for {target} (not implemented)[/yellow]"
-        )
-        return True
+        """Unpause containers"""
+        # Check if container exists and is paused
+        check_cmd = [
+            "podman",
+            "ps",
+            "-a",
+            "--filter",
+            f"name={target}",
+            "--format",
+            "{{.Names}} {{.Status}}",
+        ]
+        result = subprocess.run(check_cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            console.print(
+                f"[red]Error checking container status: {result.stderr.strip()}[/red]"
+            )
+            return False
+
+        container_info = result.stdout.strip()
+        if not container_info:
+            console.print(f"[red]Container {target} not found[/red]")
+            return False
+
+        if "paused" not in container_info.lower():
+            console.print(f"[yellow]Container {target} is not paused[/yellow]")
+            return True
+
+        console.print(f"[green]Unpausing container: {target}[/green]")
+        unpause_cmd = ["podman", "unpause", target]
+        console.print(f"  [white]exec: {' '.join(unpause_cmd)}[/white]")
+
+        result = subprocess.run(unpause_cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            console.print(f"[green]Successfully unpaused {target}[/green]")
+            return True
+        else:
+            error_msg = (
+                result.stderr.strip() if result.stderr.strip() else "Unknown error"
+            )
+            console.print(f"[red]Failed to unpause {target}: {error_msg}[/red]")
+            return False
 
     def inspect(self, target: str, inspect_type: Optional[str] = None):
+        """Inspect container or image"""
+        console.print(Panel.fit(f"Inspecting: {target}", style="bold blue"))
+
+        # If type is specified, use it directly
+        if inspect_type:
+            if inspect_type == "container":
+                cmd = ["podman", "container", "inspect", target]
+            elif inspect_type == "image":
+                cmd = ["podman", "image", "inspect", target]
+            else:
+                console.print(f"[red]Invalid inspect type: {inspect_type}[/red]")
+                return False
+        else:
+            # Try container first, then image
+            container_cmd = ["podman", "container", "inspect", target]
+            console.print(f"  [white]exec: {' '.join(container_cmd)}[/white]")
+            result = subprocess.run(container_cmd, capture_output=True, text=True)
+
+            if result.returncode == 0:
+                console.print(f"[green]Container inspection for: {target}[/green]")
+                console.print(result.stdout)
+                return True
+            else:
+                # Try as image
+                console.print("[dim]Container not found, trying as image...[/dim]")
+                cmd = ["podman", "image", "inspect", target]
+
+        console.print(f"  [white]exec: {' '.join(cmd)}[/white]")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            if inspect_type == "image" or (not inspect_type and "image" in cmd):
+                console.print(f"[green]Image inspection for: {target}[/green]")
+            else:
+                console.print(f"[green]Container inspection for: {target}[/green]")
+            console.print(result.stdout)
+            return True
+        else:
+            error_msg = (
+                result.stderr.strip() if result.stderr.strip() else "Unknown error"
+            )
+            console.print(f"[red]Failed to inspect {target}: {error_msg}[/red]")
+            return False
+
+    def up(self, target: str, detach: bool = True, build: bool = False):
+        """Start services (create and start containers)"""
+        with logger.contextualize(target=target, detach=detach, build=build):
+            logger.debug("Starting up operation for target: {}", target)
+
+            # Parse arguments to determine project/service
+            projects = self._parse_compose_files()
+            project = None
+            service = None
+            compose_file = None
+
+            # Check if target is a project
+            if target in projects:
+                project = target
+                compose_file = projects[target]["file"]
+            else:
+                # Check if target is a service
+                found_file = self._find_service_project(target)
+                if found_file:
+                    service = target
+                    for proj_name, proj_info in projects.items():
+                        if proj_info["file"].name == found_file:
+                            project = proj_name
+                            compose_file = proj_info["file"]
+                            break
+                else:
+                    logger.error("Could not find project or service: {}", target)
+                    console.print(
+                        f"[red]Could not find project or service: {target}[/red]"
+                    )
+                    console.print("\n[dim]Available projects:[/dim]")
+                    for project_name in projects.keys():
+                        console.print(f"  - {project_name}")
+                    return False
+
+            if not compose_file:
+                logger.error("Could not determine compose file for: {}", target)
+                return False
+
+            # Setup compose command
+            profile_args = ""
+            if service and project:
+                service_config = projects[project]["services"].get(service, {})
+                profiles = service_config.get("profiles", [])
+                if profiles:
+                    profile_args = f"--profile {','.join(profiles)}"
+                    console.print(
+                        f"[dim]Auto-detected profiles [{','.join(profiles)}] for service [{service}][/dim]"
+                    )
+                    logger.debug("Auto-detected profiles for {}: {}", service, profiles)
+
+            base_cmd, _ = self._setup_compose_command(
+                project, compose_file, profile_args, False
+            )
+
+            # Execute the up process
+            if service:
+                console.print(f"[green]Starting service: {service}[/green]")
+                up_cmd = f"{base_cmd} up"
+                if detach:
+                    up_cmd += " -d"
+                if build:
+                    up_cmd += " --build"
+                up_cmd += f" {service}"
+            else:
+                console.print(f"[green]Starting project: {project}[/green]")
+                up_cmd = f"{base_cmd} up"
+                if detach:
+                    up_cmd += " -d"
+                if build:
+                    up_cmd += " --build"
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                task_desc = f"Starting {service if service else project}"
+                task = progress.add_task(task_desc, total=None)
+                result = self._run_compose_command(up_cmd, f"up {target}")
+                progress.remove_task(task)
+
+                if result.returncode == 0:
+                    console.print(f"[green]Successfully started {target}[/green]")
+                    return True
+                else:
+                    console.print(Panel(result.stderr, title="Error", style="red"))
+                    return False
+
+    def down(self, target: str, volumes: bool = False, remove_orphans: bool = True):
+        """Stop and remove services"""
+        with logger.contextualize(
+            target=target, volumes=volumes, remove_orphans=remove_orphans
+        ):
+            logger.debug("Starting down operation for target: {}", target)
+
+            # Parse arguments to determine project/service
+            projects = self._parse_compose_files()
+            project = None
+            compose_file = None
+
+            # Check if target is a project
+            if target in projects:
+                project = target
+                compose_file = projects[target]["file"]
+            else:
+                console.print(f"[red]Could not find project: {target}[/red]")
+                console.print("\n[dim]Available projects:[/dim]")
+                for project_name in projects.keys():
+                    console.print(f"  - {project_name}")
+                return False
+
+            if not compose_file:
+                logger.error("Could not determine compose file for: {}", target)
+                return False
+
+            base_cmd, orphan_args = self._setup_compose_command(
+                project, compose_file, "", remove_orphans
+            )
+
+            # Execute the down process
+            console.print(f"[green]Stopping and removing project: {target}[/green]")
+            down_cmd = f"{base_cmd} down"
+            if volumes:
+                down_cmd += " --volumes"
+            if remove_orphans:
+                down_cmd += f" {orphan_args}"
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                task_desc = f"Stopping and removing {project}"
+                task = progress.add_task(task_desc, total=None)
+                result = self._run_compose_command(down_cmd, f"down {target}")
+                progress.remove_task(task)
+
+                if result.returncode == 0:
+                    console.print(
+                        f"[green]Successfully stopped and removed {target}[/green]"
+                    )
+                    return True
+                else:
+                    console.print(Panel(result.stderr, title="Error", style="red"))
+                    return False
+
+    def kill_container(self, target: str, signal: str = "SIGKILL"):
+        """Kill containers with specific signal"""
+        # Check if container exists
+        check_cmd = [
+            "podman",
+            "ps",
+            "--filter",
+            f"name={target}",
+            "--format",
+            "{{.Names}} {{.Status}}",
+        ]
+        result = subprocess.run(check_cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            console.print(
+                f"[red]Error checking container status: {result.stderr.strip()}[/red]"
+            )
+            return False
+
+        if not result.stdout.strip():
+            console.print(f"[red]Container {target} not found[/red]")
+            return False
+
+        console.print(f"[green]Killing container {target} with signal {signal}[/green]")
+        kill_cmd = ["podman", "kill", "-s", signal, target]
+        console.print(f"  [white]exec: {' '.join(kill_cmd)}[/white]")
+
+        result = subprocess.run(kill_cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            console.print(f"[green]Successfully killed {target}[/green]")
+            return True
+        else:
+            error_msg = (
+                result.stderr.strip() if result.stderr.strip() else "Unknown error"
+            )
+            console.print(f"[red]Failed to kill {target}: {error_msg}[/red]")
+            return False
+
+    def show_config(self, target: str):
+        """Display compose configuration"""
+        projects = self._parse_compose_files()
+        project = None
+        compose_file = None
+
+        # Check if target is a project
+        if target in projects:
+            project = target
+            compose_file = projects[target]["file"]
+        else:
+            console.print(f"[red]Could not find project: {target}[/red]")
+            console.print("\n[dim]Available projects:[/dim]")
+            for project_name in projects.keys():
+                console.print(f"  - {project_name}")
+            return False
+
+        if not compose_file:
+            console.print(f"[red]Could not determine compose file for: {target}[/red]")
+            return False
+
+        console.print(Panel.fit(f"Configuration for: {project}", style="bold blue"))
+
+        base_cmd, _ = self._setup_compose_command(project, compose_file)
+        config_cmd = f"{base_cmd} config"
+
+        result = self._run_compose_command(config_cmd, f"show config for {target}")
+
+        if result.returncode == 0:
+            console.print(result.stdout)
+            return True
+        else:
+            console.print(Panel(result.stderr, title="Error", style="red"))
+            return False
+
+    def start(self, target: str):
+        """Start stopped containers"""
+        with logger.contextualize(target=target):
+            logger.debug("Starting start operation for target: {}", target)
+
+            # Parse arguments to determine project/service
+            projects = self._parse_compose_files()
+            project = None
+            service = None
+            compose_file = None
+
+            # Check if target is a project
+            if target in projects:
+                project = target
+                compose_file = projects[target]["file"]
+            else:
+                # Check if target is a service
+                found_file = self._find_service_project(target)
+                if found_file:
+                    service = target
+                    for proj_name, proj_info in projects.items():
+                        if proj_info["file"].name == found_file:
+                            project = proj_name
+                            compose_file = proj_info["file"]
+                            break
+                else:
+                    logger.error("Could not find project or service: {}", target)
+                    console.print(
+                        f"[red]Could not find project or service: {target}[/red]"
+                    )
+                    console.print("\n[dim]Available projects:[/dim]")
+                    for project_name in projects.keys():
+                        console.print(f"  - {project_name}")
+                    return False
+
+            if not compose_file:
+                logger.error("Could not determine compose file for: {}", target)
+                return False
+
+            # Setup compose command
+            profile_args = ""
+            if service and project:
+                service_config = projects[project]["services"].get(service, {})
+                profiles = service_config.get("profiles", [])
+                if profiles:
+                    profile_args = f"--profile {','.join(profiles)}"
+                    console.print(
+                        f"[dim]Auto-detected profiles [{','.join(profiles)}] for service [{service}][/dim]"
+                    )
+                    logger.debug("Auto-detected profiles for {}: {}", service, profiles)
+
+            base_cmd, _ = self._setup_compose_command(
+                project, compose_file, profile_args, False
+            )
+
+            # Execute the start process
+            if service:
+                console.print(f"[green]Starting service: {service}[/green]")
+                start_cmd = f"{base_cmd} start {service}"
+            else:
+                console.print(f"[green]Starting project: {project}[/green]")
+                start_cmd = f"{base_cmd} start"
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                task_desc = f"Starting {service if service else project}"
+                task = progress.add_task(task_desc, total=None)
+                result = self._run_compose_command(start_cmd, f"start {target}")
+                progress.remove_task(task)
+
+                if result.returncode == 0:
+                    console.print(f"[green]Successfully started {target}[/green]")
+                    return True
+                else:
+                    console.print(Panel(result.stderr, title="Error", style="red"))
+                    return False
+
+    def push_images(self, target: str):
+        """Push images to registry"""
+        projects = self._parse_compose_files()
+        project = None
+        service = None
+        compose_file = None
+
+        # Check if target is a project
+        if target in projects:
+            project = target
+            compose_file = projects[target]["file"]
+        else:
+            # Check if target is a service
+            found_file = self._find_service_project(target)
+            if found_file:
+                service = target
+                for proj_name, proj_info in projects.items():
+                    if proj_info["file"].name == found_file:
+                        project = proj_name
+                        compose_file = proj_info["file"]
+                        break
+            else:
+                console.print(f"[red]Could not find project or service: {target}[/red]")
+                return False
+
+        if not compose_file:
+            console.print(f"[red]Could not determine compose file for: {target}[/red]")
+            return False
+
+        base_cmd, _ = self._setup_compose_command(project, compose_file)
+        push_cmd = f"{base_cmd} push"
+
+        if service:
+            push_cmd += f" {service}"
+            console.print(f"[green]Pushing images for service: {service}[/green]")
+        else:
+            console.print(f"[green]Pushing images for project: {project}[/green]")
+
+        result = self._run_compose_command(push_cmd, f"push images for {target}")
+
+        if result.returncode == 0:
+            console.print(f"[green]Successfully pushed images for {target}[/green]")
+            return True
+        else:
+            console.print(Panel(result.stderr, title="Error", style="red"))
+            return False
+
+    def run_command(
+        self, service: str, command: str, user: Optional[str] = None, rm: bool = True
+    ):
+        """Run one-off command in new container"""
+        # Find the service
+        projects = self._parse_compose_files()
+        found_file = self._find_service_project(service)
+        if not found_file:
+            console.print(f"[red]Service not found: {service}[/red]")
+            return False
+
+        project = None
+        compose_file = None
+        for proj_name, proj_info in projects.items():
+            if proj_info["file"].name == found_file:
+                project = proj_name
+                compose_file = proj_info["file"]
+                break
+
+        if not compose_file:
+            console.print(
+                f"[red]Could not find compose file for service: {service}[/red]"
+            )
+            return False
+
+        base_cmd, _ = self._setup_compose_command(project, compose_file)
+        run_cmd = f"{base_cmd} run"
+
+        if rm:
+            run_cmd += " --rm"
+        if user:
+            run_cmd += f" --user {user}"
+
+        run_cmd += f" {service} {command}"
+
+        console.print(f"[green]Running command in {service}: {command}[/green]")
+        console.print(f"  [white]exec: {run_cmd}[/white]")
+
+        # Run interactively
+        result = subprocess.run(run_cmd, shell=True, cwd=self.compose_dir, text=True)
+        return result.returncode == 0
+
+    def wait_containers(self, target: str):
+        """Wait for containers to stop"""
+        # Check if target is a container name or project
+        projects = self._parse_compose_files()
+
+        if target in projects:
+            # Get all containers for the project
+            project = target
+            compose_file = projects[project]["file"]
+            project_name = self._get_project_name(compose_file)
+
+            # Get containers for this project
+            check_cmd = [
+                "podman",
+                "ps",
+                "-a",
+                "--filter",
+                f"label=com.docker.compose.project={project_name}",
+                "--format",
+                "{{.Names}}",
+            ]
+            result = subprocess.run(check_cmd, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                console.print(
+                    f"[red]Error getting containers for project: {result.stderr.strip()}[/red]"
+                )
+                return False
+
+            containers = (
+                result.stdout.strip().split("\n") if result.stdout.strip() else []
+            )
+        else:
+            # Assume it's a container name
+            containers = [target]
+
+        if not containers or (len(containers) == 1 and not containers[0]):
+            console.print(f"[yellow]No containers found for {target}[/yellow]")
+            return True
+
         console.print(
-            f"[yellow]Inspect command for {target} (not implemented)[/yellow]"
+            f"[green]Waiting for containers to stop: {', '.join(containers)}[/green]"
         )
+
+        for container in containers:
+            if not container:
+                continue
+
+            wait_cmd = ["podman", "wait", container]
+            console.print(f"  [white]exec: {' '.join(wait_cmd)}[/white]")
+
+            result = subprocess.run(wait_cmd, capture_output=True, text=True)
+
+            if result.returncode == 0:
+                console.print(f"[green]Container {container} has stopped[/green]")
+            else:
+                error_msg = (
+                    result.stderr.strip() if result.stderr.strip() else "Unknown error"
+                )
+                console.print(
+                    f"[yellow]Warning waiting for {container}: {error_msg}[/yellow]"
+                )
+
+        console.print(f"[green]Finished waiting for {target}[/green]")
         return True
+
+    def create_systemd_unit(self, action: str = "help"):
+        """Create systemd unit files for compose stacks"""
+        console.print(Panel.fit("Systemd Integration", style="bold blue"))
+
+        if action == "help":
+            console.print("[bold]Available systemd actions:[/bold]")
+            console.print("  create-unit    Create systemd unit files")
+            console.print("  register       Register current compose stack")
+            console.print("")
+            console.print("[bold]Usage:[/bold]")
+            console.print("  pm systemd create-unit    # Create unit files")
+            console.print("  pm systemd register       # Register stack")
+            console.print("")
+            console.print("[bold]After setup:[/bold]")
+            console.print("  systemctl --user start podman-compose@<PROJECT>")
+            console.print("  systemctl --user stop podman-compose@<PROJECT>")
+            return True
+        elif action == "create-unit":
+            console.print("[green]Creating systemd unit files...[/green]")
+            systemd_cmd = ["podman-compose", "systemd", "-a", "create-unit"]
+        elif action == "register":
+            console.print("[green]Registering compose stack...[/green]")
+            systemd_cmd = ["podman-compose", "systemd", "-a", "register"]
+        else:
+            console.print(f"[red]Unknown systemd action: {action}[/red]")
+            return False
+
+        console.print(f"  [white]exec: {' '.join(systemd_cmd)}[/white]")
+
+        result = subprocess.run(
+            systemd_cmd, capture_output=True, text=True, cwd=self.compose_dir
+        )
+
+        if result.returncode == 0:
+            console.print(f"[green]Systemd {action} completed successfully[/green]")
+            if result.stdout.strip():
+                console.print(result.stdout)
+            return True
+        else:
+            error_msg = (
+                result.stderr.strip() if result.stderr.strip() else "Unknown error"
+            )
+            console.print(f"[red]Systemd {action} failed: {error_msg}[/red]")
+            return False
 
 
 def show_rich_help():
@@ -1832,9 +2997,7 @@ def show_rich_help():
     )
 
     console.print()
-    console.print(
-        "[dim]For detailed command help: [cyan]pm COMMAND --help[/cyan]"
-    )
+    console.print("[dim]For detailed command help: [cyan]pm COMMAND --help[/cyan]")
 
 
 def main():
@@ -1857,7 +3020,7 @@ def main():
 
     # Container lifecycle commands
     reinit_parser = subparsers.add_parser("reinit", help="Reinitialize containers")
-    reinit_parser.add_argument("target", help="Project or service name")
+    reinit_parser.add_argument("target", nargs="?", help="Project or service name")
     reinit_parser.add_argument("--build", action="store_true", help="Rebuild images")
     reinit_parser.add_argument(
         "--dry-run", action="store_true", help="Show what would be done"
@@ -1867,19 +3030,19 @@ def main():
     )
 
     restart_parser = subparsers.add_parser("restart", help="Restart services")
-    restart_parser.add_argument("target", help="Project or service name")
+    restart_parser.add_argument("target", nargs="?", help="Project or service name")
     restart_parser.add_argument(
         "--remove-orphans", action="store_true", help="Remove orphaned containers"
     )
 
     stop_parser = subparsers.add_parser("stop", help="Stop services")
-    stop_parser.add_argument("target", help="Project or service name")
+    stop_parser.add_argument("target", nargs="?", help="Project or service name")
     stop_parser.add_argument(
         "--remove-orphans", action="store_true", help="Remove orphaned containers"
     )
 
     remove_parser = subparsers.add_parser("remove", help="Remove services")
-    remove_parser.add_argument("target", help="Project or service name")
+    remove_parser.add_argument("target", nargs="?", help="Project or service name")
     remove_parser.add_argument(
         "--remove-orphans", action="store_true", help="Remove orphaned containers"
     )
@@ -1890,13 +3053,13 @@ def main():
 
     # Build & Images commands
     build_parser = subparsers.add_parser("build", help="Build images")
-    build_parser.add_argument("target", help="Project or service name")
+    build_parser.add_argument("target", nargs="?", help="Project or service name")
     build_parser.add_argument(
         "--no-cache", action="store_true", help="Build without cache"
     )
 
     pull_parser = subparsers.add_parser("pull", help="Pull latest images")
-    pull_parser.add_argument("target", help="Project or service name")
+    pull_parser.add_argument("target", nargs="?", help="Project or service name")
 
     images_parser = subparsers.add_parser("images", help="List all images")
     images_parser.add_argument(
@@ -1942,16 +3105,71 @@ def main():
 
     # Container lifecycle commands (pause/unpause)
     pause_parser = subparsers.add_parser("pause", help="Pause containers")
-    pause_parser.add_argument("target", help="Project or service name")
+    pause_parser.add_argument("target", nargs="?", help="Project or service name")
 
     unpause_parser = subparsers.add_parser("unpause", help="Unpause containers")
-    unpause_parser.add_argument("target", help="Project or service name")
+    unpause_parser.add_argument("target", nargs="?", help="Project or service name")
 
     # Inspect command
     inspect_parser = subparsers.add_parser("inspect", help="Inspect container or image")
-    inspect_parser.add_argument("target", help="Container or image name")
+    inspect_parser.add_argument("target", nargs="?", help="Container or image name")
     inspect_parser.add_argument(
         "--type", choices=["container", "image"], help="Type to inspect"
+    )
+
+    # New commands
+    up_parser = subparsers.add_parser("up", help="Start services")
+    up_parser.add_argument("target", nargs="?", help="Project or service name")
+    up_parser.add_argument("--no-detach", action="store_true", help="Run in foreground")
+    up_parser.add_argument(
+        "--build", action="store_true", help="Build images before starting"
+    )
+
+    down_parser = subparsers.add_parser("down", help="Stop and remove services")
+    down_parser.add_argument("target", nargs="?", help="Project name")
+    down_parser.add_argument("--volumes", action="store_true", help="Remove volumes")
+    down_parser.add_argument(
+        "--no-remove-orphans",
+        action="store_true",
+        help="Don't remove orphaned containers",
+    )
+
+    kill_parser = subparsers.add_parser("kill", help="Kill containers with signal")
+    kill_parser.add_argument("target", nargs="?", help="Container name")
+    kill_parser.add_argument(
+        "--signal", default="SIGKILL", help="Signal to send (default: SIGKILL)"
+    )
+
+    config_parser = subparsers.add_parser("config", help="Show compose configuration")
+    config_parser.add_argument("target", nargs="?", help="Project name")
+
+    # Additional commands
+    start_parser = subparsers.add_parser("start", help="Start stopped containers")
+    start_parser.add_argument("target", nargs="?", help="Project or service name")
+
+    push_parser = subparsers.add_parser("push", help="Push images to registry")
+    push_parser.add_argument("target", nargs="?", help="Project or service name")
+
+    run_parser = subparsers.add_parser(
+        "run", help="Run one-off command in new container"
+    )
+    run_parser.add_argument("service", nargs="?", help="Service name")
+    run_parser.add_argument("cmd", nargs="?", help="Command to run")
+    run_parser.add_argument("--user", help="User to run as")
+    run_parser.add_argument(
+        "--no-rm", action="store_true", help="Don't remove container after run"
+    )
+
+    wait_parser = subparsers.add_parser("wait", help="Wait for containers to stop")
+    wait_parser.add_argument("target", nargs="?", help="Container name or project")
+
+    systemd_parser = subparsers.add_parser("systemd", help="Create systemd unit files")
+    systemd_parser.add_argument(
+        "action",
+        nargs="?",
+        default="help",
+        choices=["help", "create-unit", "register"],
+        help="Systemd action to perform",
     )
 
     args = parser.parse_args()
@@ -1975,6 +3193,9 @@ def main():
         elif args.command == "help":
             manager.show_help()
         elif args.command == "reinit":
+            if not args.target:
+                manager.show_available_targets("reinit")
+                sys.exit(1)
             success = manager.reinit(
                 args.target,
                 build=args.build,
@@ -1986,21 +3207,36 @@ def main():
             success = manager.logs(args.service)
             sys.exit(0 if success else 1)
         elif args.command == "restart":
+            if not args.target:
+                manager.show_available_targets("restart")
+                sys.exit(1)
             success = manager.restart(args.target, remove_orphans=args.remove_orphans)
             sys.exit(0 if success else 1)
         elif args.command == "stop":
+            if not args.target:
+                manager.show_available_targets("stop")
+                sys.exit(1)
             success = manager.stop(args.target, remove_orphans=args.remove_orphans)
             sys.exit(0 if success else 1)
         elif args.command == "remove":
+            if not args.target:
+                manager.show_available_targets("remove")
+                sys.exit(1)
             success = manager.remove(args.target, remove_orphans=args.remove_orphans)
             sys.exit(0 if success else 1)
         elif args.command == "images":
             success = manager.show_images(show_all=args.all)
             sys.exit(0 if success else 1)
         elif args.command == "build":
+            if not args.target:
+                manager.show_available_targets("build")
+                sys.exit(1)
             success = manager.build(args.target, no_cache=args.no_cache)
             sys.exit(0 if success else 1)
         elif args.command == "pull":
+            if not args.target:
+                manager.show_available_targets("pull")
+                sys.exit(1)
             success = manager.pull(args.target)
             sys.exit(0 if success else 1)
         elif args.command == "prune":
@@ -2034,13 +3270,89 @@ def main():
             success = manager.remove_orphans(args.project)
             sys.exit(0 if success else 1)
         elif args.command == "pause":
+            if not args.target:
+                manager.show_available_targets("pause")
+                sys.exit(1)
             success = manager.pause(args.target)
             sys.exit(0 if success else 1)
         elif args.command == "unpause":
+            if not args.target:
+                manager.show_available_targets("unpause")
+                sys.exit(1)
             success = manager.unpause(args.target)
             sys.exit(0 if success else 1)
         elif args.command == "inspect":
+            if not args.target:
+                manager.show_available_targets("inspect")
+                sys.exit(1)
             success = manager.inspect(args.target, inspect_type=args.type)
+            sys.exit(0 if success else 1)
+        elif args.command == "up":
+            if not args.target:
+                manager.show_available_targets("up")
+                sys.exit(1)
+            success = manager.up(
+                args.target, detach=not args.no_detach, build=args.build
+            )
+            sys.exit(0 if success else 1)
+        elif args.command == "down":
+            if not args.target:
+                manager.show_available_targets("down")
+                sys.exit(1)
+            success = manager.down(
+                args.target,
+                volumes=args.volumes,
+                remove_orphans=not args.no_remove_orphans,
+            )
+            sys.exit(0 if success else 1)
+        elif args.command == "kill":
+            if not args.target:
+                manager.show_available_targets("kill")
+                sys.exit(1)
+            success = manager.kill_container(args.target, signal=args.signal)
+            sys.exit(0 if success else 1)
+        elif args.command == "config":
+            if not args.target:
+                manager.show_available_targets("config")
+                sys.exit(1)
+            success = manager.show_config(args.target)
+            sys.exit(0 if success else 1)
+        elif args.command == "start":
+            if not args.target:
+                manager.show_available_targets("start")
+                sys.exit(1)
+            success = manager.start(args.target)
+            sys.exit(0 if success else 1)
+        elif args.command == "push":
+            if not args.target:
+                manager.show_available_targets("push")
+                sys.exit(1)
+            success = manager.push_images(args.target)
+            sys.exit(0 if success else 1)
+        elif args.command == "run":
+            if not args.service or not args.cmd:
+                if not args.service:
+                    manager.show_available_targets("run")
+                    console.print(
+                        "\n[yellow]Usage: pm run <service> <command>[/yellow]"
+                    )
+                else:
+                    console.print("[yellow]No command specified for 'run'.[/yellow]")
+                    console.print("[bold]Usage:[/bold] pm run <service> <command>")
+                    console.print("[bold]Example:[/bold] pm run web-service bash")
+                sys.exit(1)
+            success = manager.run_command(
+                args.service, args.cmd, user=args.user, rm=not args.no_rm
+            )
+            sys.exit(0 if success else 1)
+        elif args.command == "wait":
+            if not args.target:
+                manager.show_available_targets("wait")
+                sys.exit(1)
+            success = manager.wait_containers(args.target)
+            sys.exit(0 if success else 1)
+        elif args.command == "systemd":
+            success = manager.create_systemd_unit(args.action)
             sys.exit(0 if success else 1)
 
     except KeyboardInterrupt:
