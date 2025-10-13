@@ -46,7 +46,7 @@ def show_rich_help():
         (
             "Status & Information",
             [
-                ("list [TARGET]", "List projects and services", "pm list"),
+                ("list [<project/service>]", "List projects and services", "pm list"),
                 ("ps", "Container status table", "pm ps"),
                 ("images [--all]", "Show container images", "pm images"),
                 ("stats [--follow]", "Show container resource usage", "pm stats"),
@@ -56,20 +56,20 @@ def show_rich_help():
         (
             "Container Lifecycle",
             [
-                ("reinit TARGET", "Remove and recreate containers", "pm reinit ollama"),
-                ("restart TARGET", "Quick restart containers", "pm restart app"),
-                ("stop TARGET", "Gracefully stop containers", "pm stop vllm-models"),
-                ("remove TARGET", "Remove containers", "pm remove old-service"),
-                ("pull TARGET", "Pull latest images", "pm pull app"),
+                ("reinit <project/service>", "Remove and recreate containers", "pm reinit <project/service>"),
+                ("restart <project/service>", "Quick restart containers", "pm restart <project/service>"),
+                ("stop <project/service>", "Gracefully stop containers", "pm stop <project/service>"),
+                ("remove <project/service>", "Remove containers", "pm remove <project/service>"),
+                ("pull <project/service>", "Pull latest images", "pm pull <project/service>"),
             ],
         ),
         (
             "Build & Images",
             [
                 (
-                    "build TARGET [--no-cache]",
+                    "build <project/service> [--no-cache]",
                     "Build container images",
-                    "pm build app --no-cache",
+                    "pm build <project/service> --no-cache",
                 ),
                 ("prune", "Remove unused images and containers", "pm prune"),
                 ("system-df", "Show disk usage", "pm system-df"),
@@ -81,14 +81,14 @@ def show_rich_help():
                 ("volumes", "List volumes", "pm volumes"),
                 ("networks", "List networks", "pm networks"),
                 (
-                    "logs TARGET [--follow]",
+                    "logs <project/service> [--follow]",
                     "Show container logs",
-                    "pm logs app --follow",
+                    "pm logs <project/service> --follow",
                 ),
                 (
-                    "exec TARGET COMMAND",
+                    "exec <project/service> COMMAND",
                     "Execute command in container",
-                    "pm exec app bash",
+                    "pm exec <project/service> bash",
                 ),
             ],
         ),
@@ -120,17 +120,23 @@ def show_rich_help():
     examples_table.add_column("Command", style="cyan", width=35)
     examples_table.add_column("Description", style="white")
     examples_table.add_row("pm list", "Show all projects and their services")
-    examples_table.add_row("pm list ollama", "Show details for ollama project/service")
+    examples_table.add_row("pm list <project/service>", "Show details for specific project/service")
     examples_table.add_row("pm ps", "Show running containers status")
-    examples_table.add_row("pm logs app --follow", "Follow logs for app service")
+    examples_table.add_row("pm logs <project/service> --follow", "Follow logs for specific service")
     examples_table.add_row("pm stats --follow", "Monitor resource usage in real-time")
-    examples_table.add_row("pm exec app bash", "Open bash shell in app container")
-    examples_table.add_row("pm reinit ollama --build", "Rebuild and restart ollama service")
-    examples_table.add_row("pm build app --no-cache", "Build app without using cache")
+    examples_table.add_row("pm exec <project/service> bash", "Open bash shell in container")
+    examples_table.add_row("pm reinit <project/service> --build", "Rebuild and restart service")
+    examples_table.add_row("pm build <project/service> --no-cache", "Build without using cache")
+    examples_table.add_row("pm remove <project/service>", "Remove specific containers")
+    examples_table.add_row("pm pull <project/service>", "Pull latest images for service")
+    examples_table.add_row("pm restart <project/service>", "Restart specific service")
+    examples_table.add_row("pm stop <project/service>", "Stop specific service")
     examples_table.add_row("pm images --all", "Show all images including intermediates")
     examples_table.add_row("pm system-df", "Show disk usage by containers/images")
     examples_table.add_row("pm prune", "Clean up unused containers and images")
     examples_table.add_row("pm volumes", "List all volumes")
+    examples_table.add_row("pm networks", "List all networks")
+    examples_table.add_row("pm events --since 1h", "Show events from last hour")
     console.print(examples_table)
 
     console.print()
