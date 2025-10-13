@@ -451,9 +451,6 @@ class PodmanManager:
             matches = re.findall(dep_pattern, error_msg)
 
             if matches:
-                console.print(
-                    f"[yellow]Found {len(matches)} dependent containers[/yellow]"
-                )
 
                 # Get names of dependent containers and remove them
                 for dep_id in matches:
@@ -474,7 +471,7 @@ class PodmanManager:
                     if name_result.returncode == 0 and name_result.stdout.strip():
                         dep_name = name_result.stdout.strip()
                         console.print(
-                            f"[dim]Removing dependent container: {dep_name} ({dep_id[:12]})[/dim]"
+                            f"[green]Removing dependent container: {dep_name} ({dep_id[:12]})[/green]"
                         )
 
                         # Remove dependent container with force
@@ -1029,7 +1026,7 @@ class PodmanManager:
 
         # Setup build command
         base_cmd, _ = self._setup_compose_command(project, compose_file)
-        build_cmd = f"{base_cmd} --progress=plain build"
+        build_cmd = f"{base_cmd} build"
 
         if no_cache:
             build_cmd += " --no-cache"
@@ -1402,7 +1399,7 @@ class PodmanManager:
                         f"[green]Building images for service: {service}[/green]"
                     )
                     build_cmd = (
-                        f"{base_cmd} --progress=plain build --no-cache {service}"
+                        f"{base_cmd} build --no-cache {service}"
                     )
                     console.print(f"  [white]exec: {build_cmd}[/white]")
 
@@ -1476,7 +1473,7 @@ class PodmanManager:
                         console.print(
                             f"[green]Building images for project: {project}[/green]"
                         )
-                        build_cmd = f"{base_cmd} --progress=plain build --no-cache"
+                        build_cmd = f"{base_cmd} build --no-cache"
                         console.print(f"  [white]exec: {build_cmd}[/white]")
 
                         # Stream build output live
@@ -1836,7 +1833,7 @@ def show_rich_help():
 
     console.print()
     console.print(
-        "[dim]For detailed command help: [cyan]pm COMMAND --help[/bright_cyan]"
+        "[dim]For detailed command help: [cyan]pm COMMAND --help[/cyan]"
     )
 
 
