@@ -16,7 +16,6 @@ from manager import PodmanManager
 
 def show_rich_help():
     """Show beautiful Rich-formatted help"""
-    from rich.panel import Panel
     from rich.table import Table
 
     console.print("[bold blue]Podman Container Manager[/bold blue]")
@@ -140,9 +139,39 @@ def show_rich_help():
     console.print("  • Check [cyan]pm status[/cyan] first to see available targets")
 
 
+class CustomArgumentParser(argparse.ArgumentParser):
+    """Custom ArgumentParser with better error messages"""
+
+    def error(self, message):
+        """Override error method to show helpful messages"""
+        if "invalid choice" in message:
+            # Extract the invalid command from the message
+            import re
+
+            match = re.search(r"invalid choice: '([^']+)'", message)
+            if match:
+                invalid_cmd = match.group(1)
+                console.print(f"[red]Error: Unknown command '{invalid_cmd}'[/red]")
+                console.print(
+                    "[dim]Run 'pm --help' to see all available commands[/dim]"
+                )
+                console.print(
+                    "[dim]Did you mean one of: status, ps, logs, images, stats?[/dim]"
+                )
+                sys.exit(1)
+        elif "unrecognized arguments" in message:
+            console.print(f"[red]Error: {message}[/red]")
+            console.print("[dim]Run 'pm --help' to see command usage[/dim]")
+            sys.exit(1)
+        else:
+            console.print(f"[red]Error: {message}[/red]")
+            console.print("[dim]Run 'pm --help' for help[/dim]")
+            sys.exit(1)
+
+
 def main():
     """Main entry point for refactored podman manager"""
-    parser = argparse.ArgumentParser(
+    parser = CustomArgumentParser(
         description="Podman Container Manager with Rich UI (Refactored)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         add_help=False,
@@ -154,9 +183,51 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Status and info commands
-    subparsers.add_parser("status", help="Show project status")
+    status_parser = subparsers.add_parser("status", help="Show project status")
+    status_parser.add_argument("target", nargs="?", help="Project or service name")
     subparsers.add_parser("ps", help="Show container status")
     subparsers.add_parser("help", help="Show detailed help")
+
+    # Additional status commands
+    images_parser = subparsers.add_parser("images", help="Show container images")
+    images_parser.add_argument("--all", action="store_true", help="Show all images")
+
+    stats_parser = subparsers.add_parser("stats", help="Show container resource usage")
+    stats_parser.add_argument(
+        "--follow", action="store_true", help="Follow stats output"
+    )
+
+    events_parser = subparsers.add_parser("events", help="Show container events")
+    events_parser.add_argument("--since", help="Show events since timestamp")
+
+    # Resource commands
+    logs_parser = subparsers.add_parser("logs", help="Show container logs")
+    logs_parser.add_argument("target", help="Project or service name")
+    logs_parser.add_argument("--follow", action="store_true", help="Follow log output")
+
+    exec_parser = subparsers.add_parser("exec", help="Execute command in container")
+    exec_parser.add_argument("target", help="Project or service name")
+    exec_parser.add_argument("command", nargs="+", help="Command to execute")
+
+    subparsers.add_parser("volumes", help="List volumes")
+    subparsers.add_parser("networks", help="List networks")
+
+    # Build and image commands
+    build_parser = subparsers.add_parser("build", help="Build container images")
+    build_parser.add_argument("target", help="Project or service name")
+    build_parser.add_argument(
+        "--no-cache", action="store_true", help="Build without cache"
+    )
+
+    subparsers.add_parser("prune", help="Remove unused images and containers")
+    subparsers.add_parser("system-df", help="Show disk usage")
+
+    # Additional lifecycle commands
+    remove_parser = subparsers.add_parser("remove", help="Remove containers")
+    remove_parser.add_argument("target", help="Project or service name")
+
+    pull_parser = subparsers.add_parser("pull", help="Pull latest images")
+    pull_parser.add_argument("target", help="Project or service name")
 
     # Container lifecycle commands
     reinit_parser = subparsers.add_parser("reinit", help="Reinitialize containers")
@@ -199,11 +270,38 @@ def main():
 
         # Route commands to appropriate modules
         if args.command == "status":
-            display.show_status()
+            if args.target:
+                display.show_status(args.target)
+            else:
+                display.show_status()
         elif args.command == "ps":
             display.show_ps()
         elif args.command == "help":
             show_rich_help()
+        elif args.command == "images":
+            display.show_images(show_all=args.all)
+        elif args.command == "stats":
+            display.show_stats(follow=args.follow)
+        elif args.command == "events":
+            display.show_events(since=args.since)
+        elif args.command == "logs":
+            container_ops.show_logs(args.target, follow=args.follow)
+        elif args.command == "exec":
+            container_ops.exec_command(args.target, args.command)
+        elif args.command == "volumes":
+            display.show_volumes()
+        elif args.command == "networks":
+            display.show_networks()
+        elif args.command == "build":
+            container_ops.build(args.target, no_cache=args.no_cache)
+        elif args.command == "prune":
+            container_ops.prune()
+        elif args.command == "system-df":
+            display.show_system_df()
+        elif args.command == "remove":
+            container_ops.remove(args.target)
+        elif args.command == "pull":
+            container_ops.pull(args.target)
         elif args.command == "reinit":
             if not args.target:
                 display.show_available_targets("reinit")
