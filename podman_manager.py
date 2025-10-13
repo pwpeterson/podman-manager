@@ -57,19 +57,19 @@ def show_rich_help():
             "Container Lifecycle",
             [
                 (
-                    "reinit [dim]<proj/srvc>[/dim]",
+                    "reinit [cyan]<proj/srvc>[/cyan]",
                     "Remove and recreate containers",
-                    "pm reinit [dim]<proj/srvc>[/dim]",
+                    "pm reinit [cyan]<proj/srvc>[/cyan]",
                 ),
                 (
-                    "restart [dim]<proj/srvc>[/dim]",
+                    "restart [cyan]<proj/srvc>[/cyan]",
                     "Quick restart containers",
-                    "pm restart [dim]<proj/srvc>[/dim]",
+                    "pm restart [cyan]<proj/srvc>[/cyan]",
                 ),
                 (
-                    "stop [dim]<proj/srvc>[/dim]",
+                    "stop [cyan]<proj/srvc>[/cyan]",
                     "Gracefully stop containers",
-                    "pm stop [dim]<proj/srvc>[/dim]",
+                    "pm stop [cyan]<proj/srvc>[/cyan]",
                 ),
                 (
                     "remove [cyan]<proj/srvc>[/cyan]",
@@ -151,7 +151,7 @@ def show_rich_help():
         "pm exec [cyan]<proj/srvc>[/cyan] bash", "Open bash shell in container"
     )
     examples_table.add_row(
-        "pm reinit [dim]<proj/srvc>[/dim] --build", "Rebuild and restart service"
+        "pm reinit [cyan]<proj/srvc>[/cyan] --build", "Rebuild and restart service"
     )
     examples_table.add_row(
         "pm build [cyan]<proj/srvc>[/cyan] --no-cache", "Build without using cache"
@@ -160,8 +160,8 @@ def show_rich_help():
     examples_table.add_row(
         "pm pull [cyan]<proj/srvc>[/cyan]", "Pull latest images for service"
     )
-    examples_table.add_row("pm restart [dim]<proj/srvc>[/dim]", "Restart specific service")
-    examples_table.add_row("pm stop [dim]<proj/srvc>[/dim]", "Stop specific service")
+    examples_table.add_row("pm restart [cyan]<proj/srvc>[/cyan]", "Restart specific service")
+    examples_table.add_row("pm stop [cyan]<proj/srvc>[/cyan]", "Stop specific service")
     examples_table.add_row("pm images --all", "Show all images including intermediates")
     examples_table.add_row("pm system-df", "Show disk usage by containers/images")
     examples_table.add_row("pm prune", "Clean up unused containers and images")
