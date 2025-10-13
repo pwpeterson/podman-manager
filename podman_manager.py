@@ -46,7 +46,7 @@ def show_rich_help():
         (
             "Status & Information",
             [
-                ("status", "Show projects and services tree", "pm status"),
+                ("list [TARGET]", "List projects and services", "pm list"),
                 ("ps", "Container status table", "pm ps"),
                 ("images [--all]", "Show container images", "pm images"),
                 ("stats [--follow]", "Show container resource usage", "pm stats"),
@@ -119,13 +119,18 @@ def show_rich_help():
     examples_table = Table(show_header=False, box=None, padding=(0, 2))
     examples_table.add_column("Command", style="cyan", width=35)
     examples_table.add_column("Description", style="white")
-    examples_table.add_row("pm status", "Show all projects and their services")
-    examples_table.add_row(
-        "pm reinit ollama --build", "Rebuild and restart ollama service"
-    )
+    examples_table.add_row("pm list", "Show all projects and their services")
+    examples_table.add_row("pm list ollama", "Show details for ollama project/service")
+    examples_table.add_row("pm ps", "Show running containers status")
     examples_table.add_row("pm logs app --follow", "Follow logs for app service")
     examples_table.add_row("pm stats --follow", "Monitor resource usage in real-time")
     examples_table.add_row("pm exec app bash", "Open bash shell in app container")
+    examples_table.add_row("pm reinit ollama --build", "Rebuild and restart ollama service")
+    examples_table.add_row("pm build app --no-cache", "Build app without using cache")
+    examples_table.add_row("pm images --all", "Show all images including intermediates")
+    examples_table.add_row("pm system-df", "Show disk usage by containers/images")
+    examples_table.add_row("pm prune", "Clean up unused containers and images")
+    examples_table.add_row("pm volumes", "List all volumes")
     console.print(examples_table)
 
     console.print()
@@ -136,7 +141,7 @@ def show_rich_help():
     console.print("  • TARGET can be a project name or specific service name")
     console.print("  • Use [cyan]--remove-orphans[/cyan] to clean up unused containers")
     console.print("  • Press [cyan]Ctrl+C[/cyan] to interrupt long-running operations")
-    console.print("  • Check [cyan]pm status[/cyan] first to see available targets")
+    console.print("  • Check [cyan]pm list[/cyan] first to see available targets")
 
 
 class CustomArgumentParser(argparse.ArgumentParser):
@@ -156,7 +161,7 @@ class CustomArgumentParser(argparse.ArgumentParser):
                     "[dim]Run 'pm --help' to see all available commands[/dim]"
                 )
                 console.print(
-                    "[dim]Did you mean one of: status, ps, logs, images, stats?[/dim]"
+                    "[dim]Did you mean one of: list, ps, logs, images, stats?[/dim]"
                 )
                 sys.exit(1)
         elif "unrecognized arguments" in message:
@@ -183,7 +188,11 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Status and info commands
-    status_parser = subparsers.add_parser("status", help="Show project status")
+    list_parser = subparsers.add_parser("list", help="List projects and services")
+    list_parser.add_argument("target", nargs="?", help="Project or service name")
+    
+    # Keep 'status' as an alias for backward compatibility
+    status_parser = subparsers.add_parser("status", help="Show project status (alias for list)")
     status_parser.add_argument("target", nargs="?", help="Project or service name")
     subparsers.add_parser("ps", help="Show container status")
     subparsers.add_parser("help", help="Show detailed help")
@@ -269,7 +278,7 @@ def main():
         display = DisplayManager(manager)
 
         # Route commands to appropriate modules
-        if args.command == "status":
+        if args.command == "list" or args.command == "status":
             if args.target:
                 display.show_status(args.target)
             else:

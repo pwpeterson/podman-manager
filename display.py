@@ -92,7 +92,7 @@ class DisplayManager:
             f"  pm {command_name} <service_name> # Operate on specific service"
         )
         console.print(
-            "\n[dim]Use 'pm status' to see the full project/service tree.[/dim]"
+            "\n[dim]Use 'pm list' to see the full project/service tree.[/dim]"
         )
         return True
 
