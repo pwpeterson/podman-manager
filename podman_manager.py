@@ -46,7 +46,7 @@ def show_rich_help():
         (
             "Status & Information",
             [
-                ("list [<project/service>]", "List projects and services", "pm list"),
+                ("list [[dim]<proj/srvc>[/dim]]", "List projects and services", "pm list"),
                 ("ps", "Container status table", "pm ps"),
                 ("images [--all]", "Show container images", "pm images"),
                 ("stats [--follow]", "Show container resource usage", "pm stats"),
@@ -56,20 +56,40 @@ def show_rich_help():
         (
             "Container Lifecycle",
             [
-                ("reinit <project/service>", "Remove and recreate containers", "pm reinit <project/service>"),
-                ("restart <project/service>", "Quick restart containers", "pm restart <project/service>"),
-                ("stop <project/service>", "Gracefully stop containers", "pm stop <project/service>"),
-                ("remove <project/service>", "Remove containers", "pm remove <project/service>"),
-                ("pull <project/service>", "Pull latest images", "pm pull <project/service>"),
+                (
+                    "reinit [dim]<proj/srvc>[/dim]",
+                    "Remove and recreate containers",
+                    "pm reinit [dim]<proj/srvc>[/dim]",
+                ),
+                (
+                    "restart [dim]<proj/srvc>[/dim]",
+                    "Quick restart containers",
+                    "pm restart [dim]<proj/srvc>[/dim]",
+                ),
+                (
+                    "stop [dim]<proj/srvc>[/dim]",
+                    "Gracefully stop containers",
+                    "pm stop [dim]<proj/srvc>[/dim]",
+                ),
+                (
+                    "remove [dim]<proj/srvc>[/dim]",
+                    "Remove containers",
+                    "pm remove [dim]<proj/srvc>[/dim]",
+                ),
+                (
+                    "pull [dim]<proj/srvc>[/dim]",
+                    "Pull latest images",
+                    "pm pull [dim]<proj/srvc>[/dim]",
+                ),
             ],
         ),
         (
             "Build & Images",
             [
                 (
-                    "build <project/service> [--no-cache]",
+                    "build [dim]<proj/srvc>[/dim] [--no-cache]",
                     "Build container images",
-                    "pm build <project/service> --no-cache",
+                    "pm build [dim]<proj/srvc>[/dim] --no-cache",
                 ),
                 ("prune", "Remove unused images and containers", "pm prune"),
                 ("system-df", "Show disk usage", "pm system-df"),
@@ -81,14 +101,14 @@ def show_rich_help():
                 ("volumes", "List volumes", "pm volumes"),
                 ("networks", "List networks", "pm networks"),
                 (
-                    "logs <project/service> [--follow]",
+                    "logs [dim]<proj/srvc>[/dim] [--follow]",
                     "Show container logs",
-                    "pm logs <project/service> --follow",
+                    "pm logs [dim]<proj/srvc>[/dim] --follow",
                 ),
                 (
-                    "exec <project/service> COMMAND",
+                    "exec [dim]<proj/srvc>[/dim] COMMAND",
                     "Execute command in container",
-                    "pm exec <project/service> bash",
+                    "pm exec [dim]<proj/srvc>[/dim] bash",
                 ),
             ],
         ),
@@ -120,17 +140,29 @@ def show_rich_help():
     examples_table.add_column("Command", style="cyan", width=35)
     examples_table.add_column("Description", style="white")
     examples_table.add_row("pm list", "Show all projects and their services")
-    examples_table.add_row("pm list <project/service>", "Show details for specific project/service")
+    examples_table.add_row(
+        "pm list [dim]<proj/srvc>[/dim]", "Show details for specific project/service"
+    )
     examples_table.add_row("pm ps", "Show running containers status")
-    examples_table.add_row("pm logs <project/service> --follow", "Follow logs for specific service")
+    examples_table.add_row(
+        "pm logs [dim]<proj/srvc>[/dim] --follow", "Follow logs for specific service"
+    )
     examples_table.add_row("pm stats --follow", "Monitor resource usage in real-time")
-    examples_table.add_row("pm exec <project/service> bash", "Open bash shell in container")
-    examples_table.add_row("pm reinit <project/service> --build", "Rebuild and restart service")
-    examples_table.add_row("pm build <project/service> --no-cache", "Build without using cache")
-    examples_table.add_row("pm remove <project/service>", "Remove specific containers")
-    examples_table.add_row("pm pull <project/service>", "Pull latest images for service")
-    examples_table.add_row("pm restart <project/service>", "Restart specific service")
-    examples_table.add_row("pm stop <project/service>", "Stop specific service")
+    examples_table.add_row(
+        "pm exec [dim]<proj/srvc>[/dim] bash", "Open bash shell in container"
+    )
+    examples_table.add_row(
+        "pm reinit [dim]<proj/srvc>[/dim] --build", "Rebuild and restart service"
+    )
+    examples_table.add_row(
+        "pm build [dim]<proj/srvc>[/dim] --no-cache", "Build without using cache"
+    )
+    examples_table.add_row("pm remove [dim]<proj/srvc>[/dim]", "Remove specific containers")
+    examples_table.add_row(
+        "pm pull [dim]<proj/srvc>[/dim]", "Pull latest images for service"
+    )
+    examples_table.add_row("pm restart [dim]<proj/srvc>[/dim]", "Restart specific service")
+    examples_table.add_row("pm stop [dim]<proj/srvc>[/dim]", "Stop specific service")
     examples_table.add_row("pm images --all", "Show all images including intermediates")
     examples_table.add_row("pm system-df", "Show disk usage by containers/images")
     examples_table.add_row("pm prune", "Clean up unused containers and images")
@@ -196,9 +228,11 @@ def main():
     # Status and info commands
     list_parser = subparsers.add_parser("list", help="List projects and services")
     list_parser.add_argument("target", nargs="?", help="Project or service name")
-    
+
     # Keep 'status' as an alias for backward compatibility
-    status_parser = subparsers.add_parser("status", help="Show project status (alias for list)")
+    status_parser = subparsers.add_parser(
+        "status", help="Show project status (alias for list)"
+    )
     status_parser.add_argument("target", nargs="?", help="Project or service name")
     subparsers.add_parser("ps", help="Show container status")
     subparsers.add_parser("help", help="Show detailed help")
