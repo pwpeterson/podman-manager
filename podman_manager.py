@@ -19,10 +19,7 @@ def show_rich_help():
     from rich.panel import Panel
     from rich.table import Table
 
-    console.print()
-    console.print(
-        Panel.fit("Podman Container Manager", style="bold blue", padding=(1, 2))
-    )
+    console.print("[bold blue]Podman Container Manager[/bold blue]")
 
     console.print()
     console.print("[bold]USAGE:[/bold]")
