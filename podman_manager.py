@@ -72,14 +72,14 @@ def show_rich_help():
                     "pm stop [dim]<proj/srvc>[/dim]",
                 ),
                 (
-                    "remove [dim]<proj/srvc>[/dim]",
+                    "remove [cyan]<proj/srvc>[/cyan]",
                     "Remove containers",
-                    "pm remove [dim]<proj/srvc>[/dim]",
+                    "pm remove [cyan]<proj/srvc>[/cyan]",
                 ),
                 (
-                    "pull [dim]<proj/srvc>[/dim]",
+                    "pull [cyan]<proj/srvc>[/cyan]",
                     "Pull latest images",
-                    "pm pull [dim]<proj/srvc>[/dim]",
+                    "pm pull [cyan]<proj/srvc>[/cyan]",
                 ),
             ],
         ),
@@ -87,9 +87,9 @@ def show_rich_help():
             "Build & Images",
             [
                 (
-                    "build [dim]<proj/srvc>[/dim] [--no-cache]",
+                    "build [cyan]<proj/srvc>[/cyan] [--no-cache]",
                     "Build container images",
-                    "pm build [dim]<proj/srvc>[/dim] --no-cache",
+                    "pm build [cyan]<proj/srvc>[/cyan] --no-cache",
                 ),
                 ("prune", "Remove unused images and containers", "pm prune"),
                 ("system-df", "Show disk usage", "pm system-df"),
@@ -101,14 +101,14 @@ def show_rich_help():
                 ("volumes", "List volumes", "pm volumes"),
                 ("networks", "List networks", "pm networks"),
                 (
-                    "logs [dim]<proj/srvc>[/dim] [--follow]",
+                    "logs [cyan]<proj/srvc>[/cyan] [--follow]",
                     "Show container logs",
-                    "pm logs [dim]<proj/srvc>[/dim] --follow",
+                    "pm logs [cyan]<proj/srvc>[/cyan] --follow",
                 ),
                 (
-                    "exec [dim]<proj/srvc>[/dim] COMMAND",
+                    "exec [cyan]<proj/srvc>[/cyan] COMMAND",
                     "Execute command in container",
-                    "pm exec [dim]<proj/srvc>[/dim] bash",
+                    "pm exec [cyan]<proj/srvc>[/cyan] bash",
                 ),
             ],
         ),
@@ -145,21 +145,21 @@ def show_rich_help():
     )
     examples_table.add_row("pm ps", "Show running containers status")
     examples_table.add_row(
-        "pm logs [dim]<proj/srvc>[/dim] --follow", "Follow logs for specific service"
+        "pm logs [cyan]<proj/srvc>[/cyan] --follow", "Follow logs for specific service"
     )
     examples_table.add_row("pm stats --follow", "Monitor resource usage in real-time")
     examples_table.add_row(
-        "pm exec [dim]<proj/srvc>[/dim] bash", "Open bash shell in container"
+        "pm exec [cyan]<proj/srvc>[/cyan] bash", "Open bash shell in container"
     )
     examples_table.add_row(
         "pm reinit [dim]<proj/srvc>[/dim] --build", "Rebuild and restart service"
     )
     examples_table.add_row(
-        "pm build [dim]<proj/srvc>[/dim] --no-cache", "Build without using cache"
+        "pm build [cyan]<proj/srvc>[/cyan] --no-cache", "Build without using cache"
     )
-    examples_table.add_row("pm remove [dim]<proj/srvc>[/dim]", "Remove specific containers")
+    examples_table.add_row("pm remove [cyan]<proj/srvc>[/cyan]", "Remove specific containers")
     examples_table.add_row(
-        "pm pull [dim]<proj/srvc>[/dim]", "Pull latest images for service"
+        "pm pull [cyan]<proj/srvc>[/cyan]", "Pull latest images for service"
     )
     examples_table.add_row("pm restart [dim]<proj/srvc>[/dim]", "Restart specific service")
     examples_table.add_row("pm stop [dim]<proj/srvc>[/dim]", "Stop specific service")
