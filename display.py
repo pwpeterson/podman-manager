@@ -98,7 +98,7 @@ class DisplayManager:
 
     def show_ps(self):
         """Show container status in a rich table"""
-        console.print(Panel.fit("Container Status", style="bold blue"))
+        # Container status table
 
         # Get container information
         cmd = [
@@ -159,7 +159,7 @@ class DisplayManager:
 
     def show_images(self, show_all: bool = False):
         """Show container images in a formatted table"""
-        console.print(Panel.fit("Container Images", style="bold blue"))
+        # Container images table
 
         cmd = ["podman", "images"]
         if show_all:
@@ -211,7 +211,7 @@ class DisplayManager:
         if follow:
             cmd.remove("--no-stream")
 
-        console.print(Panel.fit("Container Resource Usage", style="bold blue"))
+        # Container resource usage
 
         if follow:
             console.print("[dim]Press Ctrl+C to stop following stats[/dim]")
@@ -233,7 +233,7 @@ class DisplayManager:
 
     def show_volumes(self):
         """List volumes with disk usage"""
-        console.print(Panel.fit("Podman Volumes", style="bold blue"))
+        # Podman volumes
 
         cmd = ["podman", "volume", "ls", "--format", "table"]
         result = subprocess.run(
@@ -253,7 +253,7 @@ class DisplayManager:
 
     def show_networks(self):
         """List networks"""
-        console.print(Panel.fit("Podman Networks", style="bold blue"))
+        # Podman networks
 
         cmd = ["podman", "network", "ls"]
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -269,7 +269,7 @@ class DisplayManager:
 
     def show_system_df(self):
         """Show system disk usage"""
-        console.print(Panel.fit("Podman System Disk Usage", style="bold blue"))
+        # Podman system disk usage
 
         df_cmd = ["podman", "system", "df"]
         console.print(f"  [white]exec: {' '.join(df_cmd)}[/white]")
@@ -288,7 +288,7 @@ class DisplayManager:
 
     def show_events(self, since: Optional[str] = None):
         """Stream real-time podman events"""
-        console.print(Panel.fit("Podman Events Stream", style="bold blue"))
+        # Podman events stream
 
         events_cmd = ["podman", "events"]
         if since:
