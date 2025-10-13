@@ -139,7 +139,6 @@ def show_rich_help():
     examples_table = Table(show_header=False, box=None, padding=(0, 2))
     examples_table.add_column("Command", style="cyan", width=35)
     examples_table.add_column("Description", style="white")
-    examples_table.add_row("pm list", "Show all projects and their services")
     examples_table.add_row(
         "pm list [dim]<proj/srvc>[/dim]", "Show details for specific project/service"
     )
