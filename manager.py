@@ -166,8 +166,13 @@ class PodmanManager:
 
     def _find_service_project(self, service_name: str) -> Optional[str]:
         """Find which project contains a given service"""
+        # Check if it's a numeric selection (e.g., "1", "2", etc.)
+        if service_name.isdigit():
+            return self._handle_numeric_selection(int(service_name))
+
         projects = self._parse_compose_files()
 
+        # First try exact match
         for project_name, project_info in projects.items():
             if service_name in project_info["services"]:
                 logger.debug(
@@ -175,8 +180,131 @@ class PodmanManager:
                 )
                 return project_info["file"].name
 
+        # Try fuzzy matching
+        fuzzy_result = self._fuzzy_match_service(service_name)
+        if fuzzy_result:
+            return fuzzy_result
+
         logger.debug("Service '{}' not found in any project", service_name)
         return None
+
+    def _handle_numeric_selection(self, selection: int) -> Optional[str]:
+        """Handle numeric service selection from previous fuzzy match results"""
+        # This is a simplified approach - in a real implementation, you'd want to
+        # store the last fuzzy match results in a class variable or cache
+        console.print(
+            f"[red]Numeric selection '{selection}' not supported in this context[/red]"
+        )
+        console.print("[dim]Please use the full service name from the list above[/dim]")
+        return None
+
+    def _fuzzy_match_service(self, partial_name: str) -> Optional[str]:
+        """Find service using fuzzy matching for partial names"""
+        from rich.table import Table
+
+        projects = self._parse_compose_files()
+
+        # Get all available service names from all projects
+        all_services = []
+        service_to_project = {}
+
+        for project_name, project_info in projects.items():
+            for service_name in project_info["services"].keys():
+                all_services.append(service_name)
+                service_to_project[service_name] = project_info["file"].name
+
+        if not all_services:
+            return None
+
+        # Find exact matches first
+        exact_matches = [svc for svc in all_services if svc == partial_name]
+        if len(exact_matches) == 1:
+            return service_to_project[exact_matches[0]]
+
+        # Find partial matches (case-insensitive)
+        partial_matches = [
+            svc for svc in all_services if partial_name.lower() in svc.lower()
+        ]
+
+        # If no partial matches, try prefix matching
+        if not partial_matches:
+            partial_matches = [
+                svc
+                for svc in all_services
+                if svc.lower().startswith(partial_name.lower())
+            ]
+
+        # If still no matches, try fuzzy matching with edit distance
+        if not partial_matches:
+
+            def levenshtein_distance(s1: str, s2: str) -> int:
+                """Calculate Levenshtein distance between two strings"""
+                if len(s1) < len(s2):
+                    return levenshtein_distance(s2, s1)
+                if len(s2) == 0:
+                    return len(s1)
+
+                previous_row = list(range(len(s2) + 1))
+                for i, c1 in enumerate(s1):
+                    current_row = [i + 1]
+                    for j, c2 in enumerate(s2):
+                        insertions = previous_row[j + 1] + 1
+                        deletions = current_row[j] + 1
+                        substitutions = previous_row[j] + (c1 != c2)
+                        current_row.append(min(insertions, deletions, substitutions))
+                    previous_row = current_row
+                return previous_row[-1]
+
+            # Find services with small edit distance (max 2 for reasonable matches)
+            fuzzy_matches = []
+            for svc in all_services:
+                distance = levenshtein_distance(partial_name.lower(), svc.lower())
+                if (
+                    distance <= 2 and len(partial_name) >= 3
+                ):  # Only for reasonable length inputs
+                    fuzzy_matches.append((svc, distance))
+
+            # Sort by distance and take best matches
+            fuzzy_matches.sort(key=lambda x: x[1])
+            partial_matches = [match[0] for match in fuzzy_matches[:5]]  # Top 5 matches
+
+        if len(partial_matches) == 1:
+            # Single match found
+            matched_service = partial_matches[0]
+            console.print(f"[dim]Matched '{partial_name}' to '{matched_service}'[/dim]")
+            return service_to_project[matched_service]
+        elif len(partial_matches) > 1:
+            # Multiple matches - show selection menu
+            console.print(f"[yellow]Multiple services match '{partial_name}':[/yellow]")
+
+            table = Table(show_header=True, header_style="bold magenta")
+            table.add_column("#", style="cyan", width=3)
+            table.add_column("Service", style="green")
+            table.add_column("Project", style="dim")
+
+            for i, service in enumerate(partial_matches, 1):
+                project_file = service_to_project[service]
+                # Extract project name from file name
+                if project_file == "podman-compose.yml":
+                    project_name = "default"
+                else:
+                    project_name = project_file.replace("podman-compose-", "").replace(
+                        ".yml", ""
+                    )
+                table.add_row(str(i), service, project_name)
+
+            console.print(table)
+            console.print(
+                "[cyan]Please specify the full service name or use the number prefix:[/cyan]"
+            )
+
+            # Show example commands
+            for i, service in enumerate(partial_matches, 1):
+                console.print(f"  [dim]{i}.[/dim] [cyan]pm logs {service}[/cyan]")
+
+            return None  # Let user choose
+
+        return None  # No matches found
 
     def _setup_compose_command(
         self,

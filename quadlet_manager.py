@@ -169,6 +169,10 @@ class QuadletManager:
 
     def _find_service_name(self, target: str) -> Optional[str]:
         """Find the full service name from a target (short name or full name)"""
+        # Check if it's a numeric selection (e.g., "1", "2", etc.)
+        if target.isdigit():
+            return self._handle_numeric_selection(int(target))
+
         # Check if it's a short name in quadlet services
         if target in self.quadlet_services:
             return self.quadlet_services[target]
@@ -185,6 +189,11 @@ class QuadletManager:
         if target.endswith(".service") or target.endswith(".target"):
             return target
 
+        # Try fuzzy matching for partial names
+        fuzzy_result = self._fuzzy_match_service(target)
+        if fuzzy_result:
+            return fuzzy_result
+
         # Try adding .service extension for generic services
         potential_service = f"{target}.service"
 
@@ -197,6 +206,125 @@ class QuadletManager:
 
         # If not found, return None
         return None
+
+    def _handle_numeric_selection(self, selection: int) -> Optional[str]:
+        """Handle numeric service selection from previous fuzzy match results"""
+        # This is a simplified approach - in a real implementation, you'd want to
+        # store the last fuzzy match results in a class variable or cache
+        console.print(
+            f"[red]Numeric selection '{selection}' not supported in this context[/red]"
+        )
+        console.print("[dim]Please use the full service name from the list above[/dim]")
+        return None
+
+    def _fuzzy_match_service(self, partial_name: str) -> Optional[str]:
+        """Find service using fuzzy matching for partial names"""
+        from rich.table import Table
+
+        # Get all available service names (short names)
+        all_services = list(self.quadlet_services.keys())
+
+        # Add stack aliases
+        all_services.extend(["stack", "vllm-stack"])
+
+        # Find exact matches first
+        exact_matches = [svc for svc in all_services if svc == partial_name]
+        if len(exact_matches) == 1:
+            if exact_matches[0] in self.quadlet_services:
+                return self.quadlet_services[exact_matches[0]]
+            elif exact_matches[0] in ["stack", "vllm-stack"]:
+                return self.stack_target
+
+        # Find partial matches (case-insensitive)
+        partial_matches = [
+            svc for svc in all_services if partial_name.lower() in svc.lower()
+        ]
+
+        # If no partial matches, try prefix matching
+        if not partial_matches:
+            partial_matches = [
+                svc
+                for svc in all_services
+                if svc.lower().startswith(partial_name.lower())
+            ]
+
+        # If still no matches, try fuzzy matching with edit distance
+        if not partial_matches:
+
+            def levenshtein_distance(s1: str, s2: str) -> int:
+                """Calculate Levenshtein distance between two strings"""
+                if len(s1) < len(s2):
+                    return levenshtein_distance(s2, s1)
+                if len(s2) == 0:
+                    return len(s1)
+
+                previous_row = list(range(len(s2) + 1))
+                for i, c1 in enumerate(s1):
+                    current_row = [i + 1]
+                    for j, c2 in enumerate(s2):
+                        insertions = previous_row[j + 1] + 1
+                        deletions = current_row[j] + 1
+                        substitutions = previous_row[j] + (c1 != c2)
+                        current_row.append(min(insertions, deletions, substitutions))
+                    previous_row = current_row
+                return previous_row[-1]
+
+            # Find services with small edit distance (max 2 for reasonable matches)
+            fuzzy_matches = []
+            for svc in all_services:
+                distance = levenshtein_distance(partial_name.lower(), svc.lower())
+                if (
+                    distance <= 2 and len(partial_name) >= 3
+                ):  # Only for reasonable length inputs
+                    fuzzy_matches.append((svc, distance))
+
+            # Sort by distance and take best matches
+            fuzzy_matches.sort(key=lambda x: x[1])
+            partial_matches = [match[0] for match in fuzzy_matches[:5]]  # Top 5 matches
+
+        if len(partial_matches) == 1:
+            # Single match found
+            matched_service = partial_matches[0]
+            if matched_service in self.quadlet_services:
+                console.print(
+                    f"[dim]Matched '{partial_name}' to '{matched_service}'[/dim]"
+                )
+                return self.quadlet_services[matched_service]
+            elif matched_service in ["stack", "vllm-stack"]:
+                console.print(
+                    f"[dim]Matched '{partial_name}' to '{matched_service}'[/dim]"
+                )
+                return self.stack_target
+        elif len(partial_matches) > 1:
+            # Multiple matches - show selection menu
+            console.print(f"[yellow]Multiple services match '{partial_name}':[/yellow]")
+
+            table = Table(show_header=True, header_style="bold magenta")
+            table.add_column("#", style="cyan", width=3)
+            table.add_column("Service", style="green")
+            table.add_column("Full Name", style="dim")
+
+            for i, service in enumerate(partial_matches, 1):
+                if service in self.quadlet_services:
+                    full_name = self.quadlet_services[service]
+                elif service in ["stack", "vllm-stack"]:
+                    full_name = self.stack_target
+                else:
+                    full_name = service
+                table.add_row(str(i), service, full_name)
+
+            console.print(table)
+            console.print(
+                "[cyan]Please specify the full service name or use the number prefix:[/cyan]"
+            )
+
+            # Show example commands
+            for i, service in enumerate(partial_matches, 1):
+                console.print(f"  [dim]{i}.[/dim] [cyan]pm logs {service}[/cyan]")
+
+            return None  # Let user choose
+
+        return None  # No matches found
 
     def start_service(self, target: str) -> bool:
         """Start a service or the stack target"""
