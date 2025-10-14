@@ -265,6 +265,275 @@ class ContainerOperations:
         except Exception as e:
             console.print(f"[red]Error showing logs: {e}[/red]")
 
+    def analyze_logs(self, target: str, lines: int = 1000) -> None:
+        """Analyze container logs for errors, warnings, and other issues"""
+        import re
+        import subprocess
+        from collections import Counter
+
+        from rich.table import Table
+
+        try:
+            project = self.manager._find_service_project(target)
+            if not project:
+                console.print(f"[red]Service '{target}' not found[/red]")
+                return
+
+            # Check if container exists first
+            check_cmd = [
+                "podman",
+                "ps",
+                "-a",
+                "--filter",
+                f"name={target}",
+                "--format",
+                "{{.Names}}",
+            ]
+            check_result = subprocess.run(check_cmd, capture_output=True, text=True)
+
+            if not check_result.stdout.strip():
+                console.print(
+                    f"[yellow]Container '{target}' not found or not running[/yellow]"
+                )
+                console.print(
+                    "[dim]Try running: pm list to see available services[/dim]"
+                )
+                return
+
+            console.print(
+                f"[yellow]Analyzing logs for {target} (last {lines} lines)...[/yellow]"
+            )
+
+            # Get logs using podman logs
+            cmd = ["podman", "logs", "--tail", str(lines), target]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode != 0:
+                console.print(f"[red]Failed to get logs: {result.stderr.strip()}[/red]")
+                return
+
+            if not result.stdout.strip():
+                console.print(f"[yellow]No logs found for {target}[/yellow]")
+                return
+
+            log_lines = result.stdout.strip().split("\n")
+
+            # Define patterns for different issue types
+            patterns = {
+                "ERROR": [
+                    r"\bERROR\b",
+                    r"\bFATAL\b",
+                    r"\bCRITICAL\b",
+                    r"\bFailed\b",
+                    r"\bException\b",
+                    r"\bTraceback\b",
+                    r"\berror\b.*:",
+                    r"\bfailed to\b",
+                    r"\bcannot\b",
+                    r"\bunable to\b",
+                    r"\bconnection refused\b",
+                    r"\btimeout\b",
+                    r"\bpermission denied\b",
+                    r"\b500\b",  # HTTP 500 errors
+                    r"\b404\b",  # HTTP 404 errors
+                ],
+                "WARNING": [
+                    r"\bWARNING\b",
+                    r"\bWARN\b",
+                    r"\bwarning\b.*:",
+                    r"\bdeprecated\b",
+                    r"\bretrying\b",
+                    r"\bfallback\b",
+                    r"\bignoring\b",
+                ],
+                "INFO": [
+                    r"\bINFO\b",
+                    r"\bstarted\b",
+                    r"\bstopped\b",
+                    r"\blistening\b",
+                    r"\bconnected\b",
+                    r"\binitialized\b",
+                ],
+                "PERFORMANCE": [
+                    r"\bslow\b",
+                    r"\bhigh memory\b",
+                    r"\bmemory usage\b",
+                    r"\bcpu usage\b",
+                    r"\blatency\b",
+                    r"\btook.*seconds\b",
+                    r"\bprocessing time\b",
+                ],
+            }
+
+            # Analyze logs
+            issue_counts = Counter()
+            issue_examples = {}
+            recent_issues = []
+
+            for i, line in enumerate(log_lines):
+                line_lower = line.lower()
+
+                for issue_type, type_patterns in patterns.items():
+                    for pattern in type_patterns:
+                        if re.search(pattern, line_lower):
+                            issue_counts[issue_type] += 1
+
+                            # Store first few examples of each issue type
+                            if issue_type not in issue_examples:
+                                issue_examples[issue_type] = []
+                            if len(issue_examples[issue_type]) < 3:
+                                # Extract timestamp if present (container logs format)
+                                timestamp_match = re.search(
+                                    r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})", line
+                                )
+                                if not timestamp_match:
+                                    timestamp_match = re.search(
+                                        r"(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})", line
+                                    )
+                                timestamp = (
+                                    timestamp_match.group(1)
+                                    if timestamp_match
+                                    else "Unknown time"
+                                )
+                                issue_examples[issue_type].append(
+                                    (timestamp, line.strip())
+                                )
+
+                            # Keep track of recent issues (last 50 lines)
+                            if i >= len(log_lines) - 50:
+                                recent_issues.append((issue_type, line.strip()))
+                            break
+
+            # Display results
+            console.print(f"\n[bold cyan]Log Analysis Results for {target}[/bold cyan]")
+
+            # Summary table
+            summary_table = Table(show_header=True, header_style="bold magenta")
+            summary_table.add_column("Issue Type", style="cyan", no_wrap=True)
+            summary_table.add_column("Count", style="white", justify="right")
+            summary_table.add_column("Severity", style="white")
+
+            severity_colors = {
+                "ERROR": "[red]High[/red]",
+                "WARNING": "[yellow]Medium[/yellow]",
+                "PERFORMANCE": "[orange3]Medium[/orange3]",
+                "INFO": "[green]Low[/green]",
+            }
+
+            total_issues = sum(
+                count
+                for issue_type, count in issue_counts.items()
+                if issue_type != "INFO"
+            )
+
+            for issue_type in ["ERROR", "WARNING", "PERFORMANCE", "INFO"]:
+                count = issue_counts.get(issue_type, 0)
+                if count > 0:
+                    severity = severity_colors.get(issue_type, "[white]Unknown[/white]")
+                    summary_table.add_row(issue_type, str(count), severity)
+
+            console.print(summary_table)
+
+            # Overall assessment
+            if issue_counts.get("ERROR", 0) > 0:
+                status = "[red]Critical Issues Detected[/red]"
+            elif issue_counts.get("WARNING", 0) > 5:
+                status = "[yellow]Multiple Warnings[/yellow]"
+            elif total_issues > 0:
+                status = "[orange3]Minor Issues[/orange3]"
+            else:
+                status = "[green]No Issues Detected[/green]"
+
+            console.print(f"\n[bold]Overall Status:[/bold] {status}")
+            console.print(f"[dim]Analyzed {len(log_lines)} log lines[/dim]")
+
+            # Show examples of issues
+            if issue_examples:
+                console.print("\n[bold cyan]Issue Examples:[/bold cyan]")
+
+                for issue_type in ["ERROR", "WARNING", "PERFORMANCE"]:
+                    if issue_type in issue_examples and issue_examples[issue_type]:
+                        color = severity_colors[issue_type].split("]")[0][1:]
+                        console.print(f"\n[bold {color}]{issue_type}S:[/bold {color}]")
+
+                        for timestamp, example in issue_examples[issue_type]:
+                            # Truncate long lines
+                            if len(example) > 100:
+                                example = example[:97] + "..."
+                            console.print(f"  [dim]{timestamp}[/dim] {example}")
+
+            # Recent activity summary
+            if recent_issues:
+                recent_errors = [
+                    issue
+                    for issue_type, issue in recent_issues
+                    if issue_type == "ERROR"
+                ]
+                recent_warnings = [
+                    issue
+                    for issue_type, issue in recent_issues
+                    if issue_type == "WARNING"
+                ]
+
+                if recent_errors or recent_warnings:
+                    console.print(
+                        "\n[bold yellow]Recent Activity (last 50 lines):[/bold yellow]"
+                    )
+                    if recent_errors:
+                        console.print(
+                            f"  [red]• {len(recent_errors)} recent errors[/red]"
+                        )
+                    if recent_warnings:
+                        console.print(
+                            f"  [yellow]• {len(recent_warnings)} recent warnings[/yellow]"
+                        )
+
+            # Recommendations
+            recommendations = []
+            if issue_counts.get("ERROR", 0) > 0:
+                recommendations.append(
+                    "🔴 Check error logs immediately - container may be failing"
+                )
+            if issue_counts.get("WARNING", 0) > 10:
+                recommendations.append(
+                    "🟡 High warning count - investigate configuration issues"
+                )
+            if issue_counts.get("PERFORMANCE", 0) > 0:
+                recommendations.append(
+                    "🟠 Performance issues detected - monitor resource usage"
+                )
+            if "connection refused" in result.stdout.lower():
+                recommendations.append(
+                    "🔗 Connection issues detected - check network/dependencies"
+                )
+            if "timeout" in result.stdout.lower():
+                recommendations.append(
+                    "⏱️ Timeout issues detected - check container responsiveness"
+                )
+
+            if recommendations:
+                console.print("\n[bold cyan]Recommendations:[/bold cyan]")
+                for rec in recommendations:
+                    console.print(f"  {rec}")
+
+            # Suggest follow-up commands
+            console.print("\n[bold cyan]Follow-up Commands:[/bold cyan]")
+            console.print(
+                f"  [cyan]pm logs {target} --follow[/cyan]     # Monitor live logs"
+            )
+            console.print(
+                f"  [cyan]pm list {target}[/cyan]             # Check container status"
+            )
+            if issue_counts.get("ERROR", 0) > 0:
+                console.print(
+                    f"  [cyan]pm restart {target}[/cyan]          # Restart if needed"
+                )
+
+        except subprocess.TimeoutExpired:
+            console.print("[red]Timeout while fetching logs[/red]")
+        except Exception as e:
+            console.print(f"[red]Error analyzing logs: {e}[/red]")
+
     def exec_command(self, target: str, command: List[str]) -> None:
         """Execute command in container"""
         try:

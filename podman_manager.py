@@ -143,6 +143,11 @@ def show_rich_help():
                     "pm logs vllm-qwen25 --follow --tail 50",
                 ),
                 (
+                    "log-anal [cyan]<service>[/cyan]",
+                    "Analyze service logs for errors and warnings",
+                    "pm log-anal vllm-qwen25",
+                ),
+                (
                     "exec [cyan]<service>[/cyan] COMMAND",
                     "Execute command in container",
                     "pm exec vllm-proxy bash",
@@ -184,6 +189,9 @@ def show_rich_help():
     )
     examples_table.add_row(
         "pm logs vllm-proxy --tail 50", "Show last 50 lines of proxy logs"
+    )
+    examples_table.add_row(
+        "pm log-anal vllm-qwen25", "Analyze Qwen2.5 Coder logs for issues"
     )
     examples_table.add_row("pm status vllm-stack", "Detailed status of stack target")
     examples_table.add_row("pm enable vllm-stack", "Enable stack to start at boot")
@@ -320,6 +328,17 @@ def main():
         type=int,
         default=100,
         help="Number of lines to show from end of logs (default: 100)",
+    )
+
+    log_anal_parser = subparsers.add_parser(
+        "log-anal", help="Analyze service logs for errors and warnings"
+    )
+    log_anal_parser.add_argument("target", help="Service name")
+    log_anal_parser.add_argument(
+        "--lines",
+        type=int,
+        default=1000,
+        help="Number of lines to analyze from end of logs (default: 1000)",
     )
 
     exec_parser = subparsers.add_parser("exec", help="Execute command in container")
@@ -474,6 +493,8 @@ def main():
             display.show_events(since=args.since)
         elif args.command == "logs":
             container_ops.show_logs(args.target, follow=args.follow, tail=args.tail)
+        elif args.command == "log-anal":
+            container_ops.analyze_logs(args.target, lines=args.lines)
         elif args.command == "exec":
             container_ops.exec_command(args.target, args.cmd)
         elif args.command == "volumes":
