@@ -7,18 +7,26 @@ Refactored modular version of the original podman-manager.py
 import argparse
 import os
 import sys
+from pathlib import Path
+from typing import NoReturn
 
 from config import console
 from container_ops import ContainerOperations
 from display import DisplayManager
 from manager import PodmanManager
+from project_detector import ProjectTypeDetector
+from quadlet_display import QuadletDisplayManager
+from quadlet_manager import QuadletManager
+from quadlet_ops import QuadletOperations
 
 
 def show_rich_help():
-    """Show beautiful Rich-formatted help"""
+    """Show beautiful Rich-formatted help for vLLM Quadlet Manager"""
     from rich.table import Table
 
-    console.print("[bold blue]Podman Container Manager[/bold blue]")
+    from config import console
+
+    console.print("[bold blue]Podman Manager[/bold blue]")
 
     console.print()
     console.print("[bold]USAGE:[/bold]")
@@ -28,13 +36,20 @@ def show_rich_help():
     console.print(
         "  [cyan]pm[/cyan] [green]COMMAND[/green] [dim][ARGS][/dim]                    [dim]# Short alias[/dim]"
     )
+    console.print()
+    console.print(
+        "[bold yellow]Note:[/bold yellow] Manages both quadlet services and compose projects"
+    )
 
     console.print()
     console.print("[bold]GLOBAL OPTIONS:[/bold]")
     options_table = Table(show_header=False, box=None, padding=(0, 2))
-    options_table.add_column("Option", style="yellow", width=25)
+    options_table.add_column("Option", style="yellow", width=30)
     options_table.add_column("Description", style="white")
-    options_table.add_row("--compose-dir PATH", "Compose files directory")
+    options_table.add_row(
+        "--mode [auto|quadlet|compose]", "Manager mode (default: auto-detect)"
+    )
+    options_table.add_row("--debug-detection", "Show project type detection details")
     options_table.add_row("-h, --help", "Show this help message")
     console.print(options_table)
 
@@ -46,69 +61,91 @@ def show_rich_help():
         (
             "Status & Information",
             [
-                ("list [[dim]<proj/srvc>[/dim]]", "List projects and services", "pm list"),
+                (
+                    "list [[dim]<project|service>[/dim]]",
+                    "List quadlet services and compose projects",
+                    "pm list",
+                ),
+                (
+                    "status [cyan]<project|service>[/cyan]",
+                    "Detailed service status",
+                    "pm status vllm-qwen25",
+                ),
                 ("ps", "Container status table", "pm ps"),
+                ("targets", "Show available targets by type", "pm targets"),
                 ("images [--all]", "Show container images", "pm images"),
                 ("stats [--follow]", "Show container resource usage", "pm stats"),
                 ("events [--since TIME]", "Show container events", "pm events"),
             ],
         ),
         (
-            "Container Lifecycle",
+            "Service Lifecycle",
             [
                 (
-                    "reinit [cyan]<proj/srvc>[/cyan]",
-                    "Remove and recreate containers",
-                    "pm reinit [cyan]<proj/srvc>[/cyan]",
+                    "reinit [cyan]<project|service>[/cyan]",
+                    "Stop, reload daemon, and restart service",
+                    "pm reinit vllm-delegator",
                 ),
                 (
-                    "restart [cyan]<proj/srvc>[/cyan]",
-                    "Quick restart containers",
-                    "pm restart [cyan]<proj/srvc>[/cyan]",
+                    "start [cyan]<project|service>[/cyan]",
+                    "Start service or stack",
+                    "pm start vllm-stack",
                 ),
                 (
-                    "stop [cyan]<proj/srvc>[/cyan]",
-                    "Gracefully stop containers",
-                    "pm stop [cyan]<proj/srvc>[/cyan]",
+                    "stop [cyan]<project|service>[/cyan]",
+                    "Stop service or stack",
+                    "pm stop vllm-qwen25",
                 ),
                 (
-                    "remove [cyan]<proj/srvc>[/cyan]",
-                    "Remove containers",
-                    "pm remove [cyan]<proj/srvc>[/cyan]",
+                    "down [cyan]<project|stack>[/cyan]",
+                    "Stop all services in project or stack",
+                    "pm down vllm-stack",
                 ),
                 (
-                    "pull [cyan]<proj/srvc>[/cyan]",
-                    "Pull latest images",
-                    "pm pull [cyan]<proj/srvc>[/cyan]",
+                    "restart [cyan]<project|service>[/cyan]",
+                    "Restart service or stack",
+                    "pm restart vllm-proxy",
+                ),
+                (
+                    "enable [cyan]<project|service>[/cyan]",
+                    "Enable service at boot",
+                    "pm enable vllm-stack",
+                ),
+                (
+                    "disable [cyan]<project|service>[/cyan]",
+                    "Disable service at boot",
+                    "pm disable vllm-delegator",
                 ),
             ],
         ),
         (
-            "Build & Images",
+            "Images & Updates",
             [
                 (
-                    "build [cyan]<proj/srvc>[/cyan] [--no-cache]",
-                    "Build container images",
-                    "pm build [cyan]<proj/srvc>[/cyan] --no-cache",
+                    "update [cyan]<project|service>[/cyan]",
+                    "Update images and restart",
+                    "pm update vllm-qwen25",
                 ),
+                ("auto-update", "Check/enable auto-update timer", "pm auto-update"),
+                ("reload", "Reload systemd daemon", "pm reload"),
                 ("prune", "Remove unused images and containers", "pm prune"),
                 ("system-df", "Show disk usage", "pm system-df"),
             ],
         ),
         (
-            "Resources",
+            "Resources & Logs",
             [
                 ("volumes", "List volumes", "pm volumes"),
                 ("networks", "List networks", "pm networks"),
                 (
-                    "logs [cyan]<proj/srvc>[/cyan] [--follow]",
-                    "Show container logs",
-                    "pm logs [cyan]<proj/srvc>[/cyan] --follow",
+                    "logs [cyan]<project|service>[/cyan] [--follow] [--tail N]",
+                    "Show service logs (default: 100 lines)",
+                    "pm logs vllm-qwen25 --follow --tail 50",
                 ),
                 (
-                    "exec [cyan]<proj/srvc>[/cyan] COMMAND",
+                    "exec [cyan]<service>[/cyan] COMMAND",
                     "Execute command in container",
-                    "pm exec [cyan]<proj/srvc>[/cyan] bash",
+                    "pm exec vllm-proxy bash",
                 ),
             ],
         ),
@@ -126,65 +163,70 @@ def show_rich_help():
         console.print(cmd_table)
 
     console.print()
-    console.print("[bold]ENVIRONMENT:[/bold]")
-    console.print(
-        "  [yellow]PODMAN_COMPOSE_DIR[/yellow]  Directory containing compose files"
-    )
-    console.print(
-        "                        [dim](default: ~/srv/local-ai-packaged)[/dim]"
-    )
-
-    console.print()
     console.print("[bold]EXAMPLES:[/bold]")
     examples_table = Table(show_header=False, box=None, padding=(0, 2))
     examples_table.add_column("Command", style="cyan", width=35)
     examples_table.add_column("Description", style="white")
+    examples_table.add_row("pm list", "Show all vLLM services and stack status")
     examples_table.add_row(
-        "pm list [dim]<proj/srvc>[/dim]", "Show details for specific project/service"
+        "pm targets", "Show available targets by type (quadlet/compose)"
     )
+    examples_table.add_row("pm list vllm-qwen25", "Show details for specific service")
+    examples_table.add_row("pm start vllm-stack", "Start all vLLM services")
+    examples_table.add_row("pm stop vllm-proxy", "Stop proxy service")
+    examples_table.add_row("pm down vllm-stack", "Stop all services in vLLM stack")
+    examples_table.add_row(
+        "pm reinit vllm-delegator", "Reinitialize delegator (stop, reload, start)"
+    )
+    examples_table.add_row("pm restart vllm-delegator", "Restart delegator service")
+    examples_table.add_row(
+        "pm logs vllm-qwen25 --follow", "Follow logs for Qwen2.5 Coder"
+    )
+    examples_table.add_row(
+        "pm logs vllm-proxy --tail 50", "Show last 50 lines of proxy logs"
+    )
+    examples_table.add_row("pm status vllm-stack", "Detailed status of stack target")
+    examples_table.add_row("pm enable vllm-stack", "Enable stack to start at boot")
+    examples_table.add_row("pm update vllm-qwen25", "Update images and restart service")
+    examples_table.add_row("pm auto-update", "Check auto-update timer status")
+    examples_table.add_row("pm reload", "Reload systemd daemon")
     examples_table.add_row("pm ps", "Show running containers status")
-    examples_table.add_row(
-        "pm logs [cyan]<proj/srvc>[/cyan] --follow", "Follow logs for specific service"
-    )
     examples_table.add_row("pm stats --follow", "Monitor resource usage in real-time")
-    examples_table.add_row(
-        "pm exec [cyan]<proj/srvc>[/cyan] bash", "Open bash shell in container"
-    )
-    examples_table.add_row(
-        "pm reinit [cyan]<proj/srvc>[/cyan] --build", "Rebuild and restart service"
-    )
-    examples_table.add_row(
-        "pm build [cyan]<proj/srvc>[/cyan] --no-cache", "Build without using cache"
-    )
-    examples_table.add_row("pm remove [cyan]<proj/srvc>[/cyan]", "Remove specific containers")
-    examples_table.add_row(
-        "pm pull [cyan]<proj/srvc>[/cyan]", "Pull latest images for service"
-    )
-    examples_table.add_row("pm restart [cyan]<proj/srvc>[/cyan]", "Restart specific service")
-    examples_table.add_row("pm stop [cyan]<proj/srvc>[/cyan]", "Stop specific service")
     examples_table.add_row("pm images --all", "Show all images including intermediates")
     examples_table.add_row("pm system-df", "Show disk usage by containers/images")
     examples_table.add_row("pm prune", "Clean up unused containers and images")
     examples_table.add_row("pm volumes", "List all volumes")
     examples_table.add_row("pm networks", "List all networks")
     examples_table.add_row("pm events --since 1h", "Show events from last hour")
+    examples_table.add_row("pm --debug-detection list", "Show mode detection details")
+    examples_table.add_row(
+        "pm --mode compose restart myservice", "Force compose mode for command"
+    )
     console.print(examples_table)
 
     console.print()
     console.print("[bold]TIPS:[/bold]")
     console.print(
-        "  • Use [cyan]--dry-run[/cyan] with reinit to see what would be done"
+        "  • Use [cyan]vllm-stack[/cyan] to manage all vLLM services together"
     )
-    console.print("  • TARGET can be a project name or specific service name")
-    console.print("  • Use [cyan]--remove-orphans[/cyan] to clean up unused containers")
+    console.print("  • Services are managed via systemd user units")
+    console.print("  • Use [cyan]pm enable vllm-stack[/cyan] to start services at boot")
     console.print("  • Press [cyan]Ctrl+C[/cyan] to interrupt long-running operations")
-    console.print("  • Check [cyan]pm list[/cyan] first to see available targets")
+    console.print(
+        "  • Check [cyan]pm list[/cyan] or [cyan]pm targets[/cyan] to see available services"
+    )
+    console.print(
+        "  • Use [cyan]pm auto-update[/cyan] to enable automatic image updates"
+    )
+    console.print("  • Mode auto-detects project type (quadlet vs compose)")
+    console.print("  • Use [cyan]--debug-detection[/cyan] to see detection logic")
+    console.print("  • Use [cyan]--mode compose[/cyan] to force compose mode")
 
 
 class CustomArgumentParser(argparse.ArgumentParser):
     """Custom ArgumentParser with better error messages"""
 
-    def error(self, message):
+    def error(self, message) -> NoReturn:
         """Override error method to show helpful messages"""
         if "invalid choice" in message:
             # Extract the invalid command from the message
@@ -200,7 +242,12 @@ class CustomArgumentParser(argparse.ArgumentParser):
                 console.print(
                     "[dim]Did you mean one of: list, ps, logs, images, stats?[/dim]"
                 )
-                sys.exit(1)
+            else:
+                console.print(f"[red]Error: {message}[/red]")
+                console.print(
+                    "[dim]Run 'pm --help' to see all available commands[/dim]"
+                )
+            sys.exit(1)
         elif "unrecognized arguments" in message:
             console.print(f"[red]Error: {message}[/red]")
             console.print("[dim]Run 'pm --help' to see command usage[/dim]")
@@ -212,27 +259,43 @@ class CustomArgumentParser(argparse.ArgumentParser):
 
 
 def main():
-    """Main entry point for refactored podman manager"""
+    """Main entry point for vLLM quadlet manager"""
     parser = CustomArgumentParser(
-        description="Podman Container Manager with Rich UI (Refactored)",
+        description="vLLM Quadlet Manager with Rich UI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         add_help=False,
     )
 
-    parser.add_argument("--compose-dir", help="Compose directory path")
     parser.add_argument("-h", "--help", action="store_true", help="Show help message")
+    parser.add_argument(
+        "--mode",
+        choices=["compose", "quadlet", "auto"],
+        default="auto",
+        help="Manager mode (default: auto-detect)",
+    )
+    parser.add_argument(
+        "--debug-detection",
+        action="store_true",
+        help="Show project type detection details",
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Status and info commands
-    list_parser = subparsers.add_parser("list", help="List projects and services")
-    list_parser.add_argument("target", nargs="?", help="Project or service name")
+    list_parser = subparsers.add_parser(
+        "list", help="List quadlet services and compose projects"
+    )
+    list_parser.add_argument(
+        "target",
+        nargs="?",
+        help="Project or service name (vllm-stack, vllm-qwen25, vllm-proxy, vllm-delegator)",
+    )
 
     # Keep 'status' as an alias for backward compatibility
     status_parser = subparsers.add_parser(
-        "status", help="Show project status (alias for list)"
+        "status", help="Show service status (detailed)"
     )
-    status_parser.add_argument("target", nargs="?", help="Project or service name")
+    status_parser.add_argument("target", help="Project or service name")
     subparsers.add_parser("ps", help="Show container status")
     subparsers.add_parser("help", help="Show detailed help")
 
@@ -249,55 +312,72 @@ def main():
     events_parser.add_argument("--since", help="Show events since timestamp")
 
     # Resource commands
-    logs_parser = subparsers.add_parser("logs", help="Show container logs")
+    logs_parser = subparsers.add_parser("logs", help="Show service logs")
     logs_parser.add_argument("target", help="Project or service name")
     logs_parser.add_argument("--follow", action="store_true", help="Follow log output")
+    logs_parser.add_argument(
+        "--tail",
+        type=int,
+        default=100,
+        help="Number of lines to show from end of logs (default: 100)",
+    )
 
     exec_parser = subparsers.add_parser("exec", help="Execute command in container")
-    exec_parser.add_argument("target", help="Project or service name")
-    exec_parser.add_argument("command", nargs="+", help="Command to execute")
+    exec_parser.add_argument("target", help="Service name")
+    exec_parser.add_argument("cmd", nargs="+", help="Command to execute")
 
     subparsers.add_parser("volumes", help="List volumes")
     subparsers.add_parser("networks", help="List networks")
 
-    # Build and image commands
-    build_parser = subparsers.add_parser("build", help="Build container images")
-    build_parser.add_argument("target", help="Project or service name")
-    build_parser.add_argument(
-        "--no-cache", action="store_true", help="Build without cache"
-    )
-
+    # Keep some original commands for container management
     subparsers.add_parser("prune", help="Remove unused images and containers")
     subparsers.add_parser("system-df", help="Show disk usage")
 
-    # Additional lifecycle commands
-    remove_parser = subparsers.add_parser("remove", help="Remove containers")
-    remove_parser.add_argument("target", help="Project or service name")
-
-    pull_parser = subparsers.add_parser("pull", help="Pull latest images")
-    pull_parser.add_argument("target", help="Project or service name")
-
-    # Container lifecycle commands
-    reinit_parser = subparsers.add_parser("reinit", help="Reinitialize containers")
-    reinit_parser.add_argument("target", nargs="?", help="Project or service name")
-    reinit_parser.add_argument("--build", action="store_true", help="Rebuild images")
-    reinit_parser.add_argument(
-        "--dry-run", action="store_true", help="Show what would be done"
+    # Service lifecycle commands
+    reinit_parser = subparsers.add_parser(
+        "reinit", help="Stop, reload daemon, and restart service"
     )
     reinit_parser.add_argument(
-        "--remove-orphans", action="store_true", help="Remove orphaned containers"
+        "target",
+        help="Project or service name (vllm-stack, vllm-qwen25, vllm-proxy, vllm-delegator)",
     )
 
-    restart_parser = subparsers.add_parser("restart", help="Restart services")
-    restart_parser.add_argument("target", nargs="?", help="Project or service name")
-    restart_parser.add_argument(
-        "--remove-orphans", action="store_true", help="Remove orphaned containers"
+    start_parser = subparsers.add_parser("start", help="Start service or stack")
+    start_parser.add_argument(
+        "target",
+        help="Project or service name (vllm-stack, vllm-qwen25, vllm-proxy, vllm-delegator)",
     )
 
-    stop_parser = subparsers.add_parser("stop", help="Stop services")
-    stop_parser.add_argument("target", nargs="?", help="Project or service name")
-    stop_parser.add_argument(
-        "--remove-orphans", action="store_true", help="Remove orphaned containers"
+    stop_parser = subparsers.add_parser("stop", help="Stop service or stack")
+    stop_parser.add_argument("target", help="Project or service name")
+
+    down_parser = subparsers.add_parser(
+        "down", help="Stop all services in project or stack"
+    )
+    down_parser.add_argument(
+        "target", help="Project or stack name (e.g., vllm-stack, local-ai-packaged)"
+    )
+
+    enable_parser = subparsers.add_parser("enable", help="Enable service at boot")
+    enable_parser.add_argument("target", help="Project or service name")
+
+    disable_parser = subparsers.add_parser("disable", help="Disable service at boot")
+    disable_parser.add_argument("target", help="Project or service name")
+
+    # Image and update commands
+    update_parser = subparsers.add_parser("update", help="Update images and restart")
+    update_parser.add_argument("target", help="Project or service name")
+
+    subparsers.add_parser("auto-update", help="Check/enable auto-update timer")
+    subparsers.add_parser("reload", help="Reload systemd daemon")
+
+    # Keep restart for compatibility
+    restart_parser = subparsers.add_parser("restart", help="Restart service or stack")
+    restart_parser.add_argument("target", help="Project or service name")
+
+    # Add targets command to show available targets by type
+    subparsers.add_parser(
+        "targets", help="Show available targets by type (quadlet/compose)"
     )
 
     args = parser.parse_args()
@@ -307,21 +387,81 @@ def main():
         show_rich_help()
         return
 
-    # Set compose directory from environment variable if not provided
-    compose_dir = args.compose_dir or os.environ.get("PODMAN_COMPOSE_DIR")
-
     try:
-        # Initialize the manager and components
-        manager = PodmanManager(compose_dir)
-        container_ops = ContainerOperations(manager)
-        display = DisplayManager(manager)
+        # Initialize project type detector
+        compose_dir = os.environ.get("PODMAN_COMPOSE_DIR")
+        detector = ProjectTypeDetector(Path(compose_dir) if compose_dir else None)
+
+        # Determine the target for mode detection
+        target = getattr(args, "target", None)
+
+        # Get intelligent mode selection
+        if args.mode == "auto":
+            selected_mode, detection_reason = detector.get_intelligent_mode(target)
+        else:
+            selected_mode, detection_reason = detector.get_intelligent_mode(
+                target, args.mode
+            )
+
+        # Show detection details if requested
+        if args.debug_detection:
+            console.print(
+                f"[dim]Mode selection: {selected_mode} ({detection_reason})[/dim]"
+            )
+
+        # Initialize the appropriate manager based on detected/selected mode
+        if selected_mode == "quadlet":
+            # Use quadlet manager for vLLM services
+            manager = QuadletManager()
+            container_ops = QuadletOperations(manager)
+            display = QuadletDisplayManager(manager)
+        else:
+            # Use compose manager
+            manager = PodmanManager(compose_dir)
+            container_ops = ContainerOperations(manager)
+            display = DisplayManager(manager)
+
+        # Helper function for intelligent fallback
+        def try_with_fallback(operation_func, *operation_args, **operation_kwargs):
+            """Try operation with current mode, fallback to alternative if it fails"""
+            try:
+                result = operation_func(*operation_args, **operation_kwargs)
+                # If operation returns False (failure), try fallback
+                if result is False:
+                    alternative_mode = detector.suggest_alternative_mode(
+                        target or "", selected_mode
+                    )
+                    if alternative_mode and not args.debug_detection:
+                        console.print(
+                            f"[yellow]Trying alternative mode: {alternative_mode}[/yellow]"
+                        )
+                        # This would require reinitializing managers - for now just show suggestion
+                        console.print(
+                            f"[dim]Try: pm --mode {alternative_mode} {args.command} {' '.join(sys.argv[2:]) if len(sys.argv) > 2 else ''}[/dim]"
+                        )
+                return result
+            except Exception as e:
+                console.print(f"[red]Operation failed: {e}[/red]")
+                alternative_mode = detector.suggest_alternative_mode(
+                    target or "", selected_mode
+                )
+                if alternative_mode:
+                    console.print(
+                        f"[dim]Try: pm --mode {alternative_mode} {args.command} {' '.join(sys.argv[2:]) if len(sys.argv) > 2 else ''}[/dim]"
+                    )
+                return False
 
         # Route commands to appropriate modules
-        if args.command == "list" or args.command == "status":
+        if args.command == "list":
             if args.target:
                 display.show_status(args.target)
             else:
                 display.show_status()
+        elif args.command == "status":
+            if selected_mode == "quadlet":
+                container_ops.show_service_status(args.target)
+            else:
+                display.show_status(args.target)
         elif args.command == "ps":
             display.show_ps()
         elif args.command == "help":
@@ -333,50 +473,103 @@ def main():
         elif args.command == "events":
             display.show_events(since=args.since)
         elif args.command == "logs":
-            container_ops.show_logs(args.target, follow=args.follow)
+            container_ops.show_logs(args.target, follow=args.follow, tail=args.tail)
         elif args.command == "exec":
-            container_ops.exec_command(args.target, args.command)
+            container_ops.exec_command(args.target, args.cmd)
         elif args.command == "volumes":
             display.show_volumes()
         elif args.command == "networks":
             display.show_networks()
-        elif args.command == "build":
-            container_ops.build(args.target, no_cache=args.no_cache)
         elif args.command == "prune":
-            container_ops.prune()
+            if args.mode == "quadlet":
+                container_ops.prune_containers()
+            else:
+                container_ops.prune()
         elif args.command == "system-df":
-            display.show_system_df()
-        elif args.command == "remove":
-            container_ops.remove(args.target)
-        elif args.command == "pull":
-            container_ops.pull(args.target)
+            if args.mode == "quadlet":
+                container_ops.show_system_df()
+            else:
+                display.show_system_df()
         elif args.command == "reinit":
-            if not args.target:
-                display.show_available_targets("reinit")
-                sys.exit(1)
-            success = container_ops.reinit(
-                args.target,
-                build=args.build,
-                dry_run=args.dry_run,
-                remove_orphans=args.remove_orphans,
-            )
+            success = try_with_fallback(container_ops.reinit, args.target)
             sys.exit(0 if success else 1)
-        elif args.command == "restart":
-            if not args.target:
-                display.show_available_targets("restart")
-                sys.exit(1)
-            success = container_ops.restart(
-                args.target, remove_orphans=args.remove_orphans
-            )
+        elif args.command == "start":
+            success = try_with_fallback(container_ops.start, args.target)
             sys.exit(0 if success else 1)
         elif args.command == "stop":
-            if not args.target:
-                display.show_available_targets("stop")
-                sys.exit(1)
-            success = container_ops.stop(
-                args.target, remove_orphans=args.remove_orphans
-            )
+            success = try_with_fallback(container_ops.stop, args.target)
             sys.exit(0 if success else 1)
+        elif args.command == "down":
+            success = try_with_fallback(container_ops.down, args.target)
+            sys.exit(0 if success else 1)
+        elif args.command == "restart":
+            success = try_with_fallback(container_ops.restart, args.target)
+            sys.exit(0 if success else 1)
+        elif args.command == "enable":
+            success = try_with_fallback(container_ops.enable, args.target)
+            sys.exit(0 if success else 1)
+        elif args.command == "disable":
+            success = try_with_fallback(container_ops.disable, args.target)
+            sys.exit(0 if success else 1)
+        elif args.command == "update":
+            if selected_mode == "quadlet":
+                success = try_with_fallback(
+                    container_ops.update_images_and_restart, args.target
+                )
+                sys.exit(0 if success else 1)
+            else:
+                console.print(
+                    "[red]Update command only available in quadlet mode[/red]"
+                )
+                sys.exit(1)
+        elif args.command == "auto-update":
+            if selected_mode == "quadlet":
+                container_ops.check_auto_update_status()
+            else:
+                console.print(
+                    "[red]Auto-update command only available in quadlet mode[/red]"
+                )
+                sys.exit(1)
+        elif args.command == "reload":
+            if selected_mode == "quadlet":
+                success = container_ops.reload_daemon()
+                sys.exit(0 if success else 1)
+            else:
+                console.print(
+                    "[red]Reload command only available in quadlet mode[/red]"
+                )
+                sys.exit(1)
+        elif args.command == "targets":
+            # Show available targets by type
+            available_targets = detector.list_available_targets()
+
+            from rich.table import Table
+
+            table = Table(
+                show_header=True, header_style="bold magenta", title="Available Targets"
+            )
+            table.add_column("Type", style="cyan", no_wrap=True)
+            table.add_column("Targets", style="white")
+
+            if available_targets["quadlet"]:
+                table.add_row(
+                    "Quadlet Services", ", ".join(available_targets["quadlet"])
+                )
+
+            if available_targets["compose"]:
+                table.add_row(
+                    "Compose Services", ", ".join(available_targets["compose"])
+                )
+
+            if not available_targets["quadlet"] and not available_targets["compose"]:
+                table.add_row("None", "No targets found")
+
+            console.print(table)
+
+            # Show current mode
+            console.print(
+                f"\n[dim]Current mode: {selected_mode} ({detection_reason})[/dim]"
+            )
         else:
             console.print(f"[red]Unknown command: {args.command}[/red]")
             console.print("[dim]Use --help to see available commands[/dim]")

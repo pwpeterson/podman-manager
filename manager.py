@@ -45,7 +45,7 @@ class PodmanManager:
         if result.returncode != 0:
             logger.error("'podman compose' is not available!")
             console.print(
-                "[dim]Make sure you have podman-compose plugin installed[/dim]"
+                "[dim]Make sure you have podman compose plugin installed[/dim]"
             )
             return False
 
@@ -211,7 +211,7 @@ class PodmanManager:
             cwd = self.compose_dir
 
         # Display command in a subtle way
-        console.print(f"  [white]exec: {cmd}[/white]")
+        console.print(f"  [cyan]exec: {cmd}[/cyan]")
 
         # Use loguru's context binding for structured logging
         with logger.contextualize(action=action, command=cmd, working_dir=str(cwd)):

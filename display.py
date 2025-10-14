@@ -126,7 +126,7 @@ class DisplayManager:
             "--format",
             "{{.Names}};{{.Image}};{{.Status}};{{.Ports}}",
         ]
-        console.print(f"  [white]exec: {' '.join(cmd)}[/white]")
+        console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -290,7 +290,7 @@ class DisplayManager:
         # Podman system disk usage
 
         df_cmd = ["podman", "system", "df"]
-        console.print(f"  [white]exec: {' '.join(df_cmd)}[/white]")
+        console.print(f"  [cyan]exec: {' '.join(df_cmd)}[/cyan]")
 
         result = subprocess.run(df_cmd, capture_output=True, text=True)
 
@@ -312,7 +312,7 @@ class DisplayManager:
         if since:
             events_cmd.extend(["--since", since])
 
-        console.print(f"  [white]exec: {' '.join(events_cmd)}[/white]")
+        console.print(f"  [cyan]exec: {' '.join(events_cmd)}[/cyan]")
         console.print("[dim]Press Ctrl+C to stop streaming events[/dim]")
 
         try:

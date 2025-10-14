@@ -19,7 +19,7 @@ def setup_logging():
     """Configure Loguru with Rich integration."""
     # Remove default handler
     logger.remove()
-    
+
     # Add stderr handler with rich formatting
     logger.add(
         sys.stderr,
@@ -32,7 +32,7 @@ def setup_logging():
         colorize=True,
         enqueue=True,
     )
-    
+
     # Add file logging for debugging
     logger.add(
         Path.home() / ".local/share/podman-manager.log",
