@@ -279,13 +279,16 @@ class ContainerOperations:
                 console.print(f"[red]Service '{target}' not found[/red]")
                 return
 
+            # Get the actual matched service name
+            matched_service = self.manager.get_matched_service_name(target)
+
             # Check if container exists first
             check_cmd = [
                 "podman",
                 "ps",
                 "-a",
                 "--filter",
-                f"name={target}",
+                f"name={matched_service}",
                 "--format",
                 "{{.Names}}",
             ]
@@ -293,7 +296,7 @@ class ContainerOperations:
 
             if not check_result.stdout.strip():
                 console.print(
-                    f"[yellow]Container '{target}' not found or not running[/yellow]"
+                    f"[yellow]Container '{matched_service}' not found or not running[/yellow]"
                 )
                 console.print(
                     "[dim]Try running: pm list to see available services[/dim]"
@@ -301,11 +304,11 @@ class ContainerOperations:
                 return
 
             console.print(
-                f"[yellow]Analyzing logs for {target} (last {lines} lines)...[/yellow]"
+                f"[yellow]Analyzing logs for {matched_service} (last {lines} lines)...[/yellow]"
             )
 
             # Get logs using podman logs
-            cmd = ["podman", "logs", "--tail", str(lines), target]
+            cmd = ["podman", "logs", "--tail", str(lines), matched_service]
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode != 0:
@@ -313,7 +316,7 @@ class ContainerOperations:
                 return
 
             if not result.stdout.strip():
-                console.print(f"[yellow]No logs found for {target}[/yellow]")
+                console.print(f"[yellow]No logs found for {matched_service}[/yellow]")
                 return
 
             log_lines = result.stdout.strip().split("\n")
@@ -405,7 +408,9 @@ class ContainerOperations:
                             break
 
             # Display results
-            console.print(f"\n[bold cyan]Log Analysis Results for {target}[/bold cyan]")
+            console.print(
+                f"\n[bold cyan]Log Analysis Results for {matched_service}[/bold cyan]"
+            )
 
             # Summary table
             summary_table = Table(show_header=True, header_style="bold magenta")

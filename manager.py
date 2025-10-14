@@ -306,6 +306,36 @@ class PodmanManager:
 
         return None  # No matches found
 
+    def get_matched_service_name(self, target: str) -> Optional[str]:
+        """Get the actual service name that was matched (for use after fuzzy matching)"""
+        projects = self._parse_compose_files()
+
+        # First try exact match
+        for project_name, project_info in projects.items():
+            if target in project_info["services"]:
+                return target
+
+        # Try fuzzy matching to find the actual matched service
+        all_services = []
+        for project_name, project_info in projects.items():
+            all_services.extend(project_info["services"].keys())
+
+        # Find partial matches (case-insensitive)
+        partial_matches = [svc for svc in all_services if target.lower() in svc.lower()]
+
+        # If no partial matches, try prefix matching
+        if not partial_matches:
+            partial_matches = [
+                svc for svc in all_services if svc.lower().startswith(target.lower())
+            ]
+
+        # Return the first match if there's exactly one
+        if len(partial_matches) == 1:
+            return partial_matches[0]
+
+        # If multiple matches or no matches, return the original target
+        return target
+
     def _setup_compose_command(
         self,
         project: Optional[str],
