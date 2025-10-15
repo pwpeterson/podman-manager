@@ -2,6 +2,7 @@
 
 import subprocess
 import time
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from loguru import logger
@@ -13,25 +14,29 @@ class QuadletManager:
     """Main class for managing vLLM containers as systemd quadlets with Rich UI"""
 
     def __init__(self, project_name="vllm"):
-        # Services managed as quadlets
-        self.quadlet_services = {
-            # vLLM services
-            "vllm-qwen25": "vllm-qwen25-coder-32b-instruct-awq.service",
-            "vllm-proxy": "vllm-proxy.service",
-            "vllm-delegator": "vllm-delegator-mcp.service",
-            # Taskflow services
-            "taskflow-frontend": "taskflow-frontend.service",
-            "taskflow-backend": "taskflow-backend.service",
-        }
+        # Project name for display purposes
+        self.project_name = project_name
+
+        # Quadlets directory path (standard systemd location only)
+        self.quadlets_dir = Path.home() / ".config" / "containers" / "systemd"
+
+        # Services managed as quadlets (will be auto-discovered)
+        self.quadlet_services = {}
+        self.stack_services = {}  # Maps stack names to their services
 
         # Stack target for managing all services together
         self.stack_target = "vllm-stack.target"
 
-        # Project name for display purposes
-        self.project_name = project_name
+        # Auto-discover all quadlet services and stacks
+        self._discover_quadlet_services()
 
-        logger.debug("Initializing QuadletManager for vLLM services")
+        # Store last fuzzy match results for numeric selection
+        self.last_fuzzy_matches = []
+        self.cache_file = Path.home() / ".pm_fuzzy_cache"
+
+        logger.debug("Initializing QuadletManager for quadlet services")
         self._validate_prerequisites()
+        self._load_fuzzy_cache()
 
     def _validate_prerequisites(self) -> bool:
         """Validate that required tools exist"""
@@ -53,6 +58,301 @@ class QuadletManager:
 
         logger.success("Prerequisites validation complete")
         return True
+
+    def _discover_quadlet_services(self) -> None:
+        """Auto-discover all quadlet services from both source and installed directories"""
+        # Primary source directory
+        self.quadlets_source_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
+
+        # Track installation status for each service
+        self.service_status = {}  # service_name -> {'installed': bool, 'source': bool}
+
+        # First scan primary source directory
+        if self.quadlets_source_dir.exists():
+            logger.debug(
+                "Discovering quadlet services from source: {}", self.quadlets_source_dir
+            )
+            self._scan_source_directory(self.quadlets_source_dir)
+        else:
+            logger.warning(
+                "Primary quadlets source directory not found: {}",
+                self.quadlets_source_dir,
+            )
+
+        # Then scan installed directory to mark installation status
+        if self.quadlets_dir.exists():
+            logger.debug("Checking installed quadlet services: {}", self.quadlets_dir)
+            self._scan_installed_directory(self.quadlets_dir)
+        else:
+            logger.warning(
+                "Systemd quadlets directory not found: {}", self.quadlets_dir
+            )
+
+        logger.info(
+            "Discovered {} quadlet services across {} stacks",
+            len(self.quadlet_services),
+            len(self.stack_services),
+        )
+
+    def _scan_source_directory(self, source_dir: Path) -> None:
+        """Scan the primary source directory for all available stacks and services"""
+        # Scan for stack directories
+        for stack_dir in source_dir.iterdir():
+            if not stack_dir.is_dir() or not stack_dir.name.endswith("-stack"):
+                continue
+
+            stack_name = stack_dir.name
+            stack_services = []
+
+            logger.debug("Scanning source stack directory: {}", stack_dir)
+
+            # Find all .container and .target files in this stack
+            for service_file in stack_dir.glob("*.container"):
+                service_name = service_file.stem
+                full_service_name = f"{service_name}.service"
+
+                # Add to services mapping
+                self.quadlet_services[service_name] = full_service_name
+                stack_services.append(service_name)
+
+                # Mark as available in source
+                self.service_status[service_name] = {"installed": False, "source": True}
+
+                logger.debug(
+                    "Found source service: {} -> {}", service_name, full_service_name
+                )
+
+            # Add .target files too
+            for target_file in stack_dir.glob("*.target"):
+                target_name = target_file.stem
+                full_target_name = f"{target_name}.target"
+
+                self.quadlet_services[target_name] = full_target_name
+                stack_services.append(target_name)
+                self.service_status[target_name] = {"installed": False, "source": True}
+
+                logger.debug(
+                    "Found source target: {} -> {}", target_name, full_target_name
+                )
+
+            # Store stack services mapping
+            if stack_services:
+                self.stack_services[stack_name] = stack_services
+                logger.debug(
+                    "Source stack {} contains services: {}", stack_name, stack_services
+                )
+
+    def _scan_installed_directory(self, installed_dir: Path) -> None:
+        """Scan installed directory and mark services as installed"""
+        standalone_services = []
+
+        # Scan for .container files
+        for service_file in installed_dir.glob("*.container"):
+            service_name = service_file.stem
+
+            if service_name in self.service_status:
+                # Mark existing service as installed
+                self.service_status[service_name]["installed"] = True
+                logger.debug("Marked service as installed: {}", service_name)
+            else:
+                # This is a standalone service only in systemd
+                full_service_name = f"{service_name}.service"
+                self.quadlet_services[service_name] = full_service_name
+                self.service_status[service_name] = {"installed": True, "source": False}
+                standalone_services.append(service_name)
+                logger.debug("Found standalone installed service: {}", service_name)
+
+        # Scan for .target files
+        for target_file in installed_dir.glob("*.target"):
+            target_name = target_file.stem
+
+            if target_name in self.service_status:
+                # Mark existing target as installed
+                self.service_status[target_name]["installed"] = True
+                logger.debug("Marked target as installed: {}", target_name)
+            else:
+                # This is a standalone target only in systemd
+                full_target_name = f"{target_name}.target"
+                self.quadlet_services[target_name] = full_target_name
+                self.service_status[target_name] = {"installed": True, "source": False}
+                standalone_services.append(target_name)
+                logger.debug("Found standalone installed target: {}", target_name)
+
+        # Add standalone services to a special group
+        if standalone_services:
+            self.stack_services["standalone"] = standalone_services
+            logger.debug(
+                "Created standalone group with services: {}", standalone_services
+            )
+
+    def _scan_quadlets_directory(self, quadlets_dir: Path) -> None:
+        """Scan a specific quadlets directory for stack directories and services"""
+        # First, scan for stack directories (subdirectories ending with -stack)
+        for stack_dir in quadlets_dir.iterdir():
+            if not stack_dir.is_dir() or not stack_dir.name.endswith("-stack"):
+                continue
+
+            stack_name = stack_dir.name  # e.g., "vllm-stack", "local-ai-stack"
+            stack_services = []
+
+            logger.debug("Scanning stack directory: {}", stack_dir)
+
+            # Find all .container files in this stack
+            for container_file in stack_dir.glob("*.container"):
+                service_name = container_file.stem  # Remove .container extension
+                full_service_name = f"{service_name}.service"
+
+                # Create short name by removing common prefixes
+                short_name = service_name
+                stack_prefix = stack_name.replace("-stack", "-")  # e.g., "supabase-"
+
+                if service_name.startswith(stack_prefix):
+                    # Remove stack prefix: "supabase-auth" -> "auth"
+                    short_name = service_name[len(stack_prefix) :]
+                    # But keep the full service name for better identification
+                    # Use the full service name as the short name for stack services
+                    short_name = service_name
+                else:
+                    # For services that don't follow the pattern, keep full name
+                    short_name = service_name
+
+                # Add to services mapping
+                self.quadlet_services[short_name] = full_service_name
+                stack_services.append(short_name)
+
+                logger.debug("Found service: {} -> {}", short_name, full_service_name)
+
+            # Store stack services mapping
+            if stack_services:
+                self.stack_services[stack_name] = stack_services
+                logger.debug(
+                    "Stack {} contains services: {}", stack_name, stack_services
+                )
+
+        # Also scan for .container files directly in the quadlets directory
+        # (for services not organized in stack subdirectories)
+        # Group services by common prefixes to create logical stacks
+        direct_services = {}
+        stack_groups = {}
+
+        for container_file in quadlets_dir.glob("*.container"):
+            service_name = container_file.stem  # Remove .container extension
+            full_service_name = f"{service_name}.service"
+
+            # Use service name as short name for direct services
+            short_name = service_name
+
+            # Add to services mapping (only if not already added from a stack)
+            if short_name not in self.quadlet_services:
+                self.quadlet_services[short_name] = full_service_name
+                direct_services[short_name] = full_service_name
+                logger.debug(
+                    "Found direct service: {} -> {}", short_name, full_service_name
+                )
+
+                # Group services by common prefixes to create logical stacks
+                if "-" in service_name:
+                    prefix = service_name.split("-")[0]
+                    if prefix not in stack_groups:
+                        stack_groups[prefix] = []
+                    stack_groups[prefix].append(short_name)
+
+        # Create logical stacks from grouped services
+        for prefix, services in stack_groups.items():
+            if len(services) > 1:  # Only create stacks with multiple services
+                stack_name = f"{prefix}-stack"
+                # Only create the stack if it doesn't already exist
+                if stack_name not in self.stack_services:
+                    self.stack_services[stack_name] = services
+                    logger.debug(
+                        "Created logical stack {} with services: {}",
+                        stack_name,
+                        services,
+                    )
+
+        # Handle standalone services that don't fit into any stack
+        standalone_services = []
+        for service_name in self.quadlet_services.keys():
+            # Check if this service is already in a stack
+            found_in_stack = False
+            for stack_services in self.stack_services.values():
+                if service_name in stack_services:
+                    found_in_stack = True
+                    break
+
+            # If not in any stack, it's standalone
+            if not found_in_stack:
+                standalone_services.append(service_name)
+
+        # Create standalone group if we have any
+        if standalone_services:
+            self.stack_services["standalone"] = standalone_services
+            logger.debug(
+                "Created standalone group with services: {}", standalone_services
+            )
+
+        # Handle standalone services that don't fit into any stack
+        standalone_services = []
+        for service_name in self.quadlet_services.keys():
+            # Check if this service is already in a stack
+            found_in_stack = False
+            for stack_services in self.stack_services.values():
+                if service_name in stack_services:
+                    found_in_stack = True
+                    break
+
+            # If not in any stack, it's standalone
+            if not found_in_stack:
+                standalone_services.append(service_name)
+
+        # Create standalone group if we have any
+        if standalone_services:
+            self.stack_services["standalone"] = standalone_services
+            logger.debug(
+                "Created standalone group with services: {}", standalone_services
+            )
+
+    def refresh_service_discovery(self) -> None:
+        """Re-discover all quadlet services and stacks (useful after installing new stacks)"""
+        logger.debug("Refreshing quadlet service discovery")
+
+        # Clear existing mappings
+        self.quadlet_services.clear()
+        self.stack_services.clear()
+
+        # Clear service status tracking
+        if hasattr(self, "service_status"):
+            self.service_status.clear()
+
+        # Re-discover services
+        self._discover_quadlet_services()
+
+        logger.info(
+            "Refreshed discovery: {} quadlet services across {} stacks",
+            len(self.quadlet_services),
+            len(self.stack_services),
+        )
+
+    def _load_fuzzy_cache(self) -> None:
+        """Load fuzzy match results from cache file"""
+        try:
+            if self.cache_file.exists():
+                import json
+
+                with open(self.cache_file, "r") as f:
+                    self.last_fuzzy_matches = json.load(f)
+        except Exception:
+            self.last_fuzzy_matches = []
+
+    def _save_fuzzy_cache(self) -> None:
+        """Save fuzzy match results to cache file"""
+        try:
+            import json
+
+            with open(self.cache_file, "w") as f:
+                json.dump(self.last_fuzzy_matches, f)
+        except Exception:
+            pass  # Ignore cache save errors
 
     def _command_exists(self, command: str) -> bool:
         """Check if a command exists in PATH"""
@@ -167,11 +467,33 @@ class QuadletManager:
         """Get status of the vllm-stack.target"""
         return self.get_service_status(self.stack_target)
 
-    def _find_service_name(self, target: str) -> Optional[str]:
+    def _find_service_name(
+        self, target: str, allow_interactive: bool = True
+    ) -> Optional[str]:
         """Find the full service name from a target (short name or full name)"""
         # Check if it's a numeric selection (e.g., "1", "2", etc.)
         if target.isdigit():
             return self._handle_numeric_selection(int(target))
+
+        # PRIORITY: Check for stack names first (before individual services)
+        # Check if it's any discovered stack name (exact match)
+        if target in self.stack_services:
+            return f"STACK:{target}"
+
+        # Check if target ends with -stack and exists in our discovered stacks
+        if target.endswith("-stack") and target in self.stack_services:
+            return f"STACK:{target}"
+
+        # Handle stack name mapping (shortened names) - ENHANCED
+        if not target.endswith("-stack"):
+            stack_variant = f"{target}-stack"
+            if stack_variant in self.stack_services:
+                return f"STACK:{stack_variant}"
+
+            # Also check if any stack starts with the target name
+            for stack_name in self.stack_services.keys():
+                if stack_name.startswith(f"{target}-"):
+                    return f"STACK:{stack_name}"
 
         # Check if it's a short name in quadlet services
         if target in self.quadlet_services:
@@ -181,7 +503,7 @@ class QuadletManager:
         if target in self.quadlet_services.values():
             return target
 
-        # Check if it's the stack target
+        # Check if it's any stack target
         if target == "stack" or target == "vllm-stack" or target == self.stack_target:
             return self.stack_target
 
@@ -189,10 +511,11 @@ class QuadletManager:
         if target.endswith(".service") or target.endswith(".target"):
             return target
 
-        # Try fuzzy matching for partial names
-        fuzzy_result = self._fuzzy_match_service(target)
-        if fuzzy_result:
-            return fuzzy_result
+        # Try fuzzy matching for partial names (only if interactive is allowed)
+        if allow_interactive:
+            fuzzy_result = self._fuzzy_match_service(target)
+            if fuzzy_result:
+                return fuzzy_result
 
         # Try adding .service extension for generic services
         potential_service = f"{target}.service"
@@ -209,17 +532,32 @@ class QuadletManager:
 
     def _handle_numeric_selection(self, selection: int) -> Optional[str]:
         """Handle numeric service selection from previous fuzzy match results"""
-        # This is a simplified approach - in a real implementation, you'd want to
-        # store the last fuzzy match results in a class variable or cache
-        console.print(
-            f"[red]Numeric selection '{selection}' not supported in this context[/red]"
-        )
-        console.print("[dim]Please use the full service name from the list above[/dim]")
-        return None
+        if not self.last_fuzzy_matches:
+            console.print(
+                "[red]No previous service list to select from. Use 'pm log-anal <partial-name>' first.[/red]"
+            )
+            return None
+
+        if selection < 1 or selection > len(self.last_fuzzy_matches):
+            console.print(
+                f"[red]Invalid selection '{selection}'. Choose 1-{len(self.last_fuzzy_matches)}[/red]"
+            )
+            return None
+
+        # Get the selected service (1-based indexing)
+        selected_service = self.last_fuzzy_matches[selection - 1]
+        console.print(f"[dim]Selected: {selected_service}[/dim]")
+
+        # Return the full service name
+        if selected_service in self.quadlet_services:
+            return self.quadlet_services[selected_service]
+        elif selected_service in ["stack", "vllm-stack"]:
+            return self.stack_target
+        else:
+            return f"{selected_service}.service"
 
     def _fuzzy_match_service(self, partial_name: str) -> Optional[str]:
         """Find service using fuzzy matching for partial names"""
-        from rich.table import Table
 
         # Get all available service names (short names)
         all_services = list(self.quadlet_services.keys())
@@ -296,39 +634,44 @@ class QuadletManager:
                 )
                 return self.stack_target
         elif len(partial_matches) > 1:
-            # Multiple matches - show selection menu
-            console.print(f"[yellow]Multiple services match '{partial_name}':[/yellow]")
+            # Multiple matches - store them and show clean selection menu
+            self.last_fuzzy_matches = partial_matches
+            self._save_fuzzy_cache()
 
-            table = Table(show_header=True, header_style="bold magenta")
-            table.add_column("#", style="cyan", width=3)
-            table.add_column("Service", style="green")
-            table.add_column("Full Name", style="dim")
+            # Show clean numbered list starting from 1
 
             for i, service in enumerate(partial_matches, 1):
-                if service in self.quadlet_services:
-                    full_name = self.quadlet_services[service]
-                elif service in ["stack", "vllm-stack"]:
-                    full_name = self.stack_target
+                console.print(f"[cyan]{i}.[/cyan] {service}")
+
+            # Interactive selection
+            try:
+                choice = input("? ").strip()
+
+                if not choice:
+                    return None
+
+                choice_num = int(choice)
+
+                if 1 <= choice_num <= len(partial_matches):
+                    selected_service = partial_matches[choice_num - 1]
+
+                    # Return the full service name
+                    if selected_service in self.quadlet_services:
+                        return self.quadlet_services[selected_service]
+                    elif selected_service in ["stack", "vllm-stack"]:
+                        return self.stack_target
+                    else:
+                        return f"{selected_service}.service"
                 else:
-                    full_name = service
-                table.add_row(str(i), service, full_name)
-
-            console.print(table)
-            console.print(
-                "[cyan]Please specify the full service name or use the number prefix:[/cyan]"
-            )
-
-            # Show example commands
-            for i, service in enumerate(partial_matches, 1):
-                console.print(f"  [dim]{i}.[/dim] [cyan]pm logs {service}[/cyan]")
-
-            return None  # Let user choose
+                    return None
+            except (ValueError, KeyboardInterrupt):
+                return None
 
         return None  # No matches found
 
     def start_service(self, target: str) -> bool:
         """Start a service or the stack target"""
-        service_name = self._find_service_name(target)
+        service_name = self._find_service_name(target, allow_interactive=False)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
@@ -347,7 +690,7 @@ class QuadletManager:
         self, target: str, force: bool = False, quiet: bool = False
     ) -> bool:
         """Stop a service or the stack target"""
-        service_name = self._find_service_name(target)
+        service_name = self._find_service_name(target, allow_interactive=False)
         if not service_name:
             if not quiet:
                 console.print(f"[red]Service '{target}' not found[/red]")
@@ -518,7 +861,7 @@ class QuadletManager:
 
     def restart_service(self, target: str) -> bool:
         """Restart a service or the stack target"""
-        service_name = self._find_service_name(target)
+        service_name = self._find_service_name(target, allow_interactive=False)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
@@ -535,7 +878,7 @@ class QuadletManager:
 
     def enable_service(self, target: str) -> bool:
         """Enable a service or the stack target to start at boot"""
-        service_name = self._find_service_name(target)
+        service_name = self._find_service_name(target, allow_interactive=False)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
@@ -552,7 +895,7 @@ class QuadletManager:
 
     def disable_service(self, target: str) -> bool:
         """Disable a service or the stack target from starting at boot"""
-        service_name = self._find_service_name(target)
+        service_name = self._find_service_name(target, allow_interactive=False)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
@@ -581,7 +924,7 @@ class QuadletManager:
 
     def show_logs(self, target: str, follow: bool = False, lines: int = 100) -> bool:
         """Show logs for a service"""
-        service_name = self._find_service_name(target)
+        service_name = self._find_service_name(target, allow_interactive=False)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False

@@ -1,4 +1,4 @@
-"""Intelligent project type detection for pm facade."""
+"""Intelligent target type detection for pm facade."""
 
 import subprocess
 from pathlib import Path
@@ -8,7 +8,7 @@ from loguru import logger
 
 
 class ProjectTypeDetector:
-    """Automatically detect if a target is a podman compose project or quadlet service"""
+    """Automatically detect if a target is a podman compose stack or quadlet service"""
 
     def __init__(self, compose_dir: Optional[Path] = None):
         self.compose_dir = (
@@ -41,25 +41,47 @@ class ProjectTypeDetector:
             project_type: 'quadlet', 'compose', or 'unknown'
             reason: explanation of detection logic
         """
-        logger.debug("Detecting project type for target: {}", target)
+        logger.debug("Detecting target type for target: {}", target)
+
+        # 0. Check if it's a numeric selection - always use quadlet mode for these
+        if target.isdigit():
+            return (
+                "quadlet",
+                f"Numeric selection '{target}' - using quadlet mode for fuzzy matching",
+            )
 
         # 1. Check if it's a stack target
         if target.endswith("-stack"):
-            project_name = target[:-6]  # Remove "-stack" suffix
-            # Check if the project has quadlet services
+            stack_name = target[:-6]  # Remove "-stack" suffix
+            # Check if the stack has quadlet services
             has_quadlet_services = any(
-                service.startswith(f"{project_name}-")
+                service.startswith(f"{stack_name}-")
                 for service in self.quadlet_services.keys()
             )
-            if has_quadlet_services or project_name in ["vllm", "taskflow"]:
+            if has_quadlet_services or stack_name in ["vllm", "taskflow"]:
                 return (
                     "quadlet",
-                    f"Stack target for project with quadlet services: {target}",
+                    f"Stack target with quadlet services: {target}",
                 )
+
+        # 1.1. Check if it's a known compose stack name
+        compose_stack = self._find_compose_stack(target)
+        if compose_stack:
+            return "compose", f"Known compose stack: {target}"
 
         # 2. Check if it's a known quadlet service
         if target in self.quadlet_services or target in self.stack_aliases:
             return "quadlet", f"Known quadlet service: {target}"
+
+        # 2.1. Check if it's a partial match for quadlet services (fuzzy matching)
+        quadlet_matches = [
+            svc for svc in self.quadlet_services.keys() if target.lower() in svc.lower()
+        ]
+        if quadlet_matches:
+            return (
+                "quadlet",
+                f"Partial match for quadlet services: {target} matches {quadlet_matches}",
+            )
 
         # 3. Check if it's a systemd service/target by name pattern
         if target.endswith(".service") or target.endswith(".target"):
@@ -74,9 +96,9 @@ class ProjectTypeDetector:
             return "quadlet", f"Found systemd service: {potential_service}"
 
         # 5. Check if it's in any compose file
-        compose_project = self._find_in_compose_files(target)
-        if compose_project:
-            return "compose", f"Found in compose file: {compose_project}"
+        compose_stack = self._find_in_compose_files(target)
+        if compose_stack:
+            return "compose", f"Found in compose file: {compose_stack}"
 
         # 6. Default fallback logic
         # If compose directory exists and has files, assume compose
@@ -118,6 +140,44 @@ class ProjectTypeDetector:
                     if compose_data and "services" in compose_data:
                         if service_name in compose_data["services"]:
                             return compose_file.name
+                except (OSError, yaml.YAMLError) as e:
+                    logger.debug("Error reading compose file {}: {}", compose_file, e)
+                    continue
+
+            return None
+        except ImportError:
+            logger.warning("PyYAML not available, cannot check compose files")
+            return None
+
+    def _find_compose_stack(self, stack_name: str) -> Optional[str]:
+        """Check if target is a compose stack name"""
+        if not self.compose_dir.exists():
+            return None
+
+        try:
+            import yaml
+
+            for compose_file in self.compose_dir.glob("podman-compose*.yml"):
+                try:
+                    with open(compose_file, "r") as f:
+                        compose_data = yaml.safe_load(f)
+
+                    # Check if compose file has a name field matching the target
+                    if compose_data and "name" in compose_data:
+                        if compose_data["name"] == stack_name:
+                            return compose_file.name
+
+                    # Check if filename-derived stack name matches
+                    if compose_file.name == "podman-compose.yml":
+                        derived_name = "default"
+                    else:
+                        derived_name = compose_file.name.replace(
+                            "podman-compose-", ""
+                        ).replace(".yml", "")
+
+                    if derived_name == stack_name:
+                        return compose_file.name
+
                 except (OSError, yaml.YAMLError) as e:
                     logger.debug("Error reading compose file {}: {}", compose_file, e)
                     continue

@@ -1,10 +1,13 @@
 # Podman Container Manager
 
-A comprehensive Python-based container management tool for Podman with rich terminal UI, health monitoring, and compose file integration.
+A comprehensive Python-based container management tool for Podman with rich terminal UI, health monitoring, intelligent project detection, and both compose and systemd quadlet support.
 
 ## Features
 
 - **Rich Terminal Interface** - Beautiful colors, panels, and tables using Rich library
+- **Intelligent Project Detection** - Automatically detects whether to use compose or quadlet mode
+- **Dual Management Modes** - Support for both podman compose and systemd quadlets
+- **Enhanced Prune System** - Intelligent image cleanup with usage analysis and duplicate detection
 - **Health Monitoring** - Analyze service logs with pattern detection and health recommendations
 - **Live Build Output** - Stream build processes in real-time
 - **Smart Detection** - Automatically detects projects vs services
@@ -18,20 +21,35 @@ A comprehensive Python-based container management tool for Podman with rich term
 - **Podman** with compose plugin installed
 - **Python 3.8+**
 - **Required Python packages**: `rich`, `pyyaml`, `loguru`
+- **systemd** (for quadlet mode)
+- **uv** (recommended for dependency management)
 
 ## Installation
 
-1. **Install dependencies using uv (recommended):**
+### Modern Installation (Recommended)
+
+1. **Install dependencies using uv:**
    ```bash
    uv add rich pyyaml loguru
    ```
 
-2. **Copy the script to system location:**
+2. **Use the smart wrapper script:**
+   ```bash
+   # Make executable
+   chmod +x pm
+
+   # Add to PATH or create symlink
+   sudo ln -s $(pwd)/pm /usr/local/bin/pm
+   ```
+
+### Legacy Installation
+
+1. **Copy the script to system location:**
    ```bash
    sudo cp podman-manager.py /usr/local/bin/podman-manager.py
    ```
 
-3. **Create wrapper script:**
+2. **Create wrapper script:**
    ```bash
    sudo tee /usr/local/bin/podman-manager > /dev/null << 'EOF'
    #!/bin/bash
@@ -50,11 +68,43 @@ A comprehensive Python-based container management tool for Podman with rich term
    EOF
    ```
 
-4. **Make executable and create alias:**
+3. **Make executable and create alias:**
    ```bash
    sudo chmod +x /usr/local/bin/podman-manager
    sudo ln -sf /usr/local/bin/podman-manager /usr/local/bin/pm
    ```
+
+## Architecture
+
+### Modular Design
+
+The tool features a modular architecture with clean separation of concerns:
+
+```
+Root Directory:
+├── config.py          # Logging & Rich console setup
+├── manager.py         # Core business logic
+├── container_ops.py   # Container operations (compose mode)
+├── quadlet_ops.py     # Quadlet operations (systemd mode)
+├── quadlet_manager.py # Quadlet service management
+├── display.py         # Rich display components
+├── project_detector.py # Intelligent project type detection
+├── main.py           # New modular entry point
+├── podman-manager.py # Original monolithic script
+└── pm               # Smart compatibility wrapper
+```
+
+### Intelligent Mode Detection
+
+The `pm` command features automatic project type detection:
+
+- **Default mode**: `auto` (intelligent detection)
+- **Detection logic**:
+  1. Known vLLM services → `quadlet`
+  2. Systemd service exists → `quadlet`
+  3. Found in compose files → `compose`
+  4. Fallback to compose if compose files available
+  5. Final fallback to quadlet
 
 ## Configuration
 
@@ -65,6 +115,24 @@ export PODMAN_COMPOSE_DIR="/path/to/your/compose/files"
 ```
 
 ## Usage
+
+### Mode Selection
+
+```bash
+# Automatic mode detection (default)
+pm list vllm-qwen25     # → Uses quadlet mode
+pm restart postgres     # → Uses compose mode
+
+# Manual mode override
+pm --mode compose restart vllm-qwen25  # Force compose mode
+pm --mode quadlet start postgres       # Force quadlet mode
+
+# Debug detection logic
+pm --debug-detection list vllm-qwen25
+
+# List available targets by type
+pm targets
+```
 
 ### Basic Commands
 
@@ -81,6 +149,7 @@ pm help
 
 ### Container Lifecycle
 
+#### Compose Mode
 ```bash
 # Recreate service with fresh start
 pm reinit ollama
@@ -98,6 +167,39 @@ pm stop project-name
 pm remove service-name
 ```
 
+#### Quadlet Mode (systemd)
+```bash
+# Start all vLLM services
+pm start stack
+
+# Stop specific service
+pm stop qwen25-coder
+
+# Restart proxy service
+pm restart proxy
+
+# Enable stack to start at boot
+pm enable stack
+
+# Disable delegator from starting at boot
+pm disable delegator
+
+# Show detailed service status
+pm status proxy
+
+# Follow service logs
+pm logs delegator --follow
+
+# Update images and restart service
+pm update qwen25-coder
+
+# Check/enable auto-update timer
+pm auto-update
+
+# Reload systemd daemon
+pm reload
+```
+
 ### Build and Images
 
 ```bash
@@ -109,10 +211,60 @@ pm pull vllm-models
 
 # List all images
 pm images --all
-
-# Clean up unused resources
-pm prune --all --volumes
 ```
+
+### Enhanced Prune System
+
+The enhanced prune functionality provides intelligent image cleanup based on container usage analysis:
+
+```bash
+# Intelligent cleanup with full analysis (default)
+pm prune
+
+# Quick cleanup (dangling images and containers only)
+pm prune --quick
+
+# Basic cleanup without analysis (original behavior)
+pm prune --basic
+```
+
+#### Enhanced Prune Workflow
+
+When you run `pm prune`, the system follows this workflow:
+
+1. **System Analysis**
+   - Lists all running and stopped containers with their image IDs
+   - Catalogs all images with size and metadata
+   - Identifies which images are referenced by containers
+   - Finds dangling (untagged) images
+   - Detects potential duplicate images
+
+2. **Analysis Summary**
+   - Shows total images vs. images in use
+   - Displays potential space savings
+   - Categorizes cleanup opportunities
+
+3. **Safe Cleanup Execution**
+   - Confirms large removals with user
+   - Removes dangling images first
+   - Removes duplicate images (keeping one per group)
+   - Shows before/after disk usage
+
+#### What Gets Removed
+
+**Always Safe to Remove:**
+- **Dangling images**: Untagged images (`<none>:<none>`) not used by any container
+- **Unused containers**: Stopped containers not needed
+
+**Removed with Analysis:**
+- **Duplicate images**: Multiple tags pointing to same image content
+  - Example: `localhost/vllm-delegator-mcp:latest` and `localhost/vllm_vllm-delegator-mcp:latest` with same image ID
+  - Keeps the first tag, removes additional tags
+
+**Never Removed:**
+- Images used by running containers
+- Images used by stopped containers you might restart
+- Images explicitly tagged and in use
 
 ### Monitoring and Debugging
 
@@ -151,6 +303,7 @@ pm remove-orphans project-name
 
 ## Directory Structure
 
+### Compose Mode
 The tool expects compose files in the following format:
 ```
 ~/srv/local-ai-packaged/
@@ -160,12 +313,48 @@ The tool expects compose files in the following format:
 └── podman-compose-web-apps.yml     # Web apps project
 ```
 
+### Quadlet Mode
+Systemd quadlet services are managed via systemctl:
+- `qwen25-coder` → `vllm-qwen25-coder-32b-instruct-awq-simple.service`
+- `proxy` → `vllm-proxy-working.service`
+- `delegator` → `vllm-delegator-mcp-simple.service`
+- `stack` → `vllm-stack.target` (manages all services together)
+
 ## Target Types
 
 - **PROJECT**: Operates on all services in a compose file (e.g., `vllm-models`)
 - **SERVICE**: Operates on a specific service (e.g., `open-webui`)
+- **QUADLET**: Systemd service or target (e.g., `vllm-stack`)
 
-The tool automatically detects whether your target is a project or service.
+The tool automatically detects whether your target is a project, service, or quadlet.
+
+## Migration and Compatibility
+
+### Backward Compatibility
+
+The refactoring maintains **100% backward compatibility**. All existing bash aliases and scripts will continue to work without any changes.
+
+#### Compatibility Wrapper
+A smart wrapper script `pm` automatically detects your environment:
+- **With uv available**: Uses the new refactored modular version (`main.py`)
+- **Without uv**: Falls back to the original monolithic script (`podman-manager.py`)
+
+#### Available Entry Points
+1. **`./pm`** - Smart wrapper (recommended)
+2. **`uv run python main.py`** - New refactored version
+3. **`./podman-manager.py`** - Original monolithic version
+4. **`python3 podman-manager.py`** - Original version (fallback)
+
+### Migration Benefits
+
+**Performance:**
+- **Faster startup**: Modular loading only imports what's needed
+- **Better caching**: uv provides faster dependency resolution
+
+**Development:**
+- **Easier maintenance**: Code is organized into logical modules
+- **Better testing**: Individual components can be tested separately
+- **Extensibility**: Easy to add new features without touching core logic
 
 ## Health Monitoring
 
@@ -208,6 +397,24 @@ pm logs my-service
 pm stats
 ```
 
+### Quadlet Workflow
+```bash
+# Start all vLLM services
+pm start stack
+
+# Check service status
+pm list
+
+# Follow logs for Qwen2.5 Coder
+pm logs qwen25-coder --follow
+
+# Update images and restart
+pm update proxy
+
+# Enable services to start at boot
+pm enable stack
+```
+
 ### Troubleshooting
 ```bash
 # Analyze service health
@@ -220,8 +427,8 @@ pm top service-name
 pm exec service-name "ps aux"
 pm exec service-name "df -h"
 
-# Clean up resources
-pm prune --all --volumes
+# Intelligent cleanup with analysis
+pm prune
 ```
 
 ### Maintenance
@@ -229,8 +436,8 @@ pm prune --all --volumes
 # Update all images
 pm pull project-name
 
-# Clean system
-pm prune --all --volumes
+# Intelligent system cleanup with analysis
+pm prune
 
 # Check disk usage
 pm system-df
@@ -247,6 +454,7 @@ The tool provides comprehensive error handling:
 - **Service existence verification**
 - **Clear error messages** with suggested solutions
 - **Graceful failure recovery**
+- **Intelligent fallback suggestions** when operations fail
 
 ## Performance Features
 
@@ -254,6 +462,17 @@ The tool provides comprehensive error handling:
 - **Parallel operations**: Where safe and beneficial
 - **Resource monitoring**: Built-in stats and usage tracking
 - **Efficient logging**: Structured logging with rotation
+- **Modular loading**: Only load required components
+- **Intelligent detection**: Minimize unnecessary operations
+
+## Benefits of Quadlets
+
+1. **Native systemd integration**: Services managed like any other system service
+2. **Boot-time startup**: Can enable services to start automatically
+3. **Better logging**: Integrated with journalctl
+4. **Dependency management**: systemd handles service dependencies
+5. **Auto-updates**: Support for automatic image updates
+6. **Resource management**: systemd resource controls
 
 ## Troubleshooting
 
@@ -290,6 +509,21 @@ pm logs service-name
 pm reinit dependency-service
 ```
 
+**Quadlet services not found:**
+```bash
+# Reload systemd daemon
+pm reload
+# Check systemd user services
+systemctl --user list-units --type=service | grep vllm
+```
+
+**Enhanced prune fails:**
+```bash
+# Falls back to basic prune automatically
+# Or use basic mode explicitly
+pm prune --basic
+```
+
 ## Contributing
 
 The tool is designed to be extensible. Key areas for enhancement:
@@ -297,6 +531,8 @@ The tool is designed to be extensible. Key areas for enhancement:
 - More sophisticated dependency resolution
 - Integration with container registries
 - Advanced resource management features
+- Enhanced quadlet integration
+- Improved detection algorithms
 
 ## License
 
@@ -309,3 +545,5 @@ For issues and feature requests:
 2. Run with debug logging: Set log level to DEBUG in script
 3. Verify prerequisites: Podman, compose plugin, Python packages
 4. Test with simple commands: `pm status`, `pm ps`
+5. Use debug detection: `pm --debug-detection <command>`
+6. Check available targets: `pm targets`

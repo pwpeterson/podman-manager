@@ -11,8 +11,8 @@ except ImportError:
     print("pip install rich pyyaml loguru")
     sys.exit(1)
 
-# Configure Rich console
-console = Console()
+# Configure Rich console with force color support
+console = Console(force_terminal=True, color_system="truecolor", legacy_windows=False)
 
 
 def setup_logging():

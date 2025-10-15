@@ -190,12 +190,9 @@ class PodmanManager:
 
     def _handle_numeric_selection(self, selection: int) -> Optional[str]:
         """Handle numeric service selection from previous fuzzy match results"""
-        # This is a simplified approach - in a real implementation, you'd want to
-        # store the last fuzzy match results in a class variable or cache
         console.print(
-            f"[red]Numeric selection '{selection}' not supported in this context[/red]"
+            f"[red]Numeric selection not supported in compose mode. Use 'pm --mode quadlet log-anal {selection}' instead.[/red]"
         )
-        console.print("[dim]Please use the full service name from the list above[/dim]")
         return None
 
     def _fuzzy_match_service(self, partial_name: str) -> Optional[str]:

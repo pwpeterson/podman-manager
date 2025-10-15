@@ -26,23 +26,41 @@ class QuadletDisplayManager:
 
         # Filter by target if specified
         if target:
-            filtered_items = {}
-            for project_name, project_info in all_items.items():
-                if target == project_name:
-                    # Show entire project
-                    filtered_items[project_name] = project_info
-                elif target in project_info.get("services", {}):
-                    # Show specific service within project
-                    filtered_items[project_name] = {
-                        "type": project_info["type"],
-                        "services": {target: project_info["services"][target]},
-                    }
+            # Use the quadlet manager's service resolution logic
+            resolved_target = self.manager._find_service_name(
+                target, allow_interactive=False
+            )
 
-            if not filtered_items:
-                console.print(
-                    f"[red]No project or service found matching '{target}'[/red]"
-                )
-                return
+            if resolved_target and resolved_target.startswith("STACK:"):
+                # It's a stack - extract the stack name
+                stack_name = resolved_target[6:]  # Remove "STACK:" prefix
+                if stack_name in all_items:
+                    filtered_items = {stack_name: all_items[stack_name]}
+                else:
+                    console.print(
+                        f"[red]No project or service found matching '{target}'[/red]"
+                    )
+                    return
+            else:
+                # Original logic for direct matches
+                filtered_items = {}
+                for project_name, project_info in all_items.items():
+                    if target == project_name:
+                        # Show entire project
+                        filtered_items[project_name] = project_info
+                    elif target in project_info.get("services", {}):
+                        # Show specific service within project
+                        filtered_items[project_name] = {
+                            "type": project_info["type"],
+                            "services": {target: project_info["services"][target]},
+                        }
+
+                if not filtered_items:
+                    console.print(
+                        f"[red]No project or service found matching '{target}'[/red]"
+                    )
+                    return
+
             all_items = filtered_items
 
         tree = Tree("Projects & Services", style="cyan")
@@ -74,76 +92,74 @@ class QuadletDisplayManager:
         # Get compose projects first
         compose_projects = self._get_compose_projects()
 
-        # Projects that will be converted to stack format
-        stack_projects = {"taskflow", self.manager.project_name}
-
-        # Add compose projects to all_items (excluding those that will become stacks)
+        # Add compose projects to all_items (excluding those that have quadlet equivalents)
+        compose_stack_names = set()
         for project_name, project_info in compose_projects.items():
-            if project_name not in stack_projects:
+            # Convert compose project names to potential stack names for comparison
+            potential_stack_name = f"{project_name}-stack"
+            if potential_stack_name not in self.manager.stack_services:
                 all_items[project_name] = {"type": "mixed", "services": {}}
                 # Add compose services with (compose) suffix
                 for service_name, service_info in project_info["services"].items():
                     display_name = f"{service_name} [dim white](compose)[/dim white]"
                     all_items[project_name]["services"][display_name] = service_info
-
-        # Create stack-based projects for quadlet services
-        vllm_stack_name = f"{self.manager.project_name}-stack"
-        taskflow_stack_name = "taskflow-stack"
-
-        # Process quadlet services into stack projects
-        for short_name, full_name in self.manager.quadlet_services.items():
-            if short_name.startswith("taskflow-"):
-                # Add to taskflow-stack project
-                if taskflow_stack_name not in all_items:
-                    all_items[taskflow_stack_name] = {"type": "mixed", "services": {}}
-                display_name = f"{full_name} [dim white](quadlet)[/dim white]"
-                all_items[taskflow_stack_name]["services"][display_name] = {
-                    "full_name": full_name
-                }
-
-                # Also add compose services if they exist
-                if "taskflow" in compose_projects:
-                    for service_name, service_info in compose_projects["taskflow"][
-                        "services"
-                    ].items():
-                        compose_display_name = (
-                            f"{service_name} [dim white](compose)[/dim white]"
-                        )
-                        all_items[taskflow_stack_name]["services"][
-                            compose_display_name
-                        ] = service_info
             else:
-                # Add to vllm-stack project
-                if vllm_stack_name not in all_items:
-                    all_items[vllm_stack_name] = {"type": "mixed", "services": {}}
-                display_name = f"{full_name} [dim white](quadlet)[/dim white]"
-                all_items[vllm_stack_name]["services"][display_name] = {
-                    "full_name": full_name
-                }
+                compose_stack_names.add(project_name)
 
-                # Also add compose services if they exist
-                if self.manager.project_name in compose_projects:
-                    for service_name, service_info in compose_projects[
-                        self.manager.project_name
-                    ]["services"].items():
-                        compose_display_name = (
-                            f"{service_name} [dim white](compose)[/dim white]"
-                        )
-                        all_items[vllm_stack_name]["services"][
-                            compose_display_name
-                        ] = service_info
+        # Process all discovered quadlet stacks
+        for stack_name, stack_service_list in self.manager.stack_services.items():
+            if stack_name not in all_items:
+                all_items[stack_name] = {"type": "mixed", "services": {}}
 
-        # Add the existing vllm-stack.target to vllm-stack project
-        if vllm_stack_name not in all_items:
-            all_items[vllm_stack_name] = {"type": "mixed", "services": {}}
-        stack_display_name = (
-            f"{self.manager.stack_target} [dim white](quadlet)[/dim white]"
-        )
-        all_items[vllm_stack_name]["services"][stack_display_name] = {
-            "full_name": self.manager.stack_target
-        }
+            # Add all quadlet services in this stack
+            for short_name in stack_service_list:
+                if short_name in self.manager.quadlet_services:
+                    full_name = self.manager.quadlet_services[short_name]
 
-        # Note: taskflow and vllm compose projects are excluded above, not added to all_items
+                    # Get installation status for color coding
+                    status = self.manager.service_status.get(
+                        short_name, {"installed": False, "source": False}
+                    )
+
+                    if status["installed"] and status["source"]:
+                        # Green: installed and available in source
+                        color = "green"
+                    elif status["installed"] and not status["source"]:
+                        # Yellow: installed but only in systemd
+                        color = "yellow"
+                    elif not status["installed"] and status["source"]:
+                        # Red: available in source but not installed
+                        color = "red"
+                    else:
+                        # Default: unknown status
+                        color = "yellow"
+
+                    display_name = f"[{color}]{full_name}[/{color}] [dim white](quadlet)[/dim white]"
+                    all_items[stack_name]["services"][display_name] = {
+                        "full_name": full_name
+                    }
+
+            # Add compose services if they exist for this stack
+            compose_project_name = stack_name.replace("-stack", "")
+            if compose_project_name in compose_projects:
+                for service_name, service_info in compose_projects[
+                    compose_project_name
+                ]["services"].items():
+                    compose_display_name = (
+                        f"{service_name} [dim white](compose)[/dim white]"
+                    )
+                    all_items[stack_name]["services"][
+                        compose_display_name
+                    ] = service_info
+
+        # Add the vllm-stack.target if it exists and vllm-stack is present
+        if "vllm-stack" in all_items and hasattr(self.manager, "stack_target"):
+            stack_display_name = (
+                f"{self.manager.stack_target} [dim white](quadlet)[/dim white]"
+            )
+            all_items["vllm-stack"]["services"][stack_display_name] = {
+                "full_name": self.manager.stack_target
+            }
 
         return all_items
 

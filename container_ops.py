@@ -2,6 +2,7 @@
 
 import subprocess
 import time
+from pathlib import Path
 from typing import List
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
@@ -14,6 +15,76 @@ class ContainerOperations:
 
     def __init__(self, manager):
         self.manager = manager
+
+    def _extract_log_message(self, log_line: str, msg_type: str) -> str:
+        """Extract the actual error/warning message from a log line with timestamp"""
+        import re
+
+        # Extract timestamp first
+        timestamp = ""
+        timestamp_match = re.search(r"(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})", log_line)
+        if timestamp_match:
+            timestamp = timestamp_match.group(1)
+        else:
+            # Try ISO format timestamp
+            timestamp_match = re.search(
+                r"(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})", log_line
+            )
+            if timestamp_match:
+                timestamp = timestamp_match.group(1)
+
+        # Common patterns to look for ERROR/WARNING messages - include the type in the result
+        patterns = [
+            rf"({msg_type}\s*-\s*.+)",  # ERROR - message
+            rf"({msg_type}:\s*.+)",  # ERROR: message
+            rf"({msg_type}\s+.+)",  # ERROR message
+            rf"(\b{msg_type.lower()}\b.*?:\s*.+)",  # error: message
+            rf"(.*logging\s*-\s*{msg_type}\s*-\s*.+)",  # logging - ERROR - message
+            rf"(.*\s+-\s+{msg_type}\s+-\s+.+)",  # module - ERROR - message
+            rf"(.*utils\.logging\s*-\s*{msg_type}\s*-\s*.+)",  # utils.logging - ERROR - message
+        ]
+
+        message_content = ""
+        for pattern in patterns:
+            match = re.search(pattern, log_line, re.IGNORECASE)
+            if match:
+                message_content = match.group(1).strip()
+                break
+
+        if not message_content:
+            # If no pattern matches, try to extract after common log prefixes
+            # Remove timestamp and service name prefixes
+            cleaned = re.sub(
+                r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\S+\s+\S+\[\d+\]:\s*",
+                "",
+                log_line,
+            )
+            cleaned = re.sub(
+                r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d+\s*", "", cleaned
+            )
+
+            # Look for the message type in the cleaned content
+            for pattern in [
+                rf"({msg_type}\s*-\s*.+)",
+                rf"({msg_type}:\s*.+)",
+                rf"({msg_type}\s+.+)",
+            ]:
+                match = re.search(pattern, cleaned, re.IGNORECASE)
+                if match:
+                    message_content = match.group(1).strip()
+                    break
+
+            # Fallback: return the cleaned line or original if cleaning failed
+            if not message_content:
+                message_content = (
+                    cleaned.strip() if cleaned.strip() else log_line.strip()
+                )
+
+        # Combine timestamp and message
+        if timestamp:
+            return f"[{timestamp}] {message_content}"
+        else:
+            return message_content
 
     def handle_container_dependencies(self, service: str) -> bool:
         """Handle container removal by checking status first, then stopping if needed"""
@@ -265,13 +336,11 @@ class ContainerOperations:
         except Exception as e:
             console.print(f"[red]Error showing logs: {e}[/red]")
 
-    def analyze_logs(self, target: str, lines: int = 1000) -> None:
+    def analyze_logs(self, target: str, lines: int = 50) -> None:
         """Analyze container logs for errors, warnings, and other issues"""
         import re
         import subprocess
         from collections import Counter
-
-        from rich.table import Table
 
         try:
             project = self.manager._find_service_project(target)
@@ -304,7 +373,7 @@ class ContainerOperations:
                 return
 
             console.print(
-                f"[yellow]Analyzing logs for {matched_service} (last {lines} lines)...[/yellow]"
+                f"Analyzing logs for {matched_service} (last {lines} lines)..."
             )
 
             # Get logs using podman logs
@@ -337,8 +406,14 @@ class ContainerOperations:
                     r"\bconnection refused\b",
                     r"\btimeout\b",
                     r"\bpermission denied\b",
-                    r"\b500\b",  # HTTP 500 errors
-                    r"\b404\b",  # HTTP 404 errors
+                    r"\b500\b",
+                    r"\b404\b",  # HTTP errors
+                    r"- ERROR -",
+                    r"\s+ERROR\s+",
+                    r"logging - ERROR",
+                    r"utils\.logging - ERROR",
+                    r"tools will fail",
+                    r"server will start anyway",
                 ],
                 "WARNING": [
                     r"\bWARNING\b",
@@ -357,21 +432,12 @@ class ContainerOperations:
                     r"\bconnected\b",
                     r"\binitialized\b",
                 ],
-                "PERFORMANCE": [
-                    r"\bslow\b",
-                    r"\bhigh memory\b",
-                    r"\bmemory usage\b",
-                    r"\bcpu usage\b",
-                    r"\blatency\b",
-                    r"\btook.*seconds\b",
-                    r"\bprocessing time\b",
-                ],
             }
 
             # Analyze logs
             issue_counts = Counter()
-            issue_examples = {}
-            recent_issues = []
+            all_errors = []
+            all_warnings = []
 
             for i, line in enumerate(log_lines):
                 line_lower = line.lower()
@@ -381,163 +447,428 @@ class ContainerOperations:
                         if re.search(pattern, line_lower):
                             issue_counts[issue_type] += 1
 
-                            # Store first few examples of each issue type
-                            if issue_type not in issue_examples:
-                                issue_examples[issue_type] = []
-                            if len(issue_examples[issue_type]) < 3:
-                                # Extract timestamp if present (container logs format)
-                                timestamp_match = re.search(
-                                    r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})", line
-                                )
-                                if not timestamp_match:
-                                    timestamp_match = re.search(
-                                        r"(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})", line
+                            # Keep track of ALL issues (not just recent 50 lines)
+                            # For multi-line messages, try to capture continuation
+                            full_line = line.strip()
+                            # Check if next line might be a continuation (no timestamp/service prefix)
+                            if i + 1 < len(log_lines):
+                                next_line = log_lines[i + 1].strip()
+                                # If next line doesn't start with timestamp or service name, it's likely a continuation
+                                if (
+                                    next_line
+                                    and not re.match(
+                                        r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}",
+                                        next_line,
                                     )
-                                timestamp = (
-                                    timestamp_match.group(1)
-                                    if timestamp_match
-                                    else "Unknown time"
-                                )
-                                issue_examples[issue_type].append(
-                                    (timestamp, line.strip())
-                                )
+                                    and not re.match(
+                                        r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}",
+                                        next_line,
+                                    )
+                                    and len(next_line) > 10
+                                ):  # Reasonable length check
+                                    full_line += " " + next_line
 
-                            # Keep track of recent issues (last 50 lines)
-                            if i >= len(log_lines) - 50:
-                                recent_issues.append((issue_type, line.strip()))
+                            if issue_type == "ERROR":
+                                all_errors.append(full_line)
+                            elif issue_type == "WARNING":
+                                all_warnings.append(full_line)
                             break
 
-            # Display results
-            console.print(
-                f"\n[bold cyan]Log Analysis Results for {matched_service}[/bold cyan]"
-            )
+            # Display concise results
+            errors = issue_counts.get("ERROR", 0)
+            warnings = issue_counts.get("WARNING", 0)
+            infos = issue_counts.get("INFO", 0)
 
-            # Summary table
-            summary_table = Table(show_header=True, header_style="bold magenta")
-            summary_table.add_column("Issue Type", style="cyan", no_wrap=True)
-            summary_table.add_column("Count", style="white", justify="right")
-            summary_table.add_column("Severity", style="white")
-
-            severity_colors = {
-                "ERROR": "[red]High[/red]",
-                "WARNING": "[yellow]Medium[/yellow]",
-                "PERFORMANCE": "[orange3]Medium[/orange3]",
-                "INFO": "[green]Low[/green]",
-            }
-
-            total_issues = sum(
-                count
-                for issue_type, count in issue_counts.items()
-                if issue_type != "INFO"
-            )
-
-            for issue_type in ["ERROR", "WARNING", "PERFORMANCE", "INFO"]:
-                count = issue_counts.get(issue_type, 0)
-                if count > 0:
-                    severity = severity_colors.get(issue_type, "[white]Unknown[/white]")
-                    summary_table.add_row(issue_type, str(count), severity)
-
-            console.print(summary_table)
-
-            # Overall assessment
-            if issue_counts.get("ERROR", 0) > 0:
+            # Overall status
+            if errors > 0:
                 status = "[red]Critical Issues Detected[/red]"
-            elif issue_counts.get("WARNING", 0) > 5:
-                status = "[yellow]Multiple Warnings[/yellow]"
-            elif total_issues > 0:
-                status = "[orange3]Minor Issues[/orange3]"
+            elif warnings > 10:
+                status = "[yellow]High Warning Count[/yellow]"
+            elif warnings > 0:
+                status = "[yellow]Warnings Found[/yellow]"
             else:
                 status = "[green]No Issues Detected[/green]"
 
-            console.print(f"\n[bold]Overall Status:[/bold] {status}")
-            console.print(f"[dim]Analyzed {len(log_lines)} log lines[/dim]")
+            console.print(f"\nOverall Status: {status}")
+            console.print(f"Analyzed {len(log_lines)} log lines")
 
-            # Show examples of issues
-            if issue_examples:
-                console.print("\n[bold cyan]Issue Examples:[/bold cyan]")
-
-                for issue_type in ["ERROR", "WARNING", "PERFORMANCE"]:
-                    if issue_type in issue_examples and issue_examples[issue_type]:
-                        color = severity_colors[issue_type].split("]")[0][1:]
-                        console.print(f"\n[bold {color}]{issue_type}S:[/bold {color}]")
-
-                        for timestamp, example in issue_examples[issue_type]:
-                            # Truncate long lines
-                            if len(example) > 100:
-                                example = example[:97] + "..."
-                            console.print(f"  [dim]{timestamp}[/dim] {example}")
-
-            # Recent activity summary
-            if recent_issues:
-                recent_errors = [
-                    issue
-                    for issue_type, issue in recent_issues
-                    if issue_type == "ERROR"
-                ]
-                recent_warnings = [
-                    issue
-                    for issue_type, issue in recent_issues
-                    if issue_type == "WARNING"
-                ]
-
-                if recent_errors or recent_warnings:
-                    console.print(
-                        "\n[bold yellow]Recent Activity (last 50 lines):[/bold yellow]"
-                    )
-                    if recent_errors:
-                        console.print(
-                            f"  [red]• {len(recent_errors)} recent errors[/red]"
-                        )
-                    if recent_warnings:
-                        console.print(
-                            f"  [yellow]• {len(recent_warnings)} recent warnings[/yellow]"
-                        )
-
-            # Recommendations
-            recommendations = []
-            if issue_counts.get("ERROR", 0) > 0:
-                recommendations.append(
-                    "🔴 Check error logs immediately - container may be failing"
-                )
-            if issue_counts.get("WARNING", 0) > 10:
-                recommendations.append(
-                    "🟡 High warning count - investigate configuration issues"
-                )
-            if issue_counts.get("PERFORMANCE", 0) > 0:
-                recommendations.append(
-                    "🟠 Performance issues detected - monitor resource usage"
-                )
-            if "connection refused" in result.stdout.lower():
-                recommendations.append(
-                    "🔗 Connection issues detected - check network/dependencies"
-                )
-            if "timeout" in result.stdout.lower():
-                recommendations.append(
-                    "⏱️ Timeout issues detected - check container responsiveness"
-                )
-
-            if recommendations:
-                console.print("\n[bold cyan]Recommendations:[/bold cyan]")
-                for rec in recommendations:
-                    console.print(f"  {rec}")
-
-            # Suggest follow-up commands
-            console.print("\n[bold cyan]Follow-up Commands:[/bold cyan]")
-            console.print(
-                f"  [cyan]pm logs {target} --follow[/cyan]     # Monitor live logs"
-            )
-            console.print(
-                f"  [cyan]pm list {target}[/cyan]             # Check container status"
-            )
-            if issue_counts.get("ERROR", 0) > 0:
+            # Show counts if there are issues
+            if errors > 0 or warnings > 0:
                 console.print(
-                    f"  [cyan]pm restart {target}[/cyan]          # Restart if needed"
+                    f"\n[red]Errors: {errors}[/red] | [yellow]Warnings: {warnings}[/yellow] | [dim]Info: {infos}[/dim]"
                 )
+
+            # Show all detected error/warning messages
+            if all_errors or all_warnings:
+                console.print("\nAll Detected Issues:")
+                if all_errors:
+                    console.print(f"  [red]All Errors ({len(all_errors)}):[/red]")
+                    # Display each error line separately in chronological descending order (most recent first)
+                    for error in all_errors:  # Most recent first
+                        extracted_msg = self._extract_log_message(error, "ERROR")
+
+                        if len(extracted_msg) > 120:
+                            display_msg = extracted_msg[:117] + "..."
+                        else:
+                            display_msg = extracted_msg
+
+                        # Format with red ERROR but white message
+                        formatted_msg = display_msg.replace(
+                            "ERROR -", "[red]ERROR[/red] -"
+                        )
+                        formatted_msg = formatted_msg.replace(
+                            "ERROR:", "[red]ERROR[/red]:"
+                        )
+                        formatted_msg = formatted_msg.replace(
+                            "ERROR ", "[red]ERROR[/red] "
+                        )
+
+                        console.print(f"    • {formatted_msg}")
+
+                if all_warnings:
+                    console.print(
+                        f"  [yellow]All Warnings ({len(all_warnings)}):[/yellow]"
+                    )
+                    # Display each warning line separately in chronological descending order (most recent first)
+                    for warning in all_warnings:  # Most recent first
+                        extracted_msg = self._extract_log_message(warning, "WARNING")
+
+                        if len(extracted_msg) > 120:
+                            display_msg = extracted_msg[:117] + "..."
+                        else:
+                            display_msg = extracted_msg
+
+                        # Format with yellow WARNING but white message
+                        formatted_msg = display_msg.replace(
+                            "WARNING -", "[yellow]WARNING[/yellow] -"
+                        )
+                        formatted_msg = formatted_msg.replace(
+                            "WARNING:", "[yellow]WARNING[/yellow]:"
+                        )
+                        formatted_msg = formatted_msg.replace(
+                            "WARNING ", "[yellow]WARNING[/yellow] "
+                        )
+
+                        console.print(f"    • {formatted_msg}")
+
+            # Quick recommendations
+            if errors > 0:
+                console.print(
+                    "\n[red]⚠ Check error logs immediately - container may be failing[/red]"
+                )
+            elif warnings > 10:
+                console.print(
+                    "\n[yellow]⚠ High warning count - investigate configuration[/yellow]"
+                )
+
+            # Follow-up commands with interactive menu
+            # Use the matched service name for commands
+            cmd_service = matched_service
+
+            console.print("\nFollow-up Commands:")
+            console.print(
+                f"[cyan]1[/cyan]  pm log-ai-analyze {cmd_service}\t# Analyze logs with AI"
+            )
+            console.print(f"[cyan]2[/cyan]  pm logs {cmd_service:<20}\t\t# View logs")
+            console.print(
+                f"[cyan]3[/cyan]  pm logs {cmd_service} --follow\t# Monitor live logs"
+            )
+            console.print(
+                f"[cyan]4[/cyan]  pm status {cmd_service:<18}\t\t# Check service status"
+            )
+            if errors > 0:
+                console.print(
+                    f"[cyan]5[/cyan]  pm restart {cmd_service:<17}\t\t# Restart if needed"
+                )
+                max_option = 5
+            else:
+                max_option = 4
+
+            # Interactive command selection
+            try:
+                choice = input(
+                    f"\nSelect command (1-{max_option}) or press Enter to skip: "
+                ).strip()
+                if choice and choice.isdigit():
+                    choice_num = int(choice)
+                    if 1 <= choice_num <= max_option:
+                        import subprocess
+
+                        if choice_num == 1:
+                            cmd = [
+                                "python",
+                                "podman_manager.py",
+                                "log-ai-analyze",
+                                cmd_service,
+                            ]
+                        elif choice_num == 2:
+                            cmd = ["python", "podman_manager.py", "logs", cmd_service]
+                        elif choice_num == 3:
+                            cmd = [
+                                "python",
+                                "podman_manager.py",
+                                "logs",
+                                cmd_service,
+                                "--follow",
+                            ]
+                        elif choice_num == 4:
+                            cmd = ["python", "podman_manager.py", "status", cmd_service]
+                        elif choice_num == 5:
+                            cmd = [
+                                "python",
+                                "podman_manager.py",
+                                "restart",
+                                cmd_service,
+                            ]
+
+                        console.print(f"\n[cyan]Executing: {' '.join(cmd)}[/cyan]")
+                        subprocess.run(cmd)
+                    else:
+                        console.print(
+                            f"[yellow]Invalid choice. Please select 1-{max_option}[/yellow]"
+                        )
+                elif choice:
+                    console.print(
+                        f"[yellow]Invalid choice. Please select 1-{max_option}[/yellow]"
+                    )
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Command selection cancelled[/yellow]")
+            except Exception as e:
+                console.print(f"[red]Error executing command: {e}[/red]")
 
         except subprocess.TimeoutExpired:
             console.print("[red]Timeout while fetching logs[/red]")
         except Exception as e:
             console.print(f"[red]Error analyzing logs: {e}[/red]")
+
+    def ai_analyze_logs(
+        self, target: str, lines: int = 50, vllm_url: str = "http://localhost:8002"
+    ) -> None:
+        """AI-powered analysis of container logs for root causes and solutions"""
+        import json
+        import subprocess
+        from datetime import datetime
+
+        import requests
+
+        try:
+            project = self.manager._find_service_project(target)
+            if not project:
+                console.print(f"[red]Service '{target}' not found[/red]")
+                return
+
+            # Get the actual matched service name
+            matched_service = self.manager.get_matched_service_name(target)
+
+            # Check if container exists first
+            check_cmd = [
+                "podman",
+                "ps",
+                "-a",
+                "--filter",
+                f"name={matched_service}",
+                "--format",
+                "{{.Names}}",
+            ]
+            check_result = subprocess.run(check_cmd, capture_output=True, text=True)
+
+            if not check_result.stdout.strip():
+                console.print(
+                    f"[yellow]Container '{matched_service}' not found or not running[/yellow]"
+                )
+                console.print(
+                    "[dim]Try running: pm list to see available services[/dim]"
+                )
+                return
+
+            console.print(
+                f"[cyan]AI analyzing logs for {matched_service} (last {lines} lines)...[/cyan]"
+            )
+
+            # Get logs using podman logs
+            cmd = ["podman", "logs", "--tail", str(lines), matched_service]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode != 0:
+                console.print(f"[red]Failed to get logs: {result.stderr.strip()}[/red]")
+                return
+
+            if not result.stdout.strip():
+                console.print(f"[yellow]No logs found for {matched_service}[/yellow]")
+                return
+
+            log_content = result.stdout.strip()
+
+            # Check vLLM proxy availability
+            try:
+                health_response = requests.get(f"{vllm_url}/health", timeout=5)
+                if health_response.status_code != 200:
+                    console.print(f"[red]vLLM proxy not healthy at {vllm_url}[/red]")
+                    return
+            except requests.exceptions.RequestException as e:
+                console.print(
+                    f"[red]Cannot connect to vLLM proxy at {vllm_url}: {e}[/red]"
+                )
+                console.print(
+                    "[dim]Make sure vLLM proxy is running: pm start vllm-proxy[/dim]"
+                )
+                return
+
+            # Prepare AI analysis prompt
+            analysis_prompt = f"""You are an expert system administrator and DevOps engineer. Analyze the following container logs and provide:
+
+1. **Root Cause Analysis**: Identify the primary issues causing errors or warnings
+2. **Impact Assessment**: Severity and potential consequences of identified issues
+3. **Recommended Solutions**: Specific, actionable steps to resolve the problems
+4. **Prevention Strategies**: How to prevent these issues in the future
+
+Container: {matched_service}
+Timestamp: {datetime.now().isoformat()}
+Log Lines Analyzed: {len(log_content.split())}
+
+=== LOG CONTENT ===
+{log_content}
+=== END LOG CONTENT ===
+
+Provide a structured analysis focusing on actionable insights. If no significant issues are found, provide a brief health assessment."""
+
+            # Call vLLM API
+            api_payload = {
+                "model": "qwen2.5-coder",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are an expert system administrator and DevOps engineer specializing in container log analysis and troubleshooting.",
+                    },
+                    {"role": "user", "content": analysis_prompt},
+                ],
+                "max_tokens": 2048,
+                "temperature": 0.1,
+                "stream": False,
+            }
+
+            console.print("[yellow]Analyzing logs with AI...[/yellow]")
+
+            try:
+                api_response = requests.post(
+                    f"{vllm_url}/v1/chat/completions",
+                    json=api_payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=60,
+                )
+
+                if api_response.status_code != 200:
+                    console.print(
+                        f"[red]AI analysis failed: HTTP {api_response.status_code}[/red]"
+                    )
+                    console.print(f"[red]{api_response.text}[/red]")
+                    return
+
+                response_data = api_response.json()
+                ai_analysis = response_data["choices"][0]["message"]["content"]
+
+                # Display results
+                console.print(
+                    f"\n[bold green]🤖 AI Log Analysis for {matched_service}[/bold green]"
+                )
+                console.print("=" * 60)
+                console.print(ai_analysis)
+                console.print("=" * 60)
+
+                # Show follow-up commands with interactive menu
+                cmd_service = matched_service
+                console.print("\n[bold cyan]Follow-up Commands:[/bold cyan]")
+                console.print(
+                    f"[cyan]1[/cyan]  pm logs {cmd_service:<20}\t\t# View logs"
+                )
+                console.print(
+                    f"[cyan]2[/cyan]  pm logs {cmd_service} --follow\t# Monitor live logs"
+                )
+                console.print(
+                    f"[cyan]3[/cyan]  pm status {cmd_service:<18}\t\t# Check service status"
+                )
+                console.print(
+                    f"[cyan]4[/cyan]  pm restart {cmd_service:<17}\t\t# Restart if needed"
+                )
+                console.print(
+                    f"[cyan]5[/cyan]  pm log-ai-analyze {cmd_service}\t# Re-run AI analysis"
+                )
+
+                # Interactive command selection
+                try:
+                    choice = input(
+                        "\nSelect command (1-5) or press Enter to skip: "
+                    ).strip()
+                    if choice and choice.isdigit():
+                        choice_num = int(choice)
+                        if 1 <= choice_num <= 5:
+                            import subprocess
+
+                            if choice_num == 1:
+                                cmd = [
+                                    "python",
+                                    "podman_manager.py",
+                                    "logs",
+                                    cmd_service,
+                                ]
+                            elif choice_num == 2:
+                                cmd = [
+                                    "python",
+                                    "podman_manager.py",
+                                    "logs",
+                                    cmd_service,
+                                    "--follow",
+                                ]
+                            elif choice_num == 3:
+                                cmd = [
+                                    "python",
+                                    "podman_manager.py",
+                                    "status",
+                                    cmd_service,
+                                ]
+                            elif choice_num == 4:
+                                cmd = [
+                                    "python",
+                                    "podman_manager.py",
+                                    "restart",
+                                    cmd_service,
+                                ]
+                            elif choice_num == 5:
+                                cmd = [
+                                    "python",
+                                    "podman_manager.py",
+                                    "log-ai-analyze",
+                                    cmd_service,
+                                ]
+
+                            console.print(f"\n[cyan]Executing: {' '.join(cmd)}[/cyan]")
+                            subprocess.run(cmd)
+                        else:
+                            console.print(
+                                "[yellow]Invalid choice. Please select 1-5[/yellow]"
+                            )
+                    elif choice:
+                        console.print(
+                            "[yellow]Invalid choice. Please select 1-5[/yellow]"
+                        )
+                except KeyboardInterrupt:
+                    console.print("\n[yellow]Command selection cancelled[/yellow]")
+                except Exception as e:
+                    console.print(f"[red]Error executing command: {e}[/red]")
+
+            except requests.exceptions.Timeout:
+                console.print("[red]AI analysis timed out (60s limit)[/red]")
+            except requests.exceptions.RequestException as e:
+                console.print(f"[red]AI analysis request failed: {e}[/red]")
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Invalid JSON response from AI: {e}[/red]")
+            except KeyError as e:
+                console.print(f"[red]Unexpected AI response format: {e}[/red]")
+
+        except subprocess.TimeoutExpired:
+            console.print("[red]Timeout while fetching logs[/red]")
+        except Exception as e:
+            console.print(f"[red]Error in AI log analysis: {e}[/red]")
 
     def exec_command(self, target: str, command: List[str]) -> None:
         """Execute command in container"""
@@ -578,8 +909,36 @@ class ContainerOperations:
         except Exception as e:
             console.print(f"[red]Error building: {e}[/red]")
 
-    def prune(self) -> None:
-        """Remove unused images and containers"""
+    def prune(self, enhanced: bool = True, quick: bool = False) -> None:
+        """Remove unused images and containers with intelligent analysis
+
+        Args:
+            enhanced: Use enhanced prune with analysis (default: True)
+            quick: Use quick prune mode (default: False)
+        """
+        if enhanced and not quick:
+            # Use enhanced prune with full analysis
+            from pm_enhanced_prune import EnhancedPruner
+
+            pruner = EnhancedPruner(console)
+            success = pruner.run_safe_prune_workflow()
+            if not success:
+                console.print(
+                    "[yellow]Enhanced prune failed, falling back to basic prune[/yellow]"
+                )
+                self._basic_prune()
+        elif quick:
+            # Use quick prune from enhanced pruner
+            from pm_enhanced_prune import EnhancedPruner
+
+            pruner = EnhancedPruner(console)
+            pruner.run_quick_prune()
+        else:
+            # Use basic prune
+            self._basic_prune()
+
+    def _basic_prune(self) -> None:
+        """Basic prune functionality (original implementation)"""
         try:
             console.print("[yellow]Pruning unused containers...[/yellow]")
             subprocess.run(["podman", "container", "prune", "-f"])
@@ -638,28 +997,148 @@ class ContainerOperations:
         build: bool = False,
         dry_run: bool = False,
         remove_orphans: bool = False,
+        build_type: str = None,
     ) -> bool:
-        """Reinitialize containers (remove and recreate)"""
+        """Reinitialize containers (remove and recreate)
+
+        Args:
+            target: Stack or service name
+            build: Whether to build images (legacy parameter)
+            dry_run: Show what would be done without executing
+            remove_orphans: Remove orphaned containers
+            build_type: Type of build ('legacy', 'podman', 'quadlet') - for compatibility with QuadletOperations
+        """
         try:
-            project = self.manager._find_service_project(target)
-            if not project:
-                console.print(f"[red]Service '{target}' not found[/red]")
-                return False
+            # Check if target is a stack name first
+            stacks = self.manager._parse_compose_files()
+            compose_file = None
+            is_stack = False
+
+            # Check if target is a stack name
+            for stack_name, stack_info in stacks.items():
+                if target == stack_name:
+                    compose_file = stack_info["file"]
+                    is_stack = True
+                    break
+
+            # If not a stack, try to find by service name
+            if not compose_file:
+                service_stack = self.manager._find_service_project(target)
+                if not service_stack:
+                    console.print(f"[red]Service or stack '{target}' not found[/red]")
+                    return False
+                compose_file = self.manager.compose_dir / service_stack
+                is_stack = False
 
             if dry_run:
                 console.print(f"[yellow]DRY RUN: Would reinitialize {target}[/yellow]")
                 console.print("[dim]Steps that would be performed:[/dim]")
-                console.print("[dim]1. Stop containers[/dim]")
-                console.print("[dim]2. Remove containers[/dim]")
-                if build:
-                    console.print("[dim]3. Build images[/dim]")
-                console.print("[dim]3/4. Start containers[/dim]")
+                if is_stack:
+                    console.print("[dim]1. Stop all services in stack[/dim]")
+                    console.print("[dim]2. Remove all containers in stack[/dim]")
+                    if build or build_type:
+                        console.print("[dim]3. Build all images in stack[/dim]")
+                    console.print("[dim]3/4. Start all services in stack[/dim]")
+                else:
+                    console.print("[dim]1. Stop service[/dim]")
+                    console.print("[dim]2. Remove container[/dim]")
+                    if build or build_type:
+                        console.print("[dim]3. Build image[/dim]")
+                    console.print("[dim]3/4. Start service[/dim]")
                 return True
 
-            console.print(f"[yellow]Reinitializing {target}...[/yellow]")
+            if is_stack:
+                console.print(
+                    f"[yellow]Reinitializing stack {target} (all services)...[/yellow]"
+                )
+                return self._reinit_stack(
+                    compose_file, build or build_type is not None, remove_orphans
+                )
+            else:
+                console.print(f"[yellow]Reinitializing service {target}...[/yellow]")
+                return self._reinit_service(
+                    target,
+                    compose_file,
+                    build or build_type is not None,
+                    remove_orphans,
+                )
 
+        except Exception as e:
+            console.print(f"[red]Error reinitializing: {e}[/red]")
+            return False
+
+    def _reinit_stack(
+        self, compose_file: Path, should_build: bool, remove_orphans: bool
+    ) -> bool:
+        """Reinitialize entire stack (all services)"""
+        try:
+            # Stop all services
+            down_cmd = ["podman", "compose", "-f", compose_file.name, "down"]
+            console.print(f"[cyan]exec: {' '.join(down_cmd)}[/cyan]")
+            result = subprocess.run(
+                down_cmd, cwd=self.manager.compose_dir, capture_output=True, text=True
+            )
+
+            if result.returncode != 0:
+                console.print(
+                    f"[yellow]Warning stopping services: {result.stderr.strip() if result.stderr else 'Unknown error'}[/yellow]"
+                )
+
+            # Build if requested
+            if should_build:
+                build_cmd = [
+                    "podman",
+                    "compose",
+                    "-f",
+                    compose_file.name,
+                    "build",
+                    "--no-cache",
+                ]
+                console.print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
+                result = subprocess.run(
+                    build_cmd,
+                    cwd=self.manager.compose_dir,
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    console.print("[red]Build failed for stack[/red]")
+                    if result.stderr:
+                        console.print(f"[red]{result.stderr.strip()}[/red]")
+                    return False
+                else:
+                    console.print("[green]Build completed for stack[/green]")
+
+            # Start all services
+            up_cmd = ["podman", "compose", "-f", compose_file.name, "up", "-d"]
+            if remove_orphans:
+                up_cmd.append("--remove-orphans")
+
+            console.print(f"[cyan]exec: {' '.join(up_cmd)}[/cyan]")
+            result = subprocess.run(
+                up_cmd, cwd=self.manager.compose_dir, capture_output=True, text=True
+            )
+
+            if result.returncode == 0:
+                console.print("[green]✓ Stack reinitialized successfully[/green]")
+                return True
+            else:
+                console.print("[red]✗ Failed to start stack services[/red]")
+                if result.stderr:
+                    console.print(f"[red]{result.stderr.strip()}[/red]")
+                return False
+
+        except Exception as e:
+            console.print(f"[red]Error reinitializing stack: {e}[/red]")
+            return False
+
+    def _reinit_service(
+        self, target: str, compose_file: Path, should_build: bool, remove_orphans: bool
+    ) -> bool:
+        """Reinitialize single service"""
+        try:
             # Stop
-            stop_cmd = ["podman", "compose", "-f", project, "stop", target]
+            stop_cmd = ["podman", "compose", "-f", compose_file.name, "stop", target]
             console.print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
             subprocess.run(
                 stop_cmd, cwd=self.manager.compose_dir, capture_output=True, text=True
@@ -671,8 +1150,16 @@ class ContainerOperations:
             subprocess.run(rm_cmd, capture_output=True, text=True)
 
             # Build if requested
-            if build:
-                build_cmd = ["podman", "compose", "-f", project, "build", target]
+            if should_build:
+                build_cmd = [
+                    "podman",
+                    "compose",
+                    "-f",
+                    compose_file.name,
+                    "build",
+                    "--no-cache",
+                    target,
+                ]
                 console.print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
                 result = subprocess.run(
                     build_cmd,
@@ -682,10 +1169,14 @@ class ContainerOperations:
                 )
                 if result.returncode != 0:
                     console.print(f"[red]Build failed for {target}[/red]")
+                    if result.stderr:
+                        console.print(f"[red]{result.stderr.strip()}[/red]")
                     return False
+                else:
+                    console.print(f"[green]Build completed for {target}[/green]")
 
             # Start
-            up_cmd = ["podman", "compose", "-f", project, "up", "-d", target]
+            up_cmd = ["podman", "compose", "-f", compose_file.name, "up", "-d", target]
             if remove_orphans:
                 up_cmd.append("--remove-orphans")
 
@@ -704,16 +1195,44 @@ class ContainerOperations:
                 return False
 
         except Exception as e:
-            console.print(f"[red]Error reinitializing: {e}[/red]")
+            console.print(f"[red]Error reinitializing service: {e}[/red]")
             return False
 
-    def restart(self, target: str, remove_orphans: bool = False) -> bool:
+    def restart(
+        self, target: str, build: bool = False, remove_orphans: bool = False
+    ) -> bool:
         """Restart services"""
         try:
             project = self.manager._find_service_project(target)
             if not project:
                 console.print(f"[red]Service '{target}' not found[/red]")
                 return False
+
+            # Build if requested
+            if build:
+                build_cmd = [
+                    "podman",
+                    "compose",
+                    "-f",
+                    project,
+                    "build",
+                    "--no-cache",
+                    target,
+                ]
+                console.print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
+                build_result = subprocess.run(
+                    build_cmd,
+                    cwd=self.manager.compose_dir,
+                    capture_output=True,
+                    text=True,
+                )
+                if build_result.returncode != 0:
+                    console.print(f"[red]Build failed for {target}[/red]")
+                    if build_result.stderr:
+                        console.print(f"[red]{build_result.stderr.strip()}[/red]")
+                    return False
+                else:
+                    console.print(f"[green]Build completed for {target}[/green]")
 
             cmd = ["podman", "compose", "-f", project, "restart", target]
             console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
@@ -827,30 +1346,76 @@ class ContainerOperations:
         console.print("[yellow]System df not available in compose mode[/yellow]")
         console.print("[dim]Use 'pm system-df' command instead[/dim]")
 
-    def start(self, target: str) -> bool:
-        """Start services in a project"""
+    def start(self, target: str, build: bool = False) -> bool:
+        """Start services in a stack or individual service"""
         try:
-            # Find the compose file for the target project
-            projects = self.manager._parse_compose_files()
-
-            # Check if target is a project name
+            # Find the compose file for the target stack
+            stacks = self.manager._parse_compose_files()
             compose_file = None
-            for project_name, project_info in projects.items():
-                if target == project_name:
-                    compose_file = project_info["file"]
+            is_stack = False
+
+            # Check if target is a stack name
+            for stack_name, stack_info in stacks.items():
+                if target == stack_name:
+                    compose_file = stack_info["file"]
+                    is_stack = True
                     break
 
             if not compose_file:
                 # Try to find by service name
-                service_project = self.manager._find_service_project(target)
-                if service_project:
-                    compose_file = self.manager.compose_dir / service_project
+                service_stack = self.manager._find_service_project(target)
+                if service_stack:
+                    compose_file = self.manager.compose_dir / service_stack
+                    is_stack = False
                 else:
-                    console.print(f"[red]Project or service '{target}' not found[/red]")
+                    console.print(f"[red]Stack or service '{target}' not found[/red]")
                     return False
 
-            cmd = ["podman", "compose", "-f", compose_file.name, "up", "-d"]
-            console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+            # Build if requested
+            if build:
+                if is_stack:
+                    build_cmd = [
+                        "podman",
+                        "compose",
+                        "-f",
+                        compose_file.name,
+                        "build",
+                        "--no-cache",
+                    ]
+                    console.print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
+                else:
+                    build_cmd = [
+                        "podman",
+                        "compose",
+                        "-f",
+                        compose_file.name,
+                        "build",
+                        "--no-cache",
+                        target,
+                    ]
+                    console.print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
+
+                build_result = subprocess.run(
+                    build_cmd,
+                    cwd=self.manager.compose_dir,
+                    capture_output=True,
+                    text=True,
+                )
+                if build_result.returncode != 0:
+                    console.print(f"[red]Build failed for {target}[/red]")
+                    if build_result.stderr:
+                        console.print(f"[red]{build_result.stderr.strip()}[/red]")
+                    return False
+                else:
+                    console.print(f"[green]Build completed for {target}[/green]")
+
+            # Start services
+            if is_stack:
+                cmd = ["podman", "compose", "-f", compose_file.name, "up", "-d"]
+                console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+            else:
+                cmd = ["podman", "compose", "-f", compose_file.name, "up", "-d", target]
+                console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
             # Suppress verbose output from podman-compose
             result = subprocess.run(
@@ -858,34 +1423,20 @@ class ContainerOperations:
             )
 
             if result.returncode == 0:
-                # Parse output to show clean service list
-                if result.stdout:
-                    lines = result.stdout.split("\n")
-                    started_services = []
-                    for line in lines:
-                        # Look for service names being started
-                        if "podman run" in line or "Creating" in line:
-                            # Extract service name from various output formats
-                            words = line.split()
-                            for word in words:
-                                if (
-                                    word
-                                    and not word.startswith("-")
-                                    and "/" not in word
-                                    and "=" not in word
-                                ):
-                                    if word not in started_services and len(word) > 2:
-                                        started_services.append(word)
-                                        break
-
-                    # Show clean output
-                    for service in started_services:
-                        console.print(f"[green]✓ {service}[/green]")
-
-                console.print("[green]✓ All services started[/green]")
+                if is_stack:
+                    console.print(
+                        f"[green]✓ All services in {target} stack started[/green]"
+                    )
+                else:
+                    console.print(f"[green]✓ {target} service started[/green]")
                 return True
             else:
-                console.print(f"[red]Failed to start services in {target}[/red]")
+                if is_stack:
+                    console.print(
+                        f"[red]Failed to start services in stack {target}[/red]"
+                    )
+                else:
+                    console.print(f"[red]Failed to start service {target}[/red]")
                 if result.stderr:
                     console.print(f"[red]{result.stderr.strip()}[/red]")
                 return False
@@ -928,3 +1479,20 @@ class ContainerOperations:
         console.print("[yellow]Reload daemon not available in compose mode[/yellow]")
         console.print("[cyan]This is a systemd-specific command[/cyan]")
         return False
+
+    def rebuild(self, target: str) -> bool:
+        """Rebuild container image and restart service (compatibility method)"""
+        console.print(
+            f"[yellow]Rebuilding {target} using compose build and restart...[/yellow]"
+        )
+
+        try:
+            # Build with no-cache
+            self.build(target, no_cache=True)
+
+            # Restart the service
+            return self.restart(target)
+
+        except Exception as e:
+            console.print(f"[red]Error rebuilding {target}: {e}[/red]")
+            return False
