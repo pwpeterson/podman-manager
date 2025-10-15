@@ -109,7 +109,7 @@ class QuadletInstaller:
         stack_dir = self.quadlet_base_dir / stack_name
 
         if not stack_dir.exists():
-            self._print_error(f"Stack directory not found: {stack_dir}")
+            self._print_error(f"Stack directory not found: [cyan]{stack_dir}[/cyan]")
             console.print()
             self._print_status("Available stacks:")
             available_stacks = self.discover_stacks()
