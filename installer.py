@@ -478,7 +478,7 @@ class QuadletInstaller:
             f"          [green]View logs:[/green]{journal_cmd} -u {service_name} -f"
         )
         console.print(
-            f"   [green]Show service file:[/green]{systemctl_cmd} cat {service_name}"
+            f"  [green]Show service file:[/green]{systemctl_cmd} cat {service_name}"
         )
         console.print(
             f"  [green]Enable auto-start:[/green]{systemctl_cmd} enable {service_name}"

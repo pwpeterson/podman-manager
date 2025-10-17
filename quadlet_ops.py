@@ -1042,22 +1042,23 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 # Add systemd-recommended commands first
                 for cmd in systemd_commands:
                     console.print(
-                        f"[cyan]{action_num}.[/cyan] Run systemd command: [white]{cmd}[/white]"
+                        f"[green] Run systemd command:[/green] [white]{cmd}[/white]"
                     )
                     action_num += 1
 
                 # Add our standard troubleshooting commands
                 console.print(
-                    f"[cyan]{action_num}.[/cyan] Check service status: [white]pm status {target}[/white]"
+                    f"[green] Check service status:[/green] [white]pm status {target}[/white]"
                 )
                 console.print(
-                    f"[cyan]{action_num + 1}.[/cyan] View detailed logs: [white]pm logs {target}[/white]"
+                    f" [green] View detailed logs:[/green] [white]pm logs {target}[/white]"
                 )
                 console.print(
-                    f"[cyan]{action_num + 2}.[/cyan] Diagnose the issue: [white]pm diagnose {target}[/white]"
+                    f" [green] Diagnose the issue:[/green] [white]pm diagnose {target}[/white]"
                 )
                 console.print(
-                    f"[cyan]{action_num + 3}.[/cyan] Reset failed state: [white]pm reset-failed {target}[/white]"
+                    f" [green] Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
+                    f" [green] Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
                 )
             else:
                 console.print(f"[red]Start failed: {error_msg}[/red]")
@@ -1081,16 +1082,16 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 # Show optional next steps
                 console.print("[green]Optional:[/green]")
                 console.print(
-                    f"[cyan]1.[/cyan] Check service status: [white]pm status {target}[/white]"
+                    f"[green] Check service status:[/green] [white]pm status {target}[/white]"
                 )
                 console.print(
-                    f"[cyan]2.[/cyan] View detailed logs: [white]pm logs {target}[/white]"
+                    f"  [green] View detailed logs:[/green] [white]pm logs {target}[/white]"
                 )
                 console.print(
-                    f"[cyan]3.[/cyan] Diagnose the issue: [white]pm diagnose {target}[/white]"
+                    f"  [green  Diagnose the issue:[/green] [white]pm diagnose {target}[/white]"
                 )
                 console.print(
-                    f"[cyan]4.[/cyan] Reset failed state: [white]pm reset-failed {target}[/white]"
+                    f"  [green]Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
                 )
                 console.print()
 
@@ -1734,22 +1735,22 @@ Provide a structured analysis focusing on actionable insights. If no significant
                             # Add systemd-recommended commands first
                             for cmd in systemd_commands:
                                 console.print(
-                                    f"[cyan]{action_num}.[/cyan] Run systemd command: [white]{cmd}[/white]"
+                                    f"[/green] Run systemd command:[/green] [white]{cmd}[/white]"
                                 )
                                 action_num += 1
 
                             # Add our standard troubleshooting commands
                             console.print(
-                                f"[cyan]{action_num}.[/cyan] Check service status: [white]pm status {service}[/white]"
+                                f"[green] Check service status:[/green] [white]pm status {service}[/white]"
                             )
                             console.print(
-                                f"[cyan]{action_num + 1}.[/cyan] View detailed logs: [white]pm logs {service}[/white]"
+                                f"[green]   View detailed logs:[/green] [white]pm logs {service}[/white]"
                             )
                             console.print(
-                                f"[cyan]{action_num + 2}.[/cyan] Diagnose the issue: [white]pm diagnose {service}[/white]"
+                                f"[green]   Diagnose the issue:[/green] [white]pm diagnose {service}[/white]"
                             )
                             console.print(
-                                f"[cyan]{action_num + 3}.[/cyan] Reset failed state: [white]pm reset-failed {service}[/white]"
+                                f"[green]   Reset failed state:[/green] [white]pm reset-failed {service}[/white]"
                             )
                         else:
                             console.print(
@@ -1767,16 +1768,16 @@ Provide a structured analysis focusing on actionable insights. If no significant
             # Show optional next steps for the stack
             console.print("[green]Optional:[/green]")
             console.print(
-                f"[cyan]1.[/cyan] Check service status: [white]pm status {project}[/white]"
+                f"[green] Check service status:[/green] [white]pm status {project}[/white]"
             )
             console.print(
-                f"[cyan]2.[/cyan] View detailed logs: [white]pm logs {project}[/white]"
+                f"  [green] View detailed logs:[/green] [white]pm logs {project}[/white]"
             )
             console.print(
-                f"[cyan]3.[/cyan] Diagnose the issue: [white]pm diagnose {project}[/white]"
+                f"  [green] Diagnose the issue:[/green] [white]pm diagnose {project}[/white]"
             )
             console.print(
-                f"[cyan]4.[/cyan] Reset failed state: [white]pm reset-failed {project}[/white]"
+                f"  [green] Reset failed state:[/green] [white]pm reset-failed {project}[/white]"
             )
             console.print()
 
@@ -3194,7 +3195,9 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
     def _show_startup_failure_logs(self, target: str, service_name: str) -> None:
         """Show recent logs when service fails to start properly"""
-        console.print("[yellow]Service startup log errors:[/yellow]")
+        console.print(
+            "[green]Service startup log[/green] [red]errors[/red][green]:[/green]"
+        )
 
         # Get recent logs
         logs_cmd = [
@@ -3242,24 +3245,24 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
         # Show recommended actions
         console.print()
-        console.print("[yellow]Recommended actions:[/yellow]")
+        console.print("[green]  Recommended actions:[/green]")
         console.print(
-            f"[cyan]1.[/cyan] Check service status: [white]systemctl --user status {service_name}[/white]"
+            f"[green] Check service status:[/green] [white]systemctl --user status {service_name}[/white]"
         )
         console.print(
-            f"[cyan]2.[/cyan] View detailed logs: [white]journalctl --user -xeu {service_name}[/white]"
+            f"[green]   View detailed logs:[/green] [white]journalctl --user -xeu {service_name}[/white]"
         )
         console.print(
-            f"[cyan]3.[/cyan] Check service status: [white]pm status {target}[/white]"
+            f"[green] Check service status:[/green] [white]pm status {target}[/white]"
         )
         console.print(
-            f"[cyan]4.[/cyan] View detailed logs: [white]pm logs {target}[/white]"
+            f"[green]   View detailed logs:[/green] [white]pm logs {target}[/white]"
         )
         console.print(
-            f"[cyan]5.[/cyan] Diagnose the issue: [white]pm diagnose {target}[/white]"
+            f"[green]   Diagnose the issue:[/green] [white]pm diagnose {target}[/white]"
         )
         console.print(
-            f"[cyan]6.[/cyan] Reset failed state: [white]pm reset-failed {target}[/white]"
+            f"[green]   Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
         )
         console.print()
 
