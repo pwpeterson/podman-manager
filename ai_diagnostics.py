@@ -28,7 +28,7 @@ class AIDiagnostics:
             return
 
         self.manager._clear_auto_match_cache()
-        service_name = self.manager._find_service_name(target)
+        service_name = self.manager._find_service_name(target, allow_interactive=True)
 
         if not service_name:
             return

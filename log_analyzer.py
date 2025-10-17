@@ -91,7 +91,7 @@ class LogAnalyzer:
     def analyze_logs(self, target: str, lines: int = 50) -> None:
         """Analyze service logs for errors, warnings, and other issues"""
         self.manager._clear_auto_match_cache()
-        service_name = self.manager._find_service_name(target)
+        service_name = self.manager._find_service_name(target, allow_interactive=True)
 
         if not service_name:
             return
@@ -405,7 +405,7 @@ class LogAnalyzer:
     def diagnose_container_failure(self, target: str) -> None:
         """Diagnose why a container is failing to start"""
         self.manager._clear_auto_match_cache()
-        service_name = self.manager._find_service_name(target)
+        service_name = self.manager._find_service_name(target, allow_interactive=True)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return

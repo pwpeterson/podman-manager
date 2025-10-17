@@ -59,7 +59,7 @@ class ReinitManager:
             return stack_mgr.reinit_stack(target, build_type=build_type)
 
         # PRIORITY 3: Try service name resolution
-        service_name = self.manager._find_service_name(target, allow_interactive=False)
+        service_name = self.manager._find_service_name(target, allow_interactive=True)
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
