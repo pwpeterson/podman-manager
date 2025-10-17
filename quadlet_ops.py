@@ -1029,17 +1029,35 @@ Provide a structured analysis focusing on actionable insights. If no significant
                     f"[red]❌ Service startup failed: {service_name_from_error}[/red]"
                 )
                 console.print("[yellow]💡 Recommended actions:[/yellow]")
+
+                # Extract systemd-recommended commands from error message
+                systemd_commands = []
+                if 'See "' in error_msg:
+                    # Find all commands between quotes after "See"
+                    see_pattern = r'See "([^"]+)"'
+                    matches = re.findall(see_pattern, error_msg)
+                    systemd_commands = matches
+
+                action_num = 1
+                # Add systemd-recommended commands first
+                for cmd in systemd_commands:
+                    console.print(
+                        f"[cyan]{action_num}.[/cyan] Run systemd command: [white]{cmd}[/white]"
+                    )
+                    action_num += 1
+
+                # Add our standard troubleshooting commands
                 console.print(
-                    f"[cyan]1.[/cyan] Check service status: [white]pm status {target}[/white]"
+                    f"[cyan]{action_num}.[/cyan] Check service status: [white]pm status {target}[/white]"
                 )
                 console.print(
-                    f"[cyan]2.[/cyan] View detailed logs: [white]pm logs {target}[/white]"
+                    f"[cyan]{action_num + 1}.[/cyan] View detailed logs: [white]pm logs {target}[/white]"
                 )
                 console.print(
-                    f"[cyan]3.[/cyan] Diagnose the issue: [white]pm diagnose {target}[/white]"
+                    f"[cyan]{action_num + 2}.[/cyan] Diagnose the issue: [white]pm diagnose {target}[/white]"
                 )
                 console.print(
-                    f"[cyan]4.[/cyan] Reset failed state: [white]pm reset-failed {target}[/white]"
+                    f"[cyan]{action_num + 3}.[/cyan] Reset failed state: [white]pm reset-failed {target}[/white]"
                 )
             else:
                 console.print(f"[red]Start failed: {error_msg}[/red]")
@@ -1646,17 +1664,35 @@ Provide a structured analysis focusing on actionable insights. If no significant
                             console.print(
                                 f"[yellow]💡 Recommended actions for {service}:[/yellow]"
                             )
+
+                            # Extract systemd-recommended commands from error message
+                            systemd_commands = []
+                            if 'See "' in error_msg:
+                                # Find all commands between quotes after "See"
+                                see_pattern = r'See "([^"]+)"'
+                                matches = re.findall(see_pattern, error_msg)
+                                systemd_commands = matches
+
+                            action_num = 1
+                            # Add systemd-recommended commands first
+                            for cmd in systemd_commands:
+                                console.print(
+                                    f"[cyan]{action_num}.[/cyan] Run systemd command: [white]{cmd}[/white]"
+                                )
+                                action_num += 1
+
+                            # Add our standard troubleshooting commands
                             console.print(
-                                f"[cyan]1.[/cyan] Check service status: [white]pm status {service}[/white]"
+                                f"[cyan]{action_num}.[/cyan] Check service status: [white]pm status {service}[/white]"
                             )
                             console.print(
-                                f"[cyan]2.[/cyan] View detailed logs: [white]pm logs {service}[/white]"
+                                f"[cyan]{action_num + 1}.[/cyan] View detailed logs: [white]pm logs {service}[/white]"
                             )
                             console.print(
-                                f"[cyan]3.[/cyan] Diagnose the issue: [white]pm diagnose {service}[/white]"
+                                f"[cyan]{action_num + 2}.[/cyan] Diagnose the issue: [white]pm diagnose {service}[/white]"
                             )
                             console.print(
-                                f"[cyan]4.[/cyan] Reset failed state: [white]pm reset-failed {service}[/white]"
+                                f"[cyan]{action_num + 3}.[/cyan] Reset failed state: [white]pm reset-failed {service}[/white]"
                             )
                         else:
                             console.print(
