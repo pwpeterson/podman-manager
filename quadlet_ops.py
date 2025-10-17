@@ -3243,7 +3243,6 @@ Provide a structured analysis focusing on actionable insights. If no significant
         # Show recommended actions
         console.print()
         console.print("[yellow]Recommended actions:[/yellow]")
-        console.print()
         console.print(
             f"[cyan]1.[/cyan] Check service status: [white]systemctl --user status {service_name}[/white]"
         )
@@ -3262,6 +3261,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
         console.print(
             f"[cyan]6.[/cyan] Reset failed state: [white]pm reset-failed {target}[/white]"
         )
+        console.print()
 
     def _restart_service_with_build(self, target: str, build: bool = False) -> bool:
         """Restart a service with optional build"""
