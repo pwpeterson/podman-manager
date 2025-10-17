@@ -452,7 +452,7 @@ class QuadletManager:
         """Execute a systemctl command and return the result"""
         # Display command in a subtle way (unless quiet)
         if not quiet:
-            verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
+            verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
         # Use loguru's context binding for structured logging
         with logger.contextualize(action=action, command=" ".join(cmd)):
