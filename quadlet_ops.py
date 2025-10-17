@@ -3194,7 +3194,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
     def _show_startup_failure_logs(self, target: str, service_name: str) -> None:
         """Show recent logs when service fails to start properly"""
-        console.print("[yellow]Service startup log error log:[/yellow]")
+        console.print("[yellow]Service startup log errors:[/yellow]")
 
         # Get recent logs
         logs_cmd = [
