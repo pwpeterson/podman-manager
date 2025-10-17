@@ -230,8 +230,11 @@ class ServiceLifecycle:
             return
 
         # Use systemctl status for detailed output
+        from config import _verbose_enabled
+
         cmd = ["systemctl", "--user", "status", service_name]
-        console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+        if _verbose_enabled:
+            console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
         console.print("\n[green]Service Status:[/green]")
 
         try:
