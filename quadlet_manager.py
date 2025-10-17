@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 from loguru import logger
 
-from config import console
+from config import console, verbose_print  # pyright: ignore[reportAttributeAccessIssue]
 
 
 class QuadletManager:
@@ -354,6 +354,87 @@ class QuadletManager:
         except Exception:
             pass  # Ignore cache save errors
 
+    def _search_systemd_directory(self, partial_name: str) -> List[str]:
+        """Search systemd directory for .container files that match partial name"""
+        matches = []
+
+        if not self.quadlets_dir.exists():
+            return matches
+
+        try:
+            # Search for .container files that contain the partial name
+            for container_file in self.quadlets_dir.glob("*.container"):
+                service_name = container_file.stem  # Remove .container extension
+
+                # Check if partial name matches (case-insensitive)
+                if partial_name.lower() in service_name.lower():
+                    # Only add if not already in our discovered services
+                    if service_name not in self.quadlet_services:
+                        matches.append(service_name)
+                        # Also add it to our services mapping for future use
+                        self.quadlet_services[service_name] = f"{service_name}.service"
+
+            # Also search for .target files
+            for target_file in self.quadlets_dir.glob("*.target"):
+                target_name = target_file.stem  # Remove .target extension
+
+                # Check if partial name matches (case-insensitive)
+                if partial_name.lower() in target_name.lower():
+                    # Only add if not already in our discovered services
+                    if target_name not in self.quadlet_services:
+                        matches.append(target_name)
+                        # Also add it to our services mapping for future use
+                        self.quadlet_services[target_name] = f"{target_name}.target"
+
+        except Exception as e:
+            logger.debug("Error searching systemd directory: {}", e)
+
+        return matches
+
+    def _get_service_display_info(self, service_name: str) -> str:
+        """Get additional display information for a service"""
+        info_parts = []
+
+        # Check if it's installed
+        if hasattr(self, "service_status") and service_name in self.service_status:
+            status = self.service_status[service_name]
+            if status.get("installed", False):
+                info_parts.append("[green](installed)[/green]")
+            elif status.get("source", False):
+                info_parts.append("[yellow](available)[/yellow]")
+        else:
+            # Check if service file exists in systemd directory
+            container_file = self.quadlets_dir / f"{service_name}.container"
+            target_file = self.quadlets_dir / f"{service_name}.target"
+            if container_file.exists() or target_file.exists():
+                info_parts.append("[green](installed)[/green]")
+
+        # Check if it's part of a stack
+        for stack_name, stack_services in self.stack_services.items():
+            if service_name in stack_services:
+                info_parts.append(f"[dim](in {stack_name})[/dim]")
+                break
+
+        # Check current status
+        try:
+            status = self.get_service_status(service_name)
+            active_state = status.get("ActiveState", "unknown")
+            if active_state == "active":
+                info_parts.append("[green](running)[/green]")
+            elif active_state == "inactive":
+                info_parts.append("[dim](stopped)[/dim]")
+            elif active_state == "failed":
+                info_parts.append("[red](failed)[/red]")
+        except Exception:
+            pass  # Ignore status check errors
+
+        return " " + " ".join(info_parts) if info_parts else ""
+
+    def _clear_auto_match_cache(self) -> None:
+        """Clear the auto-match cache for a new command"""
+        if hasattr(self, "_auto_match_cache"):
+            self._auto_match_cache.clear()
+
     def _command_exists(self, command: str) -> bool:
         """Check if a command exists in PATH"""
         result = subprocess.run(["which", command], capture_output=True)
@@ -371,7 +452,7 @@ class QuadletManager:
         """Execute a systemctl command and return the result"""
         # Display command in a subtle way (unless quiet)
         if not quiet:
-            console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
+            verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
         # Use loguru's context binding for structured logging
         with logger.contextualize(action=action, command=" ".join(cmd)):
@@ -475,6 +556,22 @@ class QuadletManager:
         if target.isdigit():
             return self._handle_numeric_selection(int(target))
 
+        # Handle common service name aliases first
+        service_aliases = {
+            "vllm-qwen": "vllm-qwen25",
+            "qwen": "vllm-qwen25",
+            "qwen25": "vllm-qwen25",
+            "delegator": "vllm-delegator",
+            "proxy": "vllm-proxy",
+        }
+
+        if target in service_aliases:
+            original_target = target
+            target = service_aliases[target]
+            console.print(
+                f"[dim]Resolved alias '{original_target}' -> '{target}'[/dim]"
+            )
+
         # PRIORITY: Check for stack names first (before individual services)
         # Check if it's any discovered stack name (exact match)
         if target in self.stack_services:
@@ -527,8 +624,83 @@ class QuadletManager:
         if result.returncode == 0 and "LoadState=loaded" in result.stdout:
             return potential_service
 
+        # If not found, try one more search for similar services
+        if not allow_interactive:
+            # Try to find a single similar service and auto-select it
+            all_services = list(self.quadlet_services.keys())
+            systemd_matches = self._search_systemd_directory(target)
+            all_services.extend(systemd_matches)
+            all_services = list(set(all_services))  # Remove duplicates
+
+            # Find services that contain the target as a substring
+            similar = [svc for svc in all_services if target.lower() in svc.lower()]
+
+            if not similar:
+                # Find services that start with the same prefix
+                if "-" in target:
+                    prefix = target.split("-")[0]
+                    similar = [svc for svc in all_services if svc.startswith(prefix)]
+
+            if len(similar) == 1:
+                # Auto-select single match
+                matched_service = similar[0]
+                # Only show the message once per target by caching it
+                if not hasattr(self, "_auto_match_cache"):
+                    self._auto_match_cache = set()
+                if target not in self._auto_match_cache:
+                    console.print(
+                        f"\n[green]Auto-matched '[white]{target}[/white]' to '[white]{matched_service}[/white]'[/green]"
+                    )
+                    self._auto_match_cache.add(target)
+                if matched_service in self.quadlet_services:
+                    return self.quadlet_services[matched_service]
+                elif matched_service in ["stack", "vllm-stack"]:
+                    return self.stack_target
+                else:
+                    return f"{matched_service}.service"
+            else:
+                # Show suggestions but don't return a service
+                self._suggest_similar_services(target)
+
         # If not found, return None
         return None
+
+    def _suggest_similar_services(self, target: str) -> None:
+        """Suggest similar service names when a service is not found"""
+        all_services = list(self.quadlet_services.keys())
+
+        # Also search systemd directory for additional matches
+        systemd_matches = self._search_systemd_directory(target)
+        all_services.extend(systemd_matches)
+
+        # Remove duplicates
+        all_services = list(set(all_services))
+
+        # Find services that contain the target as a substring
+        similar = [svc for svc in all_services if target.lower() in svc.lower()]
+
+        if not similar:
+            # Find services that start with the same prefix
+            if "-" in target:
+                prefix = target.split("-")[0]
+                similar = [svc for svc in all_services if svc.startswith(prefix)]
+
+        if similar:
+            console.print(
+                f"[yellow]Service '{target}' not found. Did you mean:[/yellow]"
+            )
+            for svc in similar[:5]:  # Show max 5 suggestions
+                service_info = self._get_service_display_info(svc)
+                console.print(f"  [cyan]{svc}[/cyan]{service_info}")
+        else:
+            console.print(
+                f"[yellow]Service '{target}' not found. Available services:[/yellow]"
+            )
+            for svc in sorted(all_services)[:10]:  # Show first 10 services
+                service_info = self._get_service_display_info(svc)
+                console.print(f"  [cyan]{svc}[/cyan]{service_info}")
+            if len(all_services) > 10:
+                console.print(f"  [dim]... and {len(all_services) - 10} more[/dim]")
 
     def _handle_numeric_selection(self, selection: int) -> Optional[str]:
         """Handle numeric service selection from previous fuzzy match results"""
@@ -564,6 +736,19 @@ class QuadletManager:
 
         # Add stack aliases
         all_services.extend(["stack", "vllm-stack"])
+
+        # Also search the systemd directory for .container files that match
+        systemd_matches = self._search_systemd_directory(partial_name)
+        all_services.extend(systemd_matches)
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_services = []
+        for svc in all_services:
+            if svc not in seen:
+                seen.add(svc)
+                unique_services.append(svc)
+        all_services = unique_services
 
         # Find exact matches first
         exact_matches = [svc for svc in all_services if svc == partial_name]
@@ -639,13 +824,20 @@ class QuadletManager:
             self._save_fuzzy_cache()
 
             # Show clean numbered list starting from 1
+            console.print(f"[yellow]Multiple services match '{partial_name}':[/yellow]")
 
             for i, service in enumerate(partial_matches, 1):
-                console.print(f"[cyan]{i}.[/cyan] {service}")
+                # Show additional info about the service
+                service_info = self._get_service_display_info(service)
+                console.print(f"[cyan]{i}.[/cyan] {service}{service_info}")
 
             # Interactive selection
             try:
-                choice = input("? ").strip()
+                choice = input(
+                    "\nSelect service (1-{}) or press Enter to cancel: ".format(
+                        len(partial_matches)
+                    )
+                ).strip()
 
                 if not choice:
                     return None
@@ -671,6 +863,7 @@ class QuadletManager:
 
     def start_service(self, target: str) -> bool:
         """Start a service or the stack target"""
+        self._clear_auto_match_cache()
         service_name = self._find_service_name(target, allow_interactive=False)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
@@ -690,6 +883,7 @@ class QuadletManager:
         self, target: str, force: bool = False, quiet: bool = False
     ) -> bool:
         """Stop a service or the stack target"""
+        self._clear_auto_match_cache()
         service_name = self._find_service_name(target, allow_interactive=False)
         if not service_name:
             if not quiet:
@@ -861,6 +1055,7 @@ class QuadletManager:
 
     def restart_service(self, target: str) -> bool:
         """Restart a service or the stack target"""
+        self._clear_auto_match_cache()
         service_name = self._find_service_name(target, allow_interactive=False)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
@@ -878,6 +1073,7 @@ class QuadletManager:
 
     def enable_service(self, target: str) -> bool:
         """Enable a service or the stack target to start at boot"""
+        self._clear_auto_match_cache()
         service_name = self._find_service_name(target, allow_interactive=False)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
@@ -895,6 +1091,7 @@ class QuadletManager:
 
     def disable_service(self, target: str) -> bool:
         """Disable a service or the stack target from starting at boot"""
+        self._clear_auto_match_cache()
         service_name = self._find_service_name(target, allow_interactive=False)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
@@ -924,6 +1121,7 @@ class QuadletManager:
 
     def show_logs(self, target: str, follow: bool = False, lines: int = 100) -> bool:
         """Show logs for a service"""
+        self._clear_auto_match_cache()
         service_name = self._find_service_name(target, allow_interactive=False)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
@@ -933,7 +1131,7 @@ class QuadletManager:
         if follow:
             cmd.append("-f")
 
-        console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+        verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
         try:
             if follow:

@@ -3,6 +3,8 @@
 import sys
 from pathlib import Path
 
+__all__ = ["console", "verbose_print", "set_verbose", "setup_logging"]
+
 try:
     from loguru import logger
     from rich.console import Console
@@ -13,6 +15,25 @@ except ImportError:
 
 # Configure Rich console with force color support
 console = Console(force_terminal=True, color_system="truecolor", legacy_windows=False)
+
+# Global verbose flag
+_verbose_enabled = False
+
+
+def set_verbose(enabled: bool) -> None:
+    """Set the global verbose flag."""
+    global _verbose_enabled
+    _verbose_enabled = enabled
+
+
+def verbose_print(message: str) -> None:
+    """Print message only if verbose mode is enabled."""
+    if _verbose_enabled:
+        # Add indentation to exec messages
+        if "exec:" in message:
+            console.print(f"  {message}")
+        else:
+            console.print(message)
 
 
 def setup_logging():
