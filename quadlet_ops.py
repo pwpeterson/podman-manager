@@ -1071,6 +1071,23 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
             if actual_success:
                 console.print(f"\n[green]Successfully reinitialized {target}[/green]\n")
+
+                # Show optional next steps
+                console.print("[green]Optional:[/green]")
+                console.print(
+                    f"[cyan]1.[/cyan] Check service status: [white]pm status {target}[/white]"
+                )
+                console.print(
+                    f"[cyan]2.[/cyan] View detailed logs: [white]pm logs {target}[/white]"
+                )
+                console.print(
+                    f"[cyan]3.[/cyan] Diagnose the issue: [white]pm diagnose {target}[/white]"
+                )
+                console.print(
+                    f"[cyan]4.[/cyan] Reset failed state: [white]pm reset-failed {target}[/white]"
+                )
+                console.print()
+
                 return True
             else:
                 console.print(
@@ -1725,6 +1742,23 @@ Provide a structured analysis focusing on actionable insights. If no significant
             console.print(
                 f"\n[green]Successfully reinitialized {project} stack[/green]\n"
             )
+
+            # Show optional next steps for the stack
+            console.print("[green]Optional:[/green]")
+            console.print(
+                f"[cyan]1.[/cyan] Check service status: [white]pm status {project}[/white]"
+            )
+            console.print(
+                f"[cyan]2.[/cyan] View detailed logs: [white]pm logs {project}[/white]"
+            )
+            console.print(
+                f"[cyan]3.[/cyan] Diagnose the issue: [white]pm diagnose {project}[/white]"
+            )
+            console.print(
+                f"[cyan]4.[/cyan] Reset failed state: [white]pm reset-failed {project}[/white]"
+            )
+            console.print()
+
             return True
         else:
             console.print(
