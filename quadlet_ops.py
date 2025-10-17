@@ -1097,7 +1097,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 return True
             else:
                 console.print(
-                    f"\n[red]Failed to reinitialize {target} - service did not start properly[/red]\n"
+                    f"[red]Failed to reinitialize {target} - service did not start properly[/red]\n"
                 )
                 # Show the detailed error logs and recommendations after the failure message
                 self._show_startup_failure_logs(target, service_name)
@@ -1696,7 +1696,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
                         start_success = False
                         # Show detailed error logs after spinner disappears
                         console.print(
-                            f"\n[red]Failed to start {service} - service did not start properly[/red]\n"
+                            f"[red]Failed to start {service} - service did not start properly[/red]\n"
                         )
                         self._show_startup_failure_logs(service, service_name)
                 else:
