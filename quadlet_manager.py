@@ -432,8 +432,8 @@ class QuadletManager:
 
     def _clear_auto_match_cache(self) -> None:
         """Clear the auto-match cache for a new command"""
-        if hasattr(self, "_auto_match_cache"):
-            self._auto_match_cache.clear()
+        # Auto-match cache is no longer used since fuzzy matching is always enabled
+        pass
 
     def _command_exists(self, command: str) -> bool:
         """Check if a command exists in PATH"""
@@ -548,9 +548,7 @@ class QuadletManager:
         """Get status of the vllm-stack.target"""
         return self.get_service_status(self.stack_target)
 
-    def _find_service_name(
-        self, target: str, allow_interactive: bool = True
-    ) -> Optional[str]:
+    def _find_service_name(self, target: str) -> Optional[str]:
         """Find the full service name from a target (short name or full name)"""
         # Check if it's a numeric selection (e.g., "1", "2", etc.)
         if target.isdigit():
@@ -608,11 +606,10 @@ class QuadletManager:
         if target.endswith(".service") or target.endswith(".target"):
             return target
 
-        # Try fuzzy matching for partial names (only if interactive is allowed)
-        if allow_interactive:
-            fuzzy_result = self._fuzzy_match_service(target)
-            if fuzzy_result:
-                return fuzzy_result
+        # Try fuzzy matching for partial names
+        fuzzy_result = self._fuzzy_match_service(target)
+        if fuzzy_result:
+            return fuzzy_result
 
         # Try adding .service extension for generic services
         potential_service = f"{target}.service"
@@ -623,44 +620,6 @@ class QuadletManager:
 
         if result.returncode == 0 and "LoadState=loaded" in result.stdout:
             return potential_service
-
-        # If not found, try one more search for similar services
-        if not allow_interactive:
-            # Try to find a single similar service and auto-select it
-            all_services = list(self.quadlet_services.keys())
-            systemd_matches = self._search_systemd_directory(target)
-            all_services.extend(systemd_matches)
-            all_services = list(set(all_services))  # Remove duplicates
-
-            # Find services that contain the target as a substring
-            similar = [svc for svc in all_services if target.lower() in svc.lower()]
-
-            if not similar:
-                # Find services that start with the same prefix
-                if "-" in target:
-                    prefix = target.split("-")[0]
-                    similar = [svc for svc in all_services if svc.startswith(prefix)]
-
-            if len(similar) == 1:
-                # Auto-select single match
-                matched_service = similar[0]
-                # Only show the message once per target by caching it
-                if not hasattr(self, "_auto_match_cache"):
-                    self._auto_match_cache = set()
-                if target not in self._auto_match_cache:
-                    console.print(
-                        f"\n[green]Auto-matched '[white]{target}[/white]' to '[white]{matched_service}[/white]'[/green]"
-                    )
-                    self._auto_match_cache.add(target)
-                if matched_service in self.quadlet_services:
-                    return self.quadlet_services[matched_service]
-                elif matched_service in ["stack", "vllm-stack"]:
-                    return self.stack_target
-                else:
-                    return f"{matched_service}.service"
-            else:
-                # Show suggestions but don't return a service
-                self._suggest_similar_services(target)
 
         # If not found, return None
         return None
@@ -864,7 +823,7 @@ class QuadletManager:
     def start_service(self, target: str) -> bool:
         """Start a service or the stack target"""
         self._clear_auto_match_cache()
-        service_name = self._find_service_name(target, allow_interactive=False)
+        service_name = self._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
@@ -884,7 +843,7 @@ class QuadletManager:
     ) -> bool:
         """Stop a service or the stack target"""
         self._clear_auto_match_cache()
-        service_name = self._find_service_name(target, allow_interactive=False)
+        service_name = self._find_service_name(target)
         if not service_name:
             if not quiet:
                 console.print(f"[red]Service '{target}' not found[/red]")
@@ -1056,7 +1015,7 @@ class QuadletManager:
     def restart_service(self, target: str) -> bool:
         """Restart a service or the stack target"""
         self._clear_auto_match_cache()
-        service_name = self._find_service_name(target, allow_interactive=False)
+        service_name = self._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
@@ -1074,7 +1033,7 @@ class QuadletManager:
     def enable_service(self, target: str) -> bool:
         """Enable a service or the stack target to start at boot"""
         self._clear_auto_match_cache()
-        service_name = self._find_service_name(target, allow_interactive=False)
+        service_name = self._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
@@ -1092,7 +1051,7 @@ class QuadletManager:
     def disable_service(self, target: str) -> bool:
         """Disable a service or the stack target from starting at boot"""
         self._clear_auto_match_cache()
-        service_name = self._find_service_name(target, allow_interactive=False)
+        service_name = self._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
@@ -1122,7 +1081,7 @@ class QuadletManager:
     def show_logs(self, target: str, follow: bool = False, lines: int = 100) -> bool:
         """Show logs for a service"""
         self._clear_auto_match_cache()
-        service_name = self._find_service_name(target, allow_interactive=False)
+        service_name = self._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False

@@ -45,9 +45,7 @@ class StackManager:
         # For quadlet mode, we primarily work with the vllm-stack
         if target in ["vllm-stack", "stack", "vllm"]:
             # Try to stop the stack target first (suppress errors since it may not exist)
-            service_name = self.manager._find_service_name(
-                "vllm-stack", allow_interactive=True
-            )
+            service_name = self.manager._find_service_name("vllm-stack")
             if service_name:
                 cmd = ["systemctl", "--user", "stop", service_name]
                 result = self.manager._run_systemctl_command(
@@ -253,9 +251,7 @@ class StackManager:
 
         for service in services:
             console.print(f"\n[bold yellow]=== {service} ===[/bold yellow]")
-            service_name = self.manager._find_service_name(
-                service, allow_interactive=True
-            )
+            service_name = self.manager._find_service_name(service)
             if service_name:
                 cmd = [
                     "systemctl",
@@ -476,9 +472,7 @@ class StackManager:
         start_success = True
         for service in services:
             verbose_print(f"[dim]  Starting {service}...[/dim]")
-            service_name = self.manager._find_service_name(
-                service, allow_interactive=True
-            )
+            service_name = self.manager._find_service_name(service)
             if service_name:
                 restart_cmd = ["systemctl", "--user", "restart", service_name]
                 verbose_print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")

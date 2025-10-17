@@ -27,7 +27,7 @@ class ServiceLifecycle:
             return self._start_stack(target)
 
         # PRIORITY 3: Try service name resolution
-        service_name = self.manager._find_service_name(target, allow_interactive=True)
+        service_name = self.manager._find_service_name(target)
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
@@ -52,7 +52,7 @@ class ServiceLifecycle:
             return self._stop_stack(target)
 
         # PRIORITY 3: Try service name resolution
-        service_name = self.manager._find_service_name(target, allow_interactive=True)
+        service_name = self.manager._find_service_name(target)
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
@@ -80,7 +80,7 @@ class ServiceLifecycle:
             return self._restart_stack(target)
 
         # PRIORITY 3: Try service name resolution
-        service_name = self.manager._find_service_name(target, allow_interactive=True)
+        service_name = self.manager._find_service_name(target)
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
@@ -117,7 +117,7 @@ class ServiceLifecycle:
 
     def enable(self, target: str) -> bool:
         """Enable a service or stack to start at boot"""
-        service_name = self.manager._find_service_name(target, allow_interactive=True)
+        service_name = self.manager._find_service_name(target)
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
@@ -133,7 +133,7 @@ class ServiceLifecycle:
 
     def disable(self, target: str) -> bool:
         """Disable a service or stack from starting at boot"""
-        service_name = self.manager._find_service_name(target, allow_interactive=True)
+        service_name = self.manager._find_service_name(target)
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
@@ -150,7 +150,7 @@ class ServiceLifecycle:
     def reset_failed(self, target: str) -> bool:
         """Reset failed service state"""
         self.manager._clear_auto_match_cache()
-        service_name = self.manager._find_service_name(target, allow_interactive=True)
+        service_name = self.manager._find_service_name(target)
 
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
@@ -180,7 +180,7 @@ class ServiceLifecycle:
     def show_service_file(self, target: str) -> bool:
         """Show service file contents"""
         self.manager._clear_auto_match_cache()
-        service_name = self.manager._find_service_name(target, allow_interactive=True)
+        service_name = self.manager._find_service_name(target)
 
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
@@ -209,7 +209,7 @@ class ServiceLifecycle:
     def show_service_status(self, target: str) -> None:
         """Show detailed status for a specific service"""
         self.manager._clear_auto_match_cache()
-        service_name = self.manager._find_service_name(target, allow_interactive=True)
+        service_name = self.manager._find_service_name(target)
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):

@@ -129,7 +129,7 @@ class SystemMonitor:
         """Execute command in container (find container by service name)"""
         # First, we need to find the container name from the service
         self.manager._clear_auto_match_cache()
-        service_name = self.manager._find_service_name(target, allow_interactive=True)
+        service_name = self.manager._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return
@@ -258,7 +258,7 @@ class SystemMonitor:
         console.print(f"[yellow]🏥 Health check for {target}...[/yellow]")
 
         # Check service status
-        service_name = self.manager._find_service_name(target, allow_interactive=True)
+        service_name = self.manager._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return
@@ -402,9 +402,7 @@ class SystemMonitor:
                 console.print("=" * 60)
 
                 for service in services:
-                    service_name = self.manager._find_service_name(
-                        service, allow_interactive=True
-                    )
+                    service_name = self.manager._find_service_name(service)
                     if service_name:
                         status_cmd = ["systemctl", "--user", "is-active", service_name]
                         status_result = subprocess.run(
