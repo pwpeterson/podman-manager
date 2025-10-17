@@ -1063,8 +1063,6 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 console.print(f"[red]Start failed: {error_msg}[/red]")
 
         if start_success:
-            console.print(f"[green]Started {target}[/green]")
-
             # Monitor service logs to verify successful startup
             with Progress(
                 SpinnerColumn(),
@@ -1077,6 +1075,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 progress.remove_task(task)
 
             if actual_success:
+                console.print(f"[green]Started {target}[/green]")
                 console.print(f"\n[green]Successfully reinitialized {target}[/green]\n")
 
                 # Show optional next steps
@@ -1678,8 +1677,6 @@ Provide a structured analysis focusing on actionable insights. If no significant
                     restart_cmd, capture_output=True, text=True
                 )
                 if restart_result.returncode == 0:
-                    console.print(f"[green]Started {service}[/green]")
-
                     # Monitor service startup for this service
                     with Progress(
                         SpinnerColumn(),
@@ -1692,7 +1689,10 @@ Provide a structured analysis focusing on actionable insights. If no significant
                             service, service_name
                         )
                         progress.remove_task(task)
-                    if not service_success:
+
+                    if service_success:
+                        console.print(f"[green]Started {service}[/green]")
+                    else:
                         start_success = False
                         # Show detailed error logs after spinner disappears
                         console.print(
