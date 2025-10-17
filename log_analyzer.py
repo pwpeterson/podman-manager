@@ -404,6 +404,8 @@ class LogAnalyzer:
 
     def diagnose_container_failure(self, target: str) -> None:
         """Diagnose why a container is failing to start"""
+        from config import _verbose_enabled
+
         self.manager._clear_auto_match_cache()
         service_name = self.manager._find_service_name(target)
         if not service_name:
@@ -413,9 +415,10 @@ class LogAnalyzer:
         console.print(f"[yellow]🔍 Diagnosing {target} container failure...[/yellow]")
 
         # Check systemd service status
-        console.print("\n[cyan]📊 Service Status:[/cyan]")
+        console.print("\n[green]Service Status:[/green]")
         status_cmd = ["systemctl", "--user", "status", service_name, "--no-pager", "-l"]
-        console.print(f"[cyan]exec: {' '.join(status_cmd)}[/cyan]")
+        if _verbose_enabled:
+            console.print(f"[cyan]exec: {' '.join(status_cmd)}[/cyan]")
         status_result = subprocess.run(status_cmd, capture_output=True, text=True)
         if status_result.stdout:
             console.print(status_result.stdout)
