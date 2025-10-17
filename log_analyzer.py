@@ -412,10 +412,8 @@ class LogAnalyzer:
             console.print(f"[red]Service '{target}' not found[/red]")
             return
 
-        console.print(f"[yellow]🔍 Diagnosing {target} container failure...[/yellow]")
-
         # Check systemd service status
-        console.print("\n[green]Service Status:[/green]")
+        console.print("[green]Service Status:[/green]")
         status_cmd = ["systemctl", "--user", "status", service_name, "--no-pager", "-l"]
         if _verbose_enabled:
             console.print(f"[cyan]exec: {' '.join(status_cmd)}[/cyan]")
