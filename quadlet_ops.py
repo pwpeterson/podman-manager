@@ -3195,53 +3195,350 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
     def _show_startup_failure_logs(self, target: str, service_name: str) -> None:
         """Show recent logs when service fails to start properly"""
-        console.print(
-            "[green]Service startup log[/green] [red]errors[/red][green]:[/green]"
-        )
+        # Keep track of messages to avoid duplicates (empty set since no initial section)
+        shown_messages = set()
 
-        # Get recent logs
-        logs_cmd = [
+        # Run extended journalctl command and extract timestamped messages
+        console.print()
+        console.print(f"[green]Journal extract for: {target}[/green]")
+
+        extended_logs_cmd = [
             "journalctl",
             "--user",
-            "-u",
+            "-xeu",
             service_name,
-            "--since",
-            "30 seconds ago",
-            "-n",
-            "10",
+            "--output=short-precise",
             "--no-pager",
         ]
 
-        logs_result = subprocess.run(logs_cmd, capture_output=True, text=True)
+        verbose_print(f"[cyan]exec: {' '.join(extended_logs_cmd)}[/cyan]")
+        extended_result = subprocess.run(
+            extended_logs_cmd, capture_output=True, text=True
+        )
 
-        if logs_result.returncode == 0 and logs_result.stdout:
-            # Filter and show only error-related lines
-            lines = logs_result.stdout.strip().split("\n")
-            error_lines = []
+        if extended_result.returncode == 0 and extended_result.stdout:
+            # Parse journal output to extract the most recent start-to-failure section
+            extended_lines = extended_result.stdout.strip().split("\n")
 
-            for line in lines:
-                line_lower = line.lower()
-                if any(
-                    pattern in line_lower
-                    for pattern in [
-                        "error",
-                        "failed",
-                        "exception",
-                        "traceback",
-                        "fatal",
-                        "critical",
+            import re
+
+            # Find the most recent section between start job and failed state
+            start_pattern = r"A start job for unit .* has begun execution\."
+            end_pattern = r"The unit .* has entered the \'failed\' state with result \'exit-code\'"
+
+            # Find all start and end markers
+            start_indices = []
+            end_indices = []
+
+            for i, line in enumerate(extended_lines):
+                if re.search(start_pattern, line):
+                    start_indices.append(i)
+                elif re.search(end_pattern, line):
+                    end_indices.append(i)
+
+            # Extract the most recent complete section
+            section_lines = []
+            if start_indices and end_indices:
+                # Find the most recent start that has a corresponding end
+                most_recent_start = None
+                corresponding_end = None
+
+                # Work backwards through start indices to find the most recent complete section
+                for start_idx in reversed(start_indices):
+                    # Find the first end index after this start
+                    for end_idx in end_indices:
+                        if end_idx > start_idx:
+                            most_recent_start = start_idx
+                            corresponding_end = end_idx
+                            break
+                    if most_recent_start is not None:
+                        break
+
+                if most_recent_start is not None and corresponding_end is not None:
+                    # Extract the section including start and end messages
+                    section_lines = extended_lines[
+                        most_recent_start : corresponding_end + 1
                     ]
-                ):
-                    error_lines.append(line)
 
-            if error_lines:
-                for line in error_lines[-5:]:  # Show last 5 error lines
-                    console.print(line)
+            # If no complete section found, fall back to recent lines
+            if not section_lines:
+                section_lines = extended_lines[-20:]  # Show last 20 lines as fallback
+
+            # Remove duplicates from already shown messages but keep everything else
+            all_messages = []
+            for line in section_lines:
+                if line.strip() and line.strip() not in shown_messages:
+                    all_messages.append(line)
+
+            # Remove duplicates by message content but keep most recent timestamp
+            message_dict = {}
+
+            for msg in all_messages:
+                # Extract the actual message content (after timestamp and service info)
+                # Remove timestamp and service prefix to get the core message
+                cleaned_msg = re.sub(
+                    r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\.?\d*\s+\S+\s+\S+\[?\d*\]?:?\s*",
+                    "",
+                    msg,
+                )
+                cleaned_msg = re.sub(
+                    r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.?\d*\s+\S+\s+\S+\[?\d*\]?:?\s*",
+                    "",
+                    cleaned_msg,
+                )
+
+                # Use the cleaned message as key, keep the most recent full message
+                if cleaned_msg.strip():
+                    message_dict[cleaned_msg.strip()] = msg
+
+            # Convert back to list, sorted by original order (most recent last)
+            unique_messages = list(message_dict.values())
+
+            # Show all messages from the extracted section
+            if unique_messages:
+                for line in unique_messages:
+                    # Split line into timestamp/service prefix and message content
+                    import re
+
+                    # Match timestamp and service prefix patterns
+                    prefix_match = re.match(
+                        r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\.?\d*\s+\S+\s+\S+\[?\d*\]?:?)\s*(.*)",
+                        line,
+                    )
+                    if not prefix_match:
+                        # Try ISO timestamp format
+                        prefix_match = re.match(
+                            r"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.?\d*\s+\S+\s+\S+\[?\d*\]?:?)\s*(.*)",
+                            line,
+                        )
+
+                    if prefix_match:
+                        prefix = prefix_match.group(1)
+                        message = prefix_match.group(2)
+
+                        # Apply colors based on message content only
+                        message_lower = message.lower()
+
+                        # Check for error patterns that should be red
+                        if any(
+                            pattern in message_lower
+                            for pattern in [
+                                "failed",
+                                "error",
+                                "invalid",
+                                "cannot",
+                                "unable",
+                                "denied",
+                                "refused",
+                                "timeout",
+                                "not found",
+                                "missing",
+                                "corrupt",
+                                "broken",
+                                "abort",
+                                "panic",
+                                "fatal",
+                                "critical",
+                                "exception",
+                            ]
+                        ):
+                            console.print(
+                                f"[white]{prefix}[/white] [red]{message}[/red]"
+                            )
+                        # Check for warning patterns that should be yellow
+                        elif any(
+                            pattern in message_lower
+                            for pattern in ["warning", "warn", "deprecated", "conflict"]
+                        ):
+                            console.print(
+                                f"[white]{prefix}[/white] [yellow]{message}[/yellow]"
+                            )
+                        # Default to white for message content
+                        else:
+                            console.print(f"[white]{prefix} {message}[/white]")
+                    else:
+                        # Fallback: couldn't parse, color entire line based on content
+                        line_lower = line.lower()
+                        if any(
+                            pattern in line_lower
+                            for pattern in [
+                                "failed",
+                                "error",
+                                "invalid",
+                                "cannot",
+                                "unable",
+                                "denied",
+                                "refused",
+                                "timeout",
+                                "not found",
+                                "missing",
+                                "corrupt",
+                                "broken",
+                                "abort",
+                                "panic",
+                                "fatal",
+                                "critical",
+                                "exception",
+                            ]
+                        ):
+                            console.print(f"[red]{line}[/red]")
+                        elif any(
+                            pattern in line_lower
+                            for pattern in ["warning", "warn", "deprecated", "conflict"]
+                        ):
+                            console.print(f"[yellow]{line}[/yellow]")
+                        else:
+                            console.print(f"[white]{line}[/white]")
             else:
-                # Show last few lines if no specific errors found
-                for line in lines[-3:]:
+                # Fallback: show last 5 lines from extended output that indicate problems
+                problem_patterns = [
+                    "failed",
+                    "error",
+                    "invalid",
+                    "cannot",
+                    "unable",
+                    "denied",
+                    "refused",
+                    "timeout",
+                    "not found",
+                    "missing",
+                    "corrupt",
+                    "broken",
+                    "abort",
+                    "panic",
+                    "fatal",
+                    "critical",
+                    "exception",
+                ]
+                problem_lines = []
+                for line in extended_lines:
                     if line.strip():
-                        console.print(line)
+                        line_lower = line.lower()
+                        has_problem = any(
+                            pattern in line_lower for pattern in problem_patterns
+                        )
+                        # Only add if not already shown in the first section
+                        if has_problem and line.strip() not in shown_messages:
+                            problem_lines.append(line)
+
+                # Remove duplicates by message content but keep most recent timestamp
+                problem_message_dict = {}
+
+                for line in problem_lines:
+                    # Extract the actual message content (after timestamp and service info)
+                    cleaned_msg = re.sub(
+                        r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\S+\s+\S+\[?\d*\]?:?\s*",
+                        "",
+                        line,
+                    )
+                    cleaned_msg = re.sub(
+                        r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\S+\s+\S+\[?\d*\]?:?\s*",
+                        "",
+                        cleaned_msg,
+                    )
+
+                    # Use the cleaned message as key, keep the most recent full message
+                    if cleaned_msg.strip():
+                        problem_message_dict[cleaned_msg.strip()] = line
+
+                # Convert back to list
+                unique_problem_lines = list(problem_message_dict.values())
+
+                # Show the most recent unique problem lines (last 5)
+                for line in unique_problem_lines[-5:]:
+                    # Split line into timestamp/service prefix and message content
+                    prefix_match = re.match(
+                        r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\.?\d*\s+\S+\s+\S+\[?\d*\]?:?)\s*(.*)",
+                        line,
+                    )
+                    if not prefix_match:
+                        # Try ISO timestamp format
+                        prefix_match = re.match(
+                            r"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.?\d*\s+\S+\s+\S+\[?\d*\]?:?)\s*(.*)",
+                            line,
+                        )
+
+                    if prefix_match:
+                        prefix = prefix_match.group(1)
+                        message = prefix_match.group(2)
+
+                        # Apply colors based on message content only
+                        message_lower = message.lower()
+
+                        # Check for error patterns that should be red
+                        if any(
+                            pattern in message_lower
+                            for pattern in [
+                                "failed",
+                                "error",
+                                "invalid",
+                                "cannot",
+                                "unable",
+                                "denied",
+                                "refused",
+                                "timeout",
+                                "not found",
+                                "missing",
+                                "corrupt",
+                                "broken",
+                                "abort",
+                                "panic",
+                                "fatal",
+                                "critical",
+                                "exception",
+                            ]
+                        ):
+                            console.print(
+                                f"[white]{prefix}[/white] [red]{message}[/red]"
+                            )
+                        # Check for warning patterns that should be yellow
+                        elif any(
+                            pattern in message_lower
+                            for pattern in ["warning", "warn", "deprecated", "conflict"]
+                        ):
+                            console.print(
+                                f"[white]{prefix}[/white] [yellow]{message}[/yellow]"
+                            )
+                        # Default to white for message content
+                        else:
+                            console.print(f"[white]{prefix} {message}[/white]")
+                    else:
+                        # Fallback: couldn't parse, color entire line based on content
+                        line_lower = line.lower()
+                        if any(
+                            pattern in line_lower
+                            for pattern in [
+                                "failed",
+                                "error",
+                                "invalid",
+                                "cannot",
+                                "unable",
+                                "denied",
+                                "refused",
+                                "timeout",
+                                "not found",
+                                "missing",
+                                "corrupt",
+                                "broken",
+                                "abort",
+                                "panic",
+                                "fatal",
+                                "critical",
+                                "exception",
+                            ]
+                        ):
+                            console.print(f"[red]{line}[/red]")
+                        elif any(
+                            pattern in line_lower
+                            for pattern in ["warning", "warn", "deprecated", "conflict"]
+                        ):
+                            console.print(f"[yellow]{line}[/yellow]")
+                        else:
+                            console.print(f"[white]{line}[/white]")
+        else:
+            console.print("[yellow]Could not retrieve extended logs[/yellow]")
+            if extended_result.stderr:
+                console.print(f"[red]Error: {extended_result.stderr.strip()}[/red]")
 
         # Show recommended actions
         console.print()
