@@ -3233,15 +3233,16 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
             if error_lines:
                 for line in error_lines[-5:]:  # Show last 5 error lines
-                    console.print(f"[dim]{line}[/dim]")
+                    console.print(line)
             else:
                 # Show last few lines if no specific errors found
                 for line in lines[-3:]:
                     if line.strip():
-                        console.print(f"[dim]{line}[/dim]")
+                        console.print(line)
 
         # Show recommended actions
-        console.print("[yellow]💡 Recommended actions:[/yellow]")
+        console.print()
+        console.print("[yellow]Recommended actions:[/yellow]")
         console.print(
             f"[cyan]1.[/cyan] Check service status: [white]systemctl --user status {service_name}[/white]"
         )
