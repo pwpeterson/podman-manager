@@ -1100,6 +1100,8 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 console.print(
                     f"\n[red]Failed to reinitialize {target} - service did not start properly[/red]\n"
                 )
+                # Show the detailed error logs and recommendations after the failure message
+                self._show_startup_failure_logs(target, service_name)
                 return False
         else:
             console.print(f"[red]Failed to start {target} after reinit[/red]")
@@ -1692,6 +1694,11 @@ Provide a structured analysis focusing on actionable insights. If no significant
                         progress.remove_task(task)
                     if not service_success:
                         start_success = False
+                        # Show detailed error logs after spinner disappears
+                        console.print(
+                            f"\n[red]Failed to start {service} - service did not start properly[/red]\n"
+                        )
+                        self._show_startup_failure_logs(service, service_name)
                 else:
                     start_success = False
                     if restart_result.stderr:
@@ -3125,7 +3132,6 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
         if status_result.returncode != 0:
             verbose_print(f"[red]Service {target} is not active[/red]")
-            self._show_startup_failure_logs(target, service_name)
             return False
 
         # Get recent logs to check for errors
@@ -3176,7 +3182,6 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
             if has_errors and not has_success:
                 verbose_print(f"[red]Detected errors in {target} startup logs[/red]")
-                self._show_startup_failure_logs(target, service_name)
                 return False
             elif has_success:
                 verbose_print(f"[green]Service {target} started successfully[/green]")
