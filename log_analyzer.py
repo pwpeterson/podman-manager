@@ -416,8 +416,7 @@ class LogAnalyzer:
         status_cmd = ["systemctl", "--user", "status", service_name, "--no-pager", "-l"]
         if _verbose_enabled:
             console.print(f"[cyan]exec: {' '.join(status_cmd)}[/cyan]")
-            console.print()  # Add newline after exec command
-        console.print("[green]Service Status:[/green]")
+        console.print("\n[green]Service Status:[/green]")
         status_result = subprocess.run(status_cmd, capture_output=True, text=True)
         if status_result.stdout:
             console.print(status_result.stdout)
