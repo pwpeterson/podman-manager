@@ -65,9 +65,6 @@ class FuzzyMatcher:
         if len(partial_matches) == 1:
             # Single match found
             matched_item = partial_matches[0]
-            console.print(
-                f"[dim]Matched '{partial_name}' to '{matched_item['name']}'[/dim]"
-            )
             return self._resolve_match(matched_item)
         elif len(partial_matches) > 1:
             # Multiple matches - show interactive selection menu
