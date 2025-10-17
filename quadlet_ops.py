@@ -1066,8 +1066,15 @@ Provide a structured analysis focusing on actionable insights. If no significant
             console.print(f"[green]Started {target}[/green]")
 
             # Monitor service logs to verify successful startup
-            verbose_print("[yellow]Monitoring service startup...[/yellow]")
-            actual_success = self._monitor_service_startup(target, service_name)
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[yellow]Monitoring service startup...[/yellow]"),
+                console=console,
+                transient=True,
+            ) as progress:
+                task = progress.add_task("monitoring", total=None)
+                actual_success = self._monitor_service_startup(target, service_name)
+                progress.remove_task(task)
 
             if actual_success:
                 console.print(f"\n[green]Successfully reinitialized {target}[/green]\n")
@@ -1672,10 +1679,17 @@ Provide a structured analysis focusing on actionable insights. If no significant
                     console.print(f"[green]Started {service}[/green]")
 
                     # Monitor service startup for this service
-                    verbose_print(f"[yellow]Monitoring {service} startup...[/yellow]")
-                    service_success = self._monitor_service_startup(
-                        service, service_name
-                    )
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn(f"[yellow]Monitoring {service} startup...[/yellow]"),
+                        console=console,
+                        transient=True,
+                    ) as progress:
+                        task = progress.add_task("monitoring", total=None)
+                        service_success = self._monitor_service_startup(
+                            service, service_name
+                        )
+                        progress.remove_task(task)
                     if not service_success:
                         start_success = False
                 else:
