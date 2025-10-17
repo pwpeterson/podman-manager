@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from rich.table import Table
 
-from config import console
+from config import console, verbose_print
 
 
 class QuadletInstaller:
@@ -35,19 +35,19 @@ class QuadletInstaller:
 
     def _print_status(self, message: str) -> None:
         """Print status message using consistent formatting."""
-        console.print(f"[blue][INFO][/blue] {message}")
+        console.print(f"[blue]{message}[/blue]")
 
     def _print_success(self, message: str) -> None:
         """Print success message using consistent formatting."""
-        console.print(f"[green][SUCCESS][/green] {message}")
+        console.print(f"[green]{message}[/green]")
 
     def _print_warning(self, message: str) -> None:
         """Print warning message using consistent formatting."""
-        console.print(f"[yellow][WARNING][/yellow] {message}")
+        console.print(f"[yellow]{message}[/yellow]")
 
     def _print_error(self, message: str) -> None:
         """Print error message using consistent formatting."""
-        console.print(f"[red][ERROR][/red] {message}")
+        console.print(f"[red]{message}[/red]")
 
     def discover_stacks(self) -> List[str]:
         """Discover available stacks in the quadlet directory."""
@@ -104,41 +104,86 @@ class QuadletInstaller:
 
         return sorted(services)
 
+    def find_service_in_stacks(self, service_name: str) -> Optional[tuple[str, str]]:
+        """Find which stack contains a specific service.
+
+        Returns:
+            Tuple of (stack_name, container_file) if found, None otherwise
+        """
+        available_stacks = self.discover_stacks()
+
+        for stack in available_stacks:
+            stack_dir = self.quadlet_base_dir / stack
+            # Look for service.container file
+            container_file = f"{service_name}.container"
+            container_path = stack_dir / container_file
+
+            if container_path.exists() and not container_file.endswith(".disabled"):
+                return (stack, container_file)
+
+        return None
+
+    def validate_stack_or_service(self, name: str) -> tuple[bool, str, Optional[str]]:
+        """Validate that a stack or service exists.
+
+        Returns:
+            Tuple of (is_valid, resolved_stack_name, service_file_if_service)
+        """
+        # First try as a stack
+        stack_dir = self.quadlet_base_dir / name
+        if stack_dir.exists():
+            files = self.get_stack_files(name)
+            if files:
+                return (True, name, None)  # It's a valid stack
+
+        # Try to find it as a service within stacks
+        service_result = self.find_service_in_stacks(name)
+        if service_result:
+            stack_name, container_file = service_result
+            return (True, stack_name, container_file)  # It's a valid service
+
+        # Not found as either stack or service
+        self._print_error(f"Stack or service '{name}' not found")
+        console.print()
+
+        # Show available stacks
+        self._print_status("Available stacks:")
+        available_stacks = self.discover_stacks()
+        for stack in available_stacks:
+            console.print(f"  {stack}")
+
+        # Show available services
+        console.print()
+        self._print_status("Available services:")
+        all_services = set()
+        for stack in available_stacks:
+            services = self.get_service_names(stack)
+            all_services.update(services)
+
+        for service in sorted(all_services):
+            console.print(f"  {service}")
+
+        return (False, name, None)
+
     def validate_stack(self, stack_name: str) -> bool:
         """Validate that a stack exists and has files."""
-        stack_dir = self.quadlet_base_dir / stack_name
-
-        if not stack_dir.exists():
-            self._print_error(f"Stack directory not found: [cyan]{stack_dir}[/cyan]")
-            console.print()
-            self._print_status("Available stacks:")
-            available_stacks = self.discover_stacks()
-            for stack in available_stacks:
-                console.print(f"  {stack}")
-            return False
-
-        files = self.get_stack_files(stack_name)
-        if not files:
-            self._print_error(f"No quadlet files found in stack: {stack_name}")
-            return False
-
-        # Check if all files exist
-        for file in files:
-            file_path = stack_dir / file
-            if not file_path.exists():
-                self._print_error(f"Quadlet file {file} not found in {stack_dir}")
-                return False
-
-        return True
+        is_valid, resolved_stack, service_file = self.validate_stack_or_service(
+            stack_name
+        )
+        return (
+            is_valid and service_file is None
+        )  # Only valid if it's actually a stack, not a service
 
     def check_systemd_user_session(self) -> bool:
         """Check systemd user session health."""
-        self._print_status("Checking systemd user session health...")
+        self._print_success("Checking systemd user session health...")
 
         try:
             # Check if systemd user session is running
+            cmd = ["systemctl", "--user", "status"]
+            verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
             result = subprocess.run(
-                ["systemctl", "--user", "status"],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -153,14 +198,16 @@ class QuadletInstaller:
                 return False
 
             # Check if we can communicate with systemd
+            cmd = [
+                "systemctl",
+                "--user",
+                "list-units",
+                "--type=service",
+                "--state=loaded",
+            ]
+            verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
             result = subprocess.run(
-                [
-                    "systemctl",
-                    "--user",
-                    "list-units",
-                    "--type=service",
-                    "--state=loaded",
-                ],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -182,12 +229,12 @@ class QuadletInstaller:
             return False
 
     def install_stack(
-        self, stack_name: str, target_dir: Optional[Path] = None, use_sudo: bool = False
+        self, name: str, target_dir: Optional[Path] = None, use_sudo: bool = False
     ) -> bool:
-        """Install stack to target directory.
+        """Install stack or service to target directory.
 
         Args:
-            stack_name: Name of the stack to install
+            name: Name of the stack or service to install
             target_dir: Target directory (defaults to user systemd directory)
             use_sudo: Whether to use sudo for system installation
 
@@ -197,51 +244,93 @@ class QuadletInstaller:
         if target_dir is None:
             target_dir = Path.home() / ".config/containers/systemd"
 
-        stack_dir = self.quadlet_base_dir / stack_name
-        files = self.get_stack_files(stack_name)
+        # Validate and determine if it's a stack or service
+        is_valid, resolved_stack, service_file = self.validate_stack_or_service(name)
+        if not is_valid:
+            return False
+        stack_dir = self.quadlet_base_dir / resolved_stack
+
+        if service_file:
+            # Installing a single service - only install the specific service file
+            files = [service_file]
+            install_type = "service"
+            display_name = name
+
+            # Check if service might need dependencies (networks/volumes)
+            stack_files = self.get_stack_files(resolved_stack)
+            network_files = [f for f in stack_files if f.endswith(".network")]
+            volume_files = [f for f in stack_files if f.endswith(".volume")]
+
+            if network_files or volume_files:
+                console.print(
+                    f"[yellow]Service {name} may require shared resources:[/yellow]"
+                )
+                if network_files:
+                    console.print(f"  Networks: {', '.join(network_files)}")
+                if volume_files:
+                    console.print(f"  Volumes: {', '.join(volume_files)}")
+                console.print(
+                    "[yellow]Installing only the service file. Install the full stack if needed.[/yellow]"
+                )
+        else:
+            # Installing entire stack
+            files = self.get_stack_files(resolved_stack)
+            install_type = "stack"
+            display_name = resolved_stack
 
         # Print installation message with cyan path
         console.print(
-            f"[blue][INFO][/blue] Installing {stack_name} stack to [cyan]{target_dir}[/cyan]"
+            f"[green]Installing {display_name} {install_type} to [cyan]{target_dir}[/cyan][/green]"
         )
 
         try:
             # Create target directory
             if use_sudo:
-                subprocess.run(["sudo", "mkdir", "-p", str(target_dir)], check=True)
+                cmd = ["sudo", "mkdir", "-p", str(target_dir)]
+                verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
+                subprocess.run(cmd, check=True)
+                console.print(f"   Updated: {target_dir}")
             else:
+                verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
                 target_dir.mkdir(parents=True, exist_ok=True)
+                console.print(f"   Updated: {target_dir}")
 
             # Copy quadlet files
             for file in files:
-                self._print_status(f"Installing {file}")
+                console.print(f"[green]Installing {file}[/green]")
                 source_file = stack_dir / file
                 target_file = target_dir / file
 
                 if use_sudo:
-                    subprocess.run(
-                        ["sudo", "cp", str(source_file), str(target_file)], check=True
-                    )
+                    cmd = ["sudo", "cp", str(source_file), str(target_file)]
+                    verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
+                    subprocess.run(cmd, check=True)
+                    console.print(f"    Copied: {file}")
                 else:
+                    verbose_print(
+                        f"  [cyan]exec: cp .../{file} .../systemd/{file}[/cyan]"
+                    )
                     shutil.copy2(source_file, target_file)
+                    console.print(f"    Copied: {file}")
 
             # Set proper permissions
             if use_sudo:
-                subprocess.run(
-                    ["sudo", "chmod", "644"] + [str(target_dir / f) for f in files],
-                    check=True,
-                )
+                for file in files:
+                    cmd = ["sudo", "chmod", "644", str(target_dir / file)]
+                    verbose_print(f"  [cyan]exec: chmod 644 .../systemd/{file}[/cyan]")
+                    subprocess.run(cmd, check=True)
             else:
                 for file in files:
+                    verbose_print(f"  [cyan]exec: chmod 644 .../systemd/{file}[/cyan]")
                     (target_dir / file).chmod(0o644)
 
-            self._print_success(f"Successfully installed {stack_name} stack")
-
             # Reload systemd
-            self._print_status("Reloading systemd daemon...")
+            self._print_success("Reloading systemd daemon...")
             if use_sudo:
+                cmd = ["sudo", "systemctl", "daemon-reload"]
+                verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
                 result = subprocess.run(
-                    ["sudo", "systemctl", "daemon-reload"],
+                    cmd,
                     capture_output=True,
                     text=True,
                 )
@@ -251,8 +340,10 @@ class QuadletInstaller:
                     )
                     return False
             else:
+                cmd = ["systemctl", "--user", "daemon-reload"]
+                verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
                 result = subprocess.run(
-                    ["systemctl", "--user", "daemon-reload"],
+                    cmd,
                     capture_output=True,
                     text=True,
                 )
@@ -263,8 +354,10 @@ class QuadletInstaller:
                     self._print_status("Attempting to restart user systemd session...")
 
                     # Try to reset failed units
+                    reset_cmd = ["systemctl", "--user", "reset-failed"]
+                    verbose_print(f"  [cyan]exec: {' '.join(reset_cmd)}[/cyan]")
                     reset_result = subprocess.run(
-                        ["systemctl", "--user", "reset-failed"],
+                        reset_cmd,
                         capture_output=True,
                         text=True,
                     )
@@ -272,8 +365,10 @@ class QuadletInstaller:
                         self._print_status(
                             "Reset failed units, retrying daemon-reload..."
                         )
+                        retry_cmd = ["systemctl", "--user", "daemon-reload"]
+                        verbose_print(f"  [cyan]exec: {' '.join(retry_cmd)}[/cyan]")
                         retry_result = subprocess.run(
-                            ["systemctl", "--user", "daemon-reload"],
+                            retry_cmd,
                             capture_output=True,
                             text=True,
                         )
@@ -299,10 +394,15 @@ class QuadletInstaller:
                         )
 
             # Refresh PM service discovery if available
-            self._refresh_pm_discovery()
+            self._refresh_pm_discovery(display_name)
 
             # Show next steps
-            self._show_next_steps(stack_name, use_sudo)
+            if service_file:
+                # For single service, show service-specific next steps
+                self._show_service_next_steps(name, use_sudo)
+            else:
+                # For stack, show full stack next steps
+                self._show_next_steps(resolved_stack, use_sudo)
 
             return True
 
@@ -313,7 +413,7 @@ class QuadletInstaller:
             self._print_error(f"Unexpected error during installation: {e}")
             return False
 
-    def _refresh_pm_discovery(self) -> None:
+    def _refresh_pm_discovery(self, display_name: str) -> None:
         """Refresh PM service discovery."""
         pm_locations = [
             "/home/pwp/srv/apps/podman_manager/pm",
@@ -329,16 +429,31 @@ class QuadletInstaller:
                 break
 
         if pm_script:
-            self._print_status("Refreshing PM service discovery...")
+            self._print_success("Refreshing PM service discovery...")
             try:
+                cmd = [str(pm_script), "refresh"]
+                verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
                 result = subprocess.run(
-                    [str(pm_script), "refresh"],
+                    cmd,
                     capture_output=True,
                     text=True,
                     timeout=30,
                 )
                 if result.returncode == 0:
-                    self._print_success("PM service discovery refreshed")
+                    # Restart podman service to pick up new quadlet files
+                    self._print_success("Restarting podman service...")
+                    restart_cmd = ["systemctl", "--user", "restart", "podman.service"]
+                    verbose_print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
+                    restart_result = subprocess.run(
+                        restart_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    if restart_result.returncode != 0:
+                        self._print_warning(
+                            "Failed to restart podman service - you may need to run: systemctl --user restart podman.service"
+                        )
                 else:
                     self._print_warning(
                         "Failed to refresh PM service discovery (PM may not be available)"
@@ -348,46 +463,68 @@ class QuadletInstaller:
         else:
             self._print_status("PM not found, skipping service discovery refresh")
 
+    def _show_service_next_steps(self, service_name: str, use_sudo: bool) -> None:
+        """Show next steps after single service installation."""
+        systemctl_cmd = "systemctl" if use_sudo else "systemctl --user"
+        journal_cmd = "journalctl" if use_sudo else "journalctl --user"
+
+        console.print()
+        console.print("[green]Optional:[/green]")
+
+        console.print(
+            f"       [green]Check status:[/green]{systemctl_cmd} status {service_name}"
+        )
+        console.print(
+            f"          [green]View logs:[/green]{journal_cmd} -u {service_name} -f"
+        )
+        console.print(
+            f"   [green]Show service file:[/green]{systemctl_cmd} cat {service_name}"
+        )
+        console.print(
+            f"  [green]Enable auto-start:[/green]{systemctl_cmd} enable {service_name}"
+        )
+        console.print(
+            f" [green]Disable auto-start:[/green]{systemctl_cmd} disable {service_name}"
+        )
+        console.print()
+
     def _show_next_steps(self, stack_name: str, use_sudo: bool) -> None:
         """Show next steps after installation."""
         services = self.get_service_names(stack_name)
         systemctl_cmd = "systemctl" if use_sudo else "systemctl --user"
-        sudo_prefix = "sudo " if use_sudo else ""
+        journal_cmd = "journalctl" if use_sudo else "journalctl --user"
 
         if services:
             console.print()
-            self._print_status("Next steps:")
+            console.print("[green]Optional:[/green]")
+            # Use first service as example, or show all if only one
+            example_service = (
+                services[0] if len(services) == 1 else f"{services[0]} (example)"
+            )
 
-            console.print("1. Start services:")
-            for service in services:
-                console.print(
-                    f"   {sudo_prefix}{systemctl_cmd} start {service}.service"
-                )
-
+            console.print(
+                f"       [green]Check status:[/green]{systemctl_cmd} status {example_service}"
+            )
+            console.print(
+                f"          [green]View logs:[/green]{journal_cmd} -u {example_service} -f"
+            )
+            console.print(
+                f"   [green]Show service file:[/green]{systemctl_cmd} cat {example_service}"
+            )
+            console.print(
+                f"  [green]Enable auto-start:[/green]{systemctl_cmd} enable {example_service}"
+            )
+            console.print(
+                f" [green]Disable auto-start:[/green]{systemctl_cmd} disable {example_service}"
+            )
             console.print()
-            console.print("2. Enable auto-start:")
-            for service in services:
-                console.print(
-                    f"   {sudo_prefix}{systemctl_cmd} enable {service}.service"
-                )
-
-            console.print()
-            console.print("3. Check status:")
-            for service in services:
-                console.print(f"   {systemctl_cmd} status {service}.service")
-
-            console.print()
-            console.print("4. View logs:")
-            journal_cmd = "journalctl" if use_sudo else "journalctl --user"
-            for service in services:
-                console.print(f"   {journal_cmd} -u {service}.service -f")
 
         # Show stack-specific information if README exists
         readme_path = self.quadlet_base_dir / stack_name / "README.md"
         if readme_path.exists():
             console.print()
             console.print(
-                f"[blue][INFO][/blue] For detailed information about this stack, see: [cyan]{readme_path}[/cyan]"
+                f"[blue]For detailed information about this stack, see: [cyan]{readme_path}[/cyan][/blue]"
             )
 
     def list_stacks(self) -> None:
@@ -415,12 +552,12 @@ class QuadletInstaller:
         console.print(table)
 
     def uninstall_stack(
-        self, stack_name: str, target_dir: Optional[Path] = None, use_sudo: bool = False
+        self, name: str, target_dir: Optional[Path] = None, use_sudo: bool = False
     ) -> bool:
-        """Uninstall stack from target directory.
+        """Uninstall stack or service from target directory.
 
         Args:
-            stack_name: Name of the stack to uninstall
+            name: Name of the stack or service to uninstall
             target_dir: Target directory (defaults to user systemd directory)
             use_sudo: Whether to use sudo for system uninstallation
 
@@ -430,33 +567,53 @@ class QuadletInstaller:
         if target_dir is None:
             target_dir = Path.home() / ".config/containers/systemd"
 
-        files = self.get_stack_files(stack_name)
-        services = self.get_service_names(stack_name)
+        # Validate and determine if it's a stack or service
+        is_valid, resolved_stack, service_file = self.validate_stack_or_service(name)
+        if not is_valid:
+            return False
 
-        self._print_status(f"Uninstalling {stack_name} stack from {target_dir}")
+        if service_file:
+            # Uninstalling a single service
+            files = [service_file]
+            services = [name]
+            install_type = "service"
+            display_name = name
+        else:
+            # Uninstalling entire stack
+            files = self.get_stack_files(resolved_stack)
+            services = self.get_service_names(resolved_stack)
+            install_type = "stack"
+            display_name = resolved_stack
+
+        self._print_status(
+            f"Uninstalling {display_name} {install_type} from {target_dir}"
+        )
 
         try:
             # Stop and disable services first
             for service in services:
                 self._print_status(f"Stopping {service}.service")
                 if use_sudo:
-                    subprocess.run(
-                        ["sudo", "systemctl", "stop", f"{service}.service"],
-                        capture_output=True,
-                    )
-                    subprocess.run(
-                        ["sudo", "systemctl", "disable", f"{service}.service"],
-                        capture_output=True,
-                    )
+                    stop_cmd = ["sudo", "systemctl", "stop", f"{service}.service"]
+                    verbose_print(f"  [cyan]exec: {' '.join(stop_cmd)}[/cyan]")
+                    subprocess.run(stop_cmd, capture_output=True)
+
+                    disable_cmd = ["sudo", "systemctl", "disable", f"{service}.service"]
+                    verbose_print(f"  [cyan]exec: {' '.join(disable_cmd)}[/cyan]")
+                    subprocess.run(disable_cmd, capture_output=True)
                 else:
-                    subprocess.run(
-                        ["systemctl", "--user", "stop", f"{service}.service"],
-                        capture_output=True,
-                    )
-                    subprocess.run(
-                        ["systemctl", "--user", "disable", f"{service}.service"],
-                        capture_output=True,
-                    )
+                    stop_cmd = ["systemctl", "--user", "stop", f"{service}.service"]
+                    verbose_print(f"  [cyan]exec: {' '.join(stop_cmd)}[/cyan]")
+                    subprocess.run(stop_cmd, capture_output=True)
+
+                    disable_cmd = [
+                        "systemctl",
+                        "--user",
+                        "disable",
+                        f"{service}.service",
+                    ]
+                    verbose_print(f"  [cyan]exec: {' '.join(disable_cmd)}[/cyan]")
+                    subprocess.run(disable_cmd, capture_output=True)
 
             # Remove quadlet files
             for file in files:
@@ -464,15 +621,20 @@ class QuadletInstaller:
                 if file_path.exists():
                     self._print_status(f"Removing {file}")
                     if use_sudo:
-                        subprocess.run(["sudo", "rm", str(file_path)], check=True)
+                        rm_cmd = ["sudo", "rm", str(file_path)]
+                        verbose_print(f"  [cyan]exec: {' '.join(rm_cmd)}[/cyan]")
+                        subprocess.run(rm_cmd, check=True)
                     else:
+                        verbose_print(f"  [cyan]exec: rm .../systemd/{file}[/cyan]")
                         file_path.unlink()
 
             # Reload systemd
             self._print_status("Reloading systemd daemon...")
             if use_sudo:
+                reload_cmd = ["sudo", "systemctl", "daemon-reload"]
+                verbose_print(f"  [cyan]exec: {' '.join(reload_cmd)}[/cyan]")
                 result = subprocess.run(
-                    ["sudo", "systemctl", "daemon-reload"],
+                    reload_cmd,
                     capture_output=True,
                     text=True,
                 )
@@ -481,8 +643,10 @@ class QuadletInstaller:
                         "Failed to reload system daemon. You may need to manually run: sudo systemctl daemon-reload"
                     )
             else:
+                reload_cmd = ["systemctl", "--user", "daemon-reload"]
+                verbose_print(f"  [cyan]exec: {' '.join(reload_cmd)}[/cyan]")
                 result = subprocess.run(
-                    ["systemctl", "--user", "daemon-reload"],
+                    reload_cmd,
                     capture_output=True,
                     text=True,
                 )

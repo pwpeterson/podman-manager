@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
-from config import console
+from config import console, set_verbose
 from container_ops import ContainerOperations
 from display import DisplayManager
 from manager import PodmanManager
@@ -36,7 +36,16 @@ def show_rich_help():
         "  [cyan]python podman_manager.py[/cyan] [dim][OPTIONS][/dim] [green]COMMAND[/green] [dim][ARGS][/dim]"
     )
     console.print(
-        "  [cyan]pm[/cyan] [green]COMMAND[/green] [dim][ARGS][/dim]                    [dim]# Short alias[/dim]"
+        "  [cyan]pm[/cyan] [dim][OPTIONS][/dim] [green]COMMAND[/green] [dim][ARGS][/dim]                    [dim]# Short alias[/dim]"
+    )
+    console.print(
+        "  [cyan]pm --verbose reinit neo4j[/cyan]                    [dim]# Global verbose flag[/dim]"
+    )
+    console.print(
+        "  [cyan]pm reinit neo4j --verbose[/cyan]                   [dim]# Command-specific verbose flag[/dim]"
+    )
+    console.print(
+        "  [cyan]pm reinit neo4j -v[/cyan]                          [dim]# Short form verbose flag[/dim]"
     )
     console.print()
     console.print(
@@ -52,6 +61,9 @@ def show_rich_help():
         "--mode [auto|quadlet|compose]", "Manager mode (default: auto-detect)"
     )
     options_table.add_row("--debug-detection", "Show project type detection details")
+    options_table.add_row(
+        "-v, --verbose", "Show detailed command execution (exec lines)"
+    )
     options_table.add_row("-h, --help", "Show this help message")
     console.print(options_table)
 
@@ -84,9 +96,9 @@ def show_rich_help():
             "Service Lifecycle",
             [
                 (
-                    "reinit [cyan]<stack|service>[/cyan] [-b]",
-                    "Stop, reload daemon, and restart stack or service (-b: specialized rebuild for vllm-delegator/vllm-proxy)",
-                    "pm reinit vllm-delegator -b",
+                    "reinit [cyan]<stack|service>[/cyan] [-v] [-b]",
+                    "Stop, reload daemon, and restart stack or service (-v: verbose, -b: specialized rebuild for vllm-delegator/vllm-proxy)",
+                    "pm reinit vllm-delegator -v -b",
                 ),
                 (
                     "rebuild [cyan]<service>[/cyan]",
@@ -123,15 +135,30 @@ def show_rich_help():
                     "Disable stack or service at boot",
                     "pm disable vllm-delegator",
                 ),
+                (
+                    "reset-failed [cyan]<service>[/cyan]",
+                    "Reset failed service state",
+                    "pm reset-failed vllm-qwen25",
+                ),
+                (
+                    "show-service-file [cyan]<service>[/cyan]",
+                    "Show service file contents",
+                    "pm show-service-file vllm-qwen25",
+                ),
             ],
         ),
         (
             "Images & Updates",
             [
                 (
-                    "install [cyan]<stack>[/cyan]",
-                    "Install/build quadlet stack using universal script",
+                    "install [cyan]<stack|service>[/cyan]",
+                    "Install/build quadlet stack or individual service",
                     "pm install vllm",
+                ),
+                (
+                    "uninstall [cyan]<stack|service>[/cyan]",
+                    "Uninstall quadlet stack or service from systemd directory",
+                    "pm uninstall local-ai-neo4j",
                 ),
                 (
                     "update [cyan]<stack|service>[/cyan]",
@@ -185,94 +212,13 @@ def show_rich_help():
     for category, commands in categories:
         console.print(f"\n[bold cyan]{category}:[/bold cyan]")
         cmd_table = Table(show_header=False, box=None, padding=(0, 2))
-        cmd_table.add_column("Command", style="green", width=25)
+        cmd_table.add_column("Command", style="green", width=40)
         cmd_table.add_column("Description", style="white", width=35)
         cmd_table.add_column("Example", style="dim", width=25)
 
         for cmd, desc, example in commands:
             cmd_table.add_row(cmd, desc, example)
         console.print(cmd_table)
-
-    console.print()
-    console.print("[bold]EXAMPLES:[/bold]")
-    examples_table = Table(show_header=False, box=None, padding=(0, 2))
-    examples_table.add_column("Command", style="cyan", width=35)
-    examples_table.add_column("Description", style="white")
-    examples_table.add_row("pm list", "Show all services and stack status")
-    examples_table.add_row(
-        "pm targets", "Show available targets by type (quadlet/compose)"
-    )
-    examples_table.add_row("pm list vllm-qwen25", "Show details for specific service")
-    examples_table.add_row(
-        "pm install vllm", "Install/build vLLM stack using quadlet script"
-    )
-    examples_table.add_row("pm install local-ai", "Install/build local-ai stack")
-    examples_table.add_row("pm start vllm-stack", "Start all services in vLLM stack")
-    examples_table.add_row(
-        "pm start vllm-stack -b", "Build and start all services in vLLM stack"
-    )
-    examples_table.add_row("pm stop vllm-proxy", "Stop proxy service")
-    examples_table.add_row("pm down vllm-stack", "Stop all services in vLLM stack")
-    examples_table.add_row(
-        "pm reinit vllm-delegator",
-        "Reinitialize delegator service (stop, reload, start)",
-    )
-    examples_table.add_row(
-        "pm reinit vllm-delegator -b",
-        "Specialized rebuild: stop quadlet, rebuild MCP container, reload, start",
-    )
-    examples_table.add_row(
-        "pm reinit vllm-proxy -b",
-        "Specialized rebuild: stop quadlet, rebuild proxy container, reload, start",
-    )
-    examples_table.add_row(
-        "pm reinit local-ai-packaged", "Reinitialize entire stack (all services)"
-    )
-    examples_table.add_row(
-        "pm rebuild vllm-delegator", "Rebuild delegator container and restart service"
-    )
-    examples_table.add_row("pm restart vllm-delegator", "Restart delegator service")
-    examples_table.add_row(
-        "pm restart vllm-delegator -b", "Build and restart delegator service"
-    )
-    examples_table.add_row("pm logs vllm-qwen25 -f", "Follow logs for Qwen2.5 Coder")
-    examples_table.add_row(
-        "pm logs vllm-proxy -n 50", "Show last 50 lines of proxy logs"
-    )
-    examples_table.add_row(
-        "pm log-check vllm-qwen25", "Check Qwen2.5 Coder logs for issues (50 lines)"
-    )
-    examples_table.add_row(
-        "pm log-check vllm-qwen25 -n 200", "Check n lines of logs for issues"
-    )
-    examples_table.add_row(
-        "pm log-ai vllm-qwen25", "AI-powered analysis of Qwen2.5 Coder logs (50 lines)"
-    )
-    examples_table.add_row(
-        "pm log-ai vllm-qwen25 -n 100", "AI analysis of n lines of logs"
-    )
-    examples_table.add_row("pm status vllm-stack", "Detailed status of stack")
-    examples_table.add_row("pm enable vllm-stack", "Enable stack to start at boot")
-    examples_table.add_row("pm update vllm-qwen25", "Update images and restart service")
-    examples_table.add_row("pm auto-update", "Check auto-update timer status")
-    examples_table.add_row("pm reload", "Reload systemd daemon")
-    examples_table.add_row("pm ps", "Show running containers status")
-    examples_table.add_row("pm stats -f", "Monitor resource usage in real-time")
-    examples_table.add_row("pm images -a", "Show all images including intermediates")
-    examples_table.add_row("pm system-df", "Show disk usage by containers/images")
-    examples_table.add_row(
-        "pm prune", "Intelligent cleanup with analysis and confirmation"
-    )
-    examples_table.add_row("pm prune --quick", "Quick cleanup of dangling images only")
-    examples_table.add_row("pm prune --basic", "Basic cleanup without analysis")
-    examples_table.add_row("pm volumes", "List all volumes")
-    examples_table.add_row("pm networks", "List all networks")
-    examples_table.add_row("pm events --since 1h", "Show events from last hour")
-    examples_table.add_row("pm --debug-detection list", "Show mode detection details")
-    examples_table.add_row(
-        "pm --mode compose restart myservice", "Force compose mode for command"
-    )
-    console.print(examples_table)
 
     console.print()
     console.print("[bold]TIPS:[/bold]")
@@ -290,6 +236,9 @@ def show_rich_help():
     console.print("  • Mode auto-detects target type (quadlet vs compose)")
     console.print("  • Use [cyan]--debug-detection[/cyan] to see detection logic")
     console.print("  • Use [cyan]--mode compose[/cyan] to force compose mode")
+    console.print(
+        "  • Use [cyan]--verbose[/cyan] or [cyan]-v[/cyan] before commands for detailed output"
+    )
 
 
 class CustomArgumentParser(argparse.ArgumentParser):
@@ -502,6 +451,12 @@ def main():
         action="store_true",
         help="Show project type detection details",
     )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -617,6 +572,12 @@ def main():
         "target",
         help="Stack or service name (vllm-stack, local-ai-packaged, vllm-qwen25, vllm-proxy, vllm-delegator)",
     )
+    reinit_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
     build_group = reinit_parser.add_mutually_exclusive_group()
     build_group.add_argument(
         "-b",
@@ -644,11 +605,23 @@ def main():
         "target",
         help="Service name (vllm-delegator, etc.)",
     )
+    rebuild_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     start_parser = subparsers.add_parser("start", help="Start stack or service")
     start_parser.add_argument(
         "target",
         help="Stack or service name (vllm-stack, local-ai-packaged, vllm-qwen25, vllm-proxy, vllm-delegator)",
+    )
+    start_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
     )
     start_parser.add_argument(
         "-b",
@@ -659,28 +632,82 @@ def main():
 
     stop_parser = subparsers.add_parser("stop", help="Stop stack or service")
     stop_parser.add_argument("target", help="Stack or service name")
+    stop_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     down_parser = subparsers.add_parser("down", help="Stop all services in stack")
     down_parser.add_argument(
         "target", help="Stack name (e.g., vllm-stack, local-ai-packaged)"
+    )
+    down_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
     )
 
     enable_parser = subparsers.add_parser(
         "enable", help="Enable stack or service at boot"
     )
     enable_parser.add_argument("target", help="Stack or service name")
+    enable_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     disable_parser = subparsers.add_parser(
         "disable", help="Disable stack or service at boot"
     )
     disable_parser.add_argument("target", help="Stack or service name")
+    disable_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    reset_failed_parser = subparsers.add_parser(
+        "reset-failed", help="Reset failed service state"
+    )
+    reset_failed_parser.add_argument("target", help="Service name")
+    reset_failed_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    show_service_file_parser = subparsers.add_parser(
+        "show-service-file", help="Show service file contents"
+    )
+    show_service_file_parser.add_argument("target", help="Service name")
+    show_service_file_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     # Image and update commands
     install_parser = subparsers.add_parser(
         "install", help="Install/build quadlet stack using universal script"
     )
     install_parser.add_argument(
-        "stack", help="Stack name (e.g., vllm, local-ai, supabase)"
+        "target",
+        help="Stack or service name (e.g., vllm, local-ai, local-ai-neo4j, supabase)",
+    )
+
+    uninstall_parser = subparsers.add_parser(
+        "uninstall", help="Uninstall quadlet stack or service from systemd directory"
+    )
+    uninstall_parser.add_argument(
+        "target", help="Stack or service name (e.g., vllm, local-ai-neo4j, supabase)"
     )
 
     update_parser = subparsers.add_parser("update", help="Update images and restart")
@@ -701,6 +728,12 @@ def main():
     restart_parser = subparsers.add_parser("restart", help="Restart stack or service")
     restart_parser.add_argument("target", help="Stack or service name")
     restart_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+    restart_parser.add_argument(
         "-b",
         "--build",
         action="store_true",
@@ -720,6 +753,14 @@ def main():
         return
 
     try:
+        # Set verbose mode from global flag
+        set_verbose(args.verbose)
+
+        # Helper function to handle command-specific verbose flags
+        def handle_command_verbose(args):
+            if hasattr(args, "verbose") and args.verbose:
+                set_verbose(True)
+
         # Initialize project type detector
         compose_dir = os.environ.get("PODMAN_COMPOSE_DIR")
         detector = ProjectTypeDetector(Path(compose_dir) if compose_dir else None)
@@ -828,16 +869,16 @@ def main():
         elif args.command == "prune":
             enhanced = not getattr(args, "basic", False)
             quick = getattr(args, "quick", False)
-            if selected_mode == "quadlet":
-                container_ops.prune_containers(enhanced=enhanced, quick=quick)
-            else:
-                container_ops.prune(enhanced=enhanced, quick=quick)
+            container_ops.prune(enhanced=enhanced, quick=quick)
         elif args.command == "system-df":
             if args.mode == "quadlet":
                 container_ops.show_system_df()
             else:
                 display.show_system_df()
         elif args.command == "reinit":
+            # Handle command-specific verbose flag
+            handle_command_verbose(args)
+
             # Determine build type
             build_type = None
             if getattr(args, "build", False):
@@ -852,37 +893,75 @@ def main():
             )
             sys.exit(0 if success else 1)
         elif args.command == "rebuild":
+            handle_command_verbose(args)
             success = try_with_fallback(container_ops.rebuild, args.target)
             sys.exit(0 if success else 1)
         elif args.command == "start":
+            handle_command_verbose(args)
             success = try_with_fallback(
                 container_ops.start, args.target, build=getattr(args, "build", False)
             )
             sys.exit(0 if success else 1)
         elif args.command == "stop":
+            handle_command_verbose(args)
             success = try_with_fallback(container_ops.stop, args.target)
             sys.exit(0 if success else 1)
         elif args.command == "down":
+            handle_command_verbose(args)
             success = try_with_fallback(container_ops.down, args.target)
             sys.exit(0 if success else 1)
         elif args.command == "restart":
+            handle_command_verbose(args)
             success = try_with_fallback(
                 container_ops.restart, args.target, build=getattr(args, "build", False)
             )
             sys.exit(0 if success else 1)
         elif args.command == "enable":
+            handle_command_verbose(args)
             success = try_with_fallback(container_ops.enable, args.target)
             sys.exit(0 if success else 1)
         elif args.command == "disable":
+            handle_command_verbose(args)
             success = try_with_fallback(container_ops.disable, args.target)
             sys.exit(0 if success else 1)
+        elif args.command == "reset-failed":
+            handle_command_verbose(args)
+            if selected_mode == "quadlet":
+                success = try_with_fallback(container_ops.reset_failed, args.target)
+                sys.exit(0 if success else 1)
+            else:
+                console.print(
+                    "[red]Reset-failed command only available in quadlet mode[/red]"
+                )
+                sys.exit(1)
+        elif args.command == "show-service-file":
+            handle_command_verbose(args)
+            if selected_mode == "quadlet":
+                success = try_with_fallback(
+                    container_ops.show_service_file, args.target
+                )
+                sys.exit(0 if success else 1)
+            else:
+                console.print(
+                    "[red]Show-service-file command only available in quadlet mode[/red]"
+                )
+                sys.exit(1)
         elif args.command == "install":
             if selected_mode == "quadlet":
-                success = try_with_fallback(container_ops.install_stack, args.stack)
+                success = try_with_fallback(container_ops.install_stack, args.target)
                 sys.exit(0 if success else 1)
             else:
                 console.print(
                     "[red]Install command only available in quadlet mode[/red]"
+                )
+                sys.exit(1)
+        elif args.command == "uninstall":
+            if selected_mode == "quadlet":
+                success = try_with_fallback(container_ops.uninstall_stack, args.target)
+                sys.exit(0 if success else 1)
+            else:
+                console.print(
+                    "[red]Uninstall command only available in quadlet mode[/red]"
                 )
                 sys.exit(1)
         elif args.command == "update":
@@ -916,7 +995,8 @@ def main():
         elif args.command == "refresh":
             # Hidden refresh command used internally by universal script
             if selected_mode == "quadlet":
-                manager.refresh_service_discovery()
+                if hasattr(manager, "refresh_service_discovery"):
+                    manager.refresh_service_discovery()
                 # Also clear any display caches
                 if hasattr(display, "clear_cache"):
                     display.clear_cache()

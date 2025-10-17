@@ -98,6 +98,7 @@ class EnhancedPruner:
                 "--format",
                 "{{.ID}};{{.Names}};{{.Image}};{{.ImageID}};{{.Status}}",
             ]
+            self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode != 0:
@@ -137,6 +138,7 @@ class EnhancedPruner:
                 "{{.ID}};{{.Repository}};{{.Tag}};{{.Size}};{{.Created}}",
                 "--all",
             ]
+            self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode != 0:
@@ -425,6 +427,7 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
         try:
             # Use podman rmi with force to remove images
             cmd = ["podman", "rmi", "-f"] + image_ids
+            self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
             if result.returncode == 0:
@@ -448,6 +451,7 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
 
         try:
             cmd = ["podman", "system", "df"]
+            self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
             if result.returncode == 0:
@@ -514,8 +518,10 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
             # Prune containers
             task1 = progress.add_task("Pruning unused containers...", total=None)
             try:
+                cmd = ["podman", "container", "prune", "-f"]
+                self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
                 result = subprocess.run(
-                    ["podman", "container", "prune", "-f"],
+                    cmd,
                     capture_output=True,
                     text=True,
                     timeout=60,
@@ -532,8 +538,10 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
             # Prune dangling images
             task2 = progress.add_task("Pruning dangling images...", total=None)
             try:
+                cmd = ["podman", "image", "prune", "-f"]
+                self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
                 result = subprocess.run(
-                    ["podman", "image", "prune", "-f"],
+                    cmd,
                     capture_output=True,
                     text=True,
                     timeout=60,

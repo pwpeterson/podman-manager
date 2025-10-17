@@ -183,6 +183,7 @@ class DisplayManager:
         if show_all:
             cmd.append("-a")
 
+        console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             error_msg = (
@@ -230,6 +231,7 @@ class DisplayManager:
             cmd.remove("--no-stream")
 
         # Container resource usage
+        console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
         if follow:
             console.print("[dim]Press Ctrl+C to stop following stats[/dim]")
@@ -254,6 +256,7 @@ class DisplayManager:
         # Podman volumes
 
         cmd = ["podman", "volume", "ls", "--format", "table"]
+        console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -274,6 +277,7 @@ class DisplayManager:
         # Podman networks
 
         cmd = ["podman", "network", "ls"]
+        console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0:
             console.print(result.stdout)
@@ -324,3 +328,7 @@ class DisplayManager:
         except Exception as e:
             console.print(f"[red]Error streaming events: {e}[/red]")
             return False
+
+    def clear_cache(self) -> None:
+        """Clear display cache - only available in quadlet mode"""
+        console.print("[red]Clear cache only available in quadlet mode[/red]")

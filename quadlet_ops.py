@@ -1,12 +1,18 @@
 """Quadlet container operations for vLLM services."""
 
 import subprocess
+import time
 from pathlib import Path
 from typing import List
 
+try:
+    import requests
+except ImportError:
+    requests = None
+
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from config import console
+from config import console, verbose_print
 
 
 class QuadletOperations:
@@ -14,6 +20,12 @@ class QuadletOperations:
 
     def __init__(self, manager):
         self.manager = manager
+
+    def _render_ansi_output(self, output: str) -> None:
+        """Render ANSI-colored output from subprocess"""
+        # For now, just print the output directly
+        # Rich console should handle ANSI codes properly
+        console.print(output)
 
     def _extract_log_message(self, log_line: str, msg_type: str) -> str:
         """Extract the actual error/warning message from a log line with timestamp"""
@@ -97,6 +109,7 @@ class QuadletOperations:
         import subprocess
         from collections import Counter
 
+        self.manager._clear_auto_match_cache()
         service_name = self.manager._find_service_name(target)
 
         if not service_name:
@@ -118,7 +131,9 @@ class QuadletOperations:
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode != 0:
-                console.print(f"[red]Failed to get logs: {result.stderr.strip()}[/red]")
+                console.print(
+                    f"[red]Failed to get logs: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
+                )
                 return
 
             if not result.stdout.strip():
@@ -343,7 +358,6 @@ class QuadletOperations:
                 if choice and choice.isdigit():
                     choice_num = int(choice)
                     if 1 <= choice_num <= max_option:
-                        import subprocess
 
                         if choice_num == 1:
                             cmd = [
@@ -409,6 +423,7 @@ class QuadletOperations:
 
         import requests
 
+        self.manager._clear_auto_match_cache()
         service_name = self.manager._find_service_name(target)
 
         if not service_name:
@@ -432,7 +447,9 @@ class QuadletOperations:
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode != 0:
-                console.print(f"[red]Failed to get logs: {result.stderr.strip()}[/red]")
+                console.print(
+                    f"[red]Failed to get logs: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
+                )
                 return
 
             if not result.stdout.strip():
@@ -558,7 +575,6 @@ Provide a structured analysis focusing on actionable insights. If no significant
                     if choice and choice.isdigit():
                         choice_num = int(choice)
                         if 1 <= choice_num <= 5:
-                            import subprocess
 
                             if choice_num == 1:
                                 cmd = [
@@ -631,7 +647,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
         # PRIORITY 1: Check for stack names first
         if target.endswith("-stack"):
             project_name = target[:-6]  # Remove "-stack" suffix
-            return self._start_stack(project_name, build=build)
+            return self._start_stack(project_name)
 
         # PRIORITY 2: Check if target might be a stack name without -stack suffix
         stack_variant = f"{target}-stack"
@@ -639,7 +655,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
             hasattr(self.manager, "stack_services")
             and stack_variant in self.manager.stack_services
         ):
-            return self._start_stack(target, build=build)
+            return self._start_stack(target)
 
         # PRIORITY 3: Try service name resolution
         service_name = self.manager._find_service_name(target, allow_interactive=False)
@@ -647,7 +663,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
             stack_name = service_name[6:]  # Remove "STACK:" prefix
-            return self._start_stack(stack_name, build=build)
+            return self._start_stack(stack_name)
 
         return self._start_service_with_build(target, build=build)
 
@@ -719,12 +735,111 @@ Provide a structured analysis focusing on actionable insights. If no significant
             success = self.manager.stop_service(target, force=True, quiet=False)
             return success
 
+    def reset_failed(self, target: str) -> bool:
+        """Reset failed service state"""
+        self.manager._clear_auto_match_cache()
+        service_name = self.manager._find_service_name(target, allow_interactive=False)
+
+        if not service_name:
+            console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+
+        console.print(f"[yellow]Resetting failed state for {target}...[/yellow]")
+
+        cmd = ["systemctl", "--user", "reset-failed", service_name]
+        verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                console.print(
+                    f"[green]Successfully reset failed state for {target}[/green]"
+                )
+                return True
+            else:
+                console.print(
+                    f"[red]Failed to reset failed state: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
+                )
+                return False
+        except Exception as e:
+            console.print(f"[red]Error resetting failed state: {e}[/red]")
+            return False
+
+    def show_service_file(self, target: str) -> bool:
+        """Show service file contents"""
+        self.manager._clear_auto_match_cache()
+        service_name = self.manager._find_service_name(target, allow_interactive=False)
+
+        if not service_name:
+            console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+
+        console.print(f"[yellow]Showing service file for {target}...[/yellow]")
+
+        cmd = ["systemctl", "--user", "cat", service_name]
+        verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                console.print(f"\n[bold cyan]=== {service_name} ===[/bold cyan]")
+                console.print(result.stdout)
+                return True
+            else:
+                console.print(
+                    f"[red]Failed to show service file: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
+                )
+                return False
+        except Exception as e:
+            console.print(f"[red]Error showing service file: {e}[/red]")
+            return False
+
+    def uninstall_stack(self, stack: str) -> bool:
+        """Uninstall quadlet stack from systemd directory"""
+        from installer import QuadletInstaller
+
+        console.print(f"[green]Uninstalling {stack} stack...[/green]")
+
+        try:
+            installer = QuadletInstaller()
+        except FileNotFoundError as e:
+            console.print(f"[red]{e}[/red]")
+            return False
+
+        # Validate the stack or service first to get the resolved name
+        is_valid, resolved_stack, service_file = installer.validate_stack_or_service(
+            stack
+        )
+        if not is_valid:
+            return False
+
+        # Use the resolved stack name from validation
+        full_stack_name = resolved_stack
+
+        # Check systemd health
+        if not installer.check_systemd_user_session():
+            console.print(
+                "[yellow]Systemd health check failed. Uninstallation may encounter issues.[/yellow]"
+            )
+
+        # Uninstall the stack
+        success = installer.uninstall_stack(full_stack_name)
+
+        if success:
+            # Final success message
+            console.print(f"[green]Successfully uninstalled {stack} stack[/green]")
+
+        return success
+
     def restart(self, target: str, build: bool = False) -> bool:
         """Restart a service or stack"""
+        # Clear cache at the start of the operation
+        self.manager._clear_auto_match_cache()
+
         # PRIORITY 1: Check for stack names first
         if target.endswith("-stack"):
             project_name = target[:-6]  # Remove "-stack" suffix
-            return self._restart_stack(project_name, build=build)
+            return self._restart_stack(project_name)
 
         # PRIORITY 2: Check if target might be a stack name without -stack suffix
         stack_variant = f"{target}-stack"
@@ -732,7 +847,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
             hasattr(self.manager, "stack_services")
             and stack_variant in self.manager.stack_services
         ):
-            return self._restart_stack(target, build=build)
+            return self._restart_stack(target)
 
         # PRIORITY 3: Try service name resolution
         service_name = self.manager._find_service_name(target, allow_interactive=False)
@@ -740,9 +855,32 @@ Provide a structured analysis focusing on actionable insights. If no significant
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
             stack_name = service_name[6:]  # Remove "STACK:" prefix
-            return self._restart_stack(stack_name, build=build)
+            return self._restart_stack(stack_name)
 
-        return self._restart_service_with_build(target, build=build)
+        # If we found a service, call manager.restart_service directly to avoid duplicate resolution
+        if service_name:
+            if build:
+                # Stop first
+                self.manager.stop_service(target, quiet=True)
+                # Build
+                if not self._build_service(target):
+                    return False
+                # Reload daemon
+                self.manager.reload_daemon()
+
+            # Call systemctl restart directly since we already resolved the service name
+            cmd = ["systemctl", "--user", "restart", service_name]
+            result = self.manager._run_systemctl_command(cmd, f"restart_{target}")
+
+            if result.returncode == 0:
+                console.print(f"[green]Restarted {service_name}[/green]")
+                return True
+            else:
+                console.print(f"[red]Failed to restart {service_name}[/red]")
+                return False
+        else:
+            console.print(f"[red]Service '{target}' not found[/red]")
+            return False
 
     def rebuild(self, target: str) -> bool:
         """Rebuild container image and restart service"""
@@ -763,9 +901,12 @@ Provide a structured analysis focusing on actionable insights. If no significant
         # Handle individual service
         return self._rebuild_service(target)
 
-    def reinit(self, target: str, build: bool = False, build_type: str = None) -> bool:
+    def reinit(
+        self, target: str, build: bool = False, build_type: str | None = None
+    ) -> bool:
         """Stop service, reload daemon, and restart service (useful for .container file changes)"""
-        console.print(f"[yellow]Reinitializing {target}...[/yellow]")
+        # Clear cache at the start
+        self.manager._clear_auto_match_cache()
 
         # Handle backward compatibility - if build=True and no build_type, use legacy
         if build and build_type is None:
@@ -800,10 +941,92 @@ Provide a structured analysis focusing on actionable insights. If no significant
             return self._reinit_stack(stack_name, build_type=build_type)
 
         # PRIORITY 4: Handle individual service (only if not a stack)
-        return self._reinit_service(target, build_type=build_type)
+        if service_name:
+            return self._reinit_service_direct(
+                target, service_name, build_type=build_type
+            )
+        else:
+            console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+
+    def _reinit_service_direct(
+        self, target: str, service_name: str, build_type: str | None = None
+    ) -> bool:
+        """Reinit a single service using already-resolved service name"""
+        console.print(f"\n[green]Reinitializing {target}...[/green]\n")
+
+        # Use the provided service_name to avoid duplicate resolution
+        # Stop the service
+        console.print(f"[green]Stopping {target}...[/green]")
+        stop_cmd = ["systemctl", "--user", "stop", service_name]
+        verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
+        stop_result = self.manager._run_systemctl_command(
+            stop_cmd, f"stop_{target}", quiet=True
+        )
+        stop_success = stop_result.returncode == 0
+
+        if stop_success:
+            console.print(f"[green]Stopped {target}[/green]")
+        else:
+            console.print("[yellow]Service was not running or failed to stop[/yellow]")
+
+        # Build if requested
+        if build_type == "podman":
+            console.print(f"[green]Building {target} (podman)...[/green]")
+            build_success = self._build_service_podman(target)
+            if not build_success:
+                console.print("[red]Failed to build images[/red]")
+                return False
+        elif build_type in ["legacy", "quadlet"]:
+            console.print(f"[green]Building {target} (quadlet)...[/green]")
+            build_success = self._build_service(target)
+            if not build_success:
+                console.print("[red]Failed to build images[/red]")
+                return False
+
+        # Handle daemon reload
+        console.print("[green]Reloading systemd daemon...[/green]")
+
+        if build_type not in ["legacy", "quadlet"]:
+            reload_success = self.manager.reload_daemon()
+            if not reload_success:
+                console.print("[red]Failed to reload systemd daemon[/red]")
+                return False
+        else:
+            # Quadlet build script already reloaded daemon, add delay and force another reload
+
+            time.sleep(3)
+            reload_success = self.manager.reload_daemon()
+            if not reload_success:
+                console.print(
+                    "[yellow]Warning: Additional daemon reload failed[/yellow]"
+                )
+            else:
+                time.sleep(1)
+
+        # Start the service using the resolved service name
+        console.print(f"[green]Starting {target}...[/green]")
+        start_cmd = ["systemctl", "--user", "start", service_name]
+        verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
+        start_result = self.manager._run_systemctl_command(
+            start_cmd, f"start_{target}", quiet=True
+        )
+        start_success = start_result.returncode == 0
+
+        if not start_success and start_result.stderr:
+            console.print(
+                f"[red]Start failed: {start_result.stderr.strip() if start_result.stderr else 'Unknown error'}[/red]"
+            )
+
+        if start_success:
+            console.print(f"\n[green]Successfully reinitialized {target}[/green]\n")
+            return True
+        else:
+            console.print(f"[red]Failed to start {target} after reinit[/red]")
+            return False
 
     def _reinit_service(
-        self, target: str, build: bool = False, build_type: str = None
+        self, target: str, build: bool = False, build_type: str | None = None
     ) -> bool:
         """Reinit a single service"""
         # Handle backward compatibility
@@ -829,11 +1052,11 @@ Provide a structured analysis focusing on actionable insights. If no significant
                     "[yellow]Service was not running or failed to stop[/yellow]"
                 )
                 # Check for systemd transport issues
-                import subprocess
-
                 try:
+                    test_cmd = ["systemctl", "--user", "is-system-running"]
+                    console.print(f"[cyan]exec: {' '.join(test_cmd)}[/cyan]")
                     test_result = subprocess.run(
-                        ["systemctl", "--user", "is-system-running"],
+                        test_cmd,
                         capture_output=True,
                         text=True,
                         timeout=5,
@@ -915,7 +1138,6 @@ Provide a structured analysis focusing on actionable insights. If no significant
                     return False
             else:
                 # Quadlet build script already reloaded daemon, add delay and force another reload
-                import time
 
                 with Progress(
                     SpinnerColumn(),
@@ -972,7 +1194,6 @@ Provide a structured analysis focusing on actionable insights. If no significant
                     console.print(f"Found service: {service_name}")
 
                     # Additional verification: check if service file exists and add extra delay
-                    import subprocess
                     from pathlib import Path
 
                     # Check if the .container file exists
@@ -994,10 +1215,11 @@ Provide a structured analysis focusing on actionable insights. If no significant
                     console.print(
                         "[dim]Forcing systemd to re-scan for new units...[/dim]"
                     )
-                    import subprocess
 
+                    scan_cmd = ["systemctl", "--user", "daemon-reload"]
+                    console.print(f"[cyan]exec: {' '.join(scan_cmd)}[/cyan]")
                     scan_result = subprocess.run(
-                        ["systemctl", "--user", "daemon-reload"],
+                        scan_cmd,
                         capture_output=True,
                         text=True,
                     )
@@ -1010,8 +1232,10 @@ Provide a structured analysis focusing on actionable insights. If no significant
                     console.print(
                         f"[dim]Checking systemd unit status for {service_name}...[/dim]"
                     )
+                    status_cmd = ["systemctl", "--user", "cat", service_name]
+                    console.print(f"[cyan]exec: {' '.join(status_cmd)}[/cyan]")
                     status_result = subprocess.run(
-                        ["systemctl", "--user", "cat", service_name],
+                        status_cmd,
                         capture_output=True,
                         text=True,
                     )
@@ -1019,7 +1243,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
                         console.print("[dim]Systemd can see the unit definition[/dim]")
                     else:
                         console.print(
-                            f"[yellow]Systemd cannot see unit: {status_result.stderr.strip()}[/yellow]"
+                            f"[yellow]Systemd cannot see unit: {status_result.stderr.strip() if status_result.stderr else 'Unknown error'}[/yellow]"
                         )
                         # Try to manually trigger quadlet generation
                         console.print(
@@ -1045,8 +1269,10 @@ Provide a structured analysis focusing on actionable insights. If no significant
                         )
 
                         # Method 1: Force daemon-reload with verbose output
+                        reload_cmd = ["systemctl", "--user", "daemon-reload"]
+                        console.print(f"[cyan]exec: {' '.join(reload_cmd)}[/cyan]")
                         reload_result = subprocess.run(
-                            ["systemctl", "--user", "daemon-reload"],
+                            reload_cmd,
                             capture_output=True,
                             text=True,
                         )
@@ -1056,14 +1282,16 @@ Provide a structured analysis focusing on actionable insights. If no significant
                             )
 
                         # Method 2: Check if quadlet generator is working
+                        gen_cmd = [
+                            "systemctl",
+                            "--user",
+                            "list-unit-files",
+                            "--type=service",
+                            "*quadlet*",
+                        ]
+                        console.print(f"[cyan]exec: {' '.join(gen_cmd)}[/cyan]")
                         gen_check = subprocess.run(
-                            [
-                                "systemctl",
-                                "--user",
-                                "list-unit-files",
-                                "--type=service",
-                                "*quadlet*",
-                            ],
+                            gen_cmd,
                             capture_output=True,
                             text=True,
                         )
@@ -1075,16 +1303,22 @@ Provide a structured analysis focusing on actionable insights. If no significant
                         time.sleep(3)
 
                         # Final daemon reload
+                        final_reload_cmd = ["systemctl", "--user", "daemon-reload"]
+                        console.print(
+                            f"[cyan]exec: {' '.join(final_reload_cmd)}[/cyan]"
+                        )
                         subprocess.run(
-                            ["systemctl", "--user", "daemon-reload"],
+                            final_reload_cmd,
                             capture_output=True,
                             text=True,
                         )
                         time.sleep(2)
 
                         # Check again if service is now visible
+                        recheck_cmd = ["systemctl", "--user", "cat", service_name]
+                        console.print(f"[cyan]exec: {' '.join(recheck_cmd)}[/cyan]")
                         recheck_result = subprocess.run(
-                            ["systemctl", "--user", "cat", service_name],
+                            recheck_cmd,
                             capture_output=True,
                             text=True,
                         )
@@ -1094,7 +1328,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
                             )
                         else:
                             console.print(
-                                f"[red]Service still not visible: {recheck_result.stderr.strip()}[/red]"
+                                f"[red]Service still not visible: {recheck_result.stderr.strip() if recheck_result.stderr else 'Unknown error'}[/red]"
                             )
 
                             # Last resort: Check quadlet logs and try user systemd restart
@@ -1102,17 +1336,21 @@ Provide a structured analysis focusing on actionable insights. If no significant
                                 "[dim]Checking for quadlet generation errors...[/dim]"
                             )
                             try:
+                                journal_cmd = [
+                                    "journalctl",
+                                    "--user",
+                                    "-u",
+                                    "systemd",
+                                    "--since",
+                                    "1 minute ago",
+                                    "-n",
+                                    "10",
+                                ]
+                                console.print(
+                                    f"[cyan]exec: {' '.join(journal_cmd)}[/cyan]"
+                                )
                                 journal_result = subprocess.run(
-                                    [
-                                        "journalctl",
-                                        "--user",
-                                        "-u",
-                                        "systemd",
-                                        "--since",
-                                        "1 minute ago",
-                                        "-n",
-                                        "10",
-                                    ],
+                                    journal_cmd,
                                     capture_output=True,
                                     text=True,
                                     timeout=5,
@@ -1147,8 +1385,12 @@ Provide a structured analysis focusing on actionable insights. If no significant
                                 "[yellow]Attempting to restart user systemd instance...[/yellow]"
                             )
                             try:
+                                restart_cmd = ["systemctl", "--user", "daemon-reexec"]
+                                console.print(
+                                    f"[cyan]exec: {' '.join(restart_cmd)}[/cyan]"
+                                )
                                 restart_result = subprocess.run(
-                                    ["systemctl", "--user", "daemon-reexec"],
+                                    restart_cmd,
                                     capture_output=True,
                                     text=True,
                                     timeout=10,
@@ -1160,8 +1402,17 @@ Provide a structured analysis focusing on actionable insights. If no significant
                                     time.sleep(3)
 
                                     # Final check after restart
+                                    final_check_cmd = [
+                                        "systemctl",
+                                        "--user",
+                                        "cat",
+                                        service_name,
+                                    ]
+                                    console.print(
+                                        f"[cyan]exec: {' '.join(final_check_cmd)}[/cyan]"
+                                    )
                                     final_check = subprocess.run(
-                                        ["systemctl", "--user", "cat", service_name],
+                                        final_check_cmd,
                                         capture_output=True,
                                         text=True,
                                     )
@@ -1171,7 +1422,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
                                         )
                                     else:
                                         console.print(
-                                            f"[red]Service still not visible after restart: {final_check.stderr.strip()}[/red]"
+                                            f"[red]Service still not visible after restart: {final_check.stderr.strip() if final_check.stderr else 'Unknown error'}[/red]"
                                         )
                                         console.print(
                                             "[red]This indicates a deeper quadlet configuration issue[/red]"
@@ -1198,7 +1449,6 @@ Provide a structured analysis focusing on actionable insights. If no significant
                     console.print(
                         "[dim]Adding final delay to ensure service is fully ready...[/dim]"
                     )
-                    import time
 
                     time.sleep(5)  # Increased to 5 seconds
 
@@ -1207,16 +1457,17 @@ Provide a structured analysis focusing on actionable insights. If no significant
                         f"[yellow]Warning: Could not find service for {target}[/yellow]"
                     )
                     # List available services for debugging
-                    import subprocess
 
+                    list_cmd = [
+                        "systemctl",
+                        "--user",
+                        "list-unit-files",
+                        "--type=service",
+                        "*vllm*",
+                    ]
+                    console.print(f"[cyan]exec: {' '.join(list_cmd)}[/cyan]")
                     result = subprocess.run(
-                        [
-                            "systemctl",
-                            "--user",
-                            "list-unit-files",
-                            "--type=service",
-                            "*vllm*",
-                        ],
+                        list_cmd,
                         capture_output=True,
                         text=True,
                     )
@@ -1226,11 +1477,29 @@ Provide a structured analysis focusing on actionable insights. If no significant
                             if "vllm" in line.lower():
                                 console.print(f"[dim]  {line.strip()}[/dim]")
 
-            # Step 4: Start the service
+            # Step 4: Restart the service
             task4 = progress.add_task(
-                f"Step {'4' if build_type else '3'}: Starting service...", total=None
+                f"Step {'4' if build_type else '3'}: Restarting service...", total=None
             )
-            start_success = self.manager.start_service(target)
+
+            service_name = self.manager._find_service_name(
+                target, allow_interactive=False
+            )
+            if service_name:
+                restart_cmd = ["systemctl", "--user", "restart", service_name]
+                console.print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
+                restart_result = subprocess.run(
+                    restart_cmd, capture_output=True, text=True
+                )
+                start_success = restart_result.returncode == 0
+                if not start_success and restart_result.stderr:
+                    console.print(
+                        f"[red]Restart failed: {restart_result.stderr.strip() if restart_result.stderr else 'Unknown error'}[/red]"
+                    )
+            else:
+                console.print(f"[red]Could not find service for {target}[/red]")
+                start_success = False
+
             progress.remove_task(task4)
 
             if start_success:
@@ -1241,20 +1510,22 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 return False
 
     def _reinit_stack(
-        self, project: str, build: bool = False, build_type: str = None
+        self, project: str, build: bool = False, build_type: str | None = None
     ) -> bool:
         """Reinit an entire project stack"""
+        console.print(f"\n[green]Reinitializing {project} stack...[/green]\n")
+
         services = self._get_stack_services(project)
 
         if not services:
-            console.print(f"[red]No services found for {project}-stack stack[/red]")
+            console.print(f"[red]No services found for {project} stack[/red]")
             return False
 
-        console.print(f"[yellow]Step 1: Stopping all {project} services...[/yellow]")
+        console.print(f"[green]Stopping all {project} services...[/green]")
         stop_success = True
         for service in services:
             console.print(f"  Stopping {service}...")
-            if not self.manager.stop_service(service, quiet=True):
+            if not self.manager.stop_service(service, quiet=False):
                 stop_success = False
 
         if not stop_success:
@@ -1270,12 +1541,12 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
             if build_type == "podman":
                 console.print(
-                    f"[yellow]Step 2: Building {project} images (podman build)...[/yellow]"
+                    f"[green]Building {project} images (podman build)...[/green]"
                 )
                 build_success = self._build_stack_podman(project, services)
             elif build_type in ["legacy", "quadlet"]:
                 console.print(
-                    f"[yellow]Step 2: Building {project} images (quadlet build)...[/yellow]"
+                    f"[green]Building {project} images (quadlet build)...[/green]"
                 )
                 build_success = self._build_stack(project, services)
             else:
@@ -1285,12 +1556,11 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 console.print(f"[red]Failed to build images for {project} stack[/red]")
                 return False
 
-        # Step 3: Handle daemon reload and timing
+        # Handle daemon reload and timing
+        console.print("[green]Reloading systemd daemon...[/green]")
+
         if build_type not in ["legacy", "quadlet"]:
             # For podman build, we need to reload daemon manually
-            console.print(
-                f"[yellow]Step {'3' if build_type else '2'}: Reloading systemd daemon...[/yellow]"
-            )
             reload_success = self.manager.reload_daemon()
 
             if not reload_success:
@@ -1298,17 +1568,10 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 return False
         else:
             # Quadlet build script already reloaded daemon, add delay and force another reload
-            import time
 
-            console.print(
-                "[yellow]Waiting for systemd to process new quadlet files...[/yellow]"
-            )
-            time.sleep(5)  # Give systemd more time to process new quadlet files
+            time.sleep(3)  # Give systemd time to process new quadlet files
 
             # Force another daemon reload to ensure new services are recognized
-            console.print(
-                "[yellow]Running additional daemon reload to ensure service recognition...[/yellow]"
-            )
             reload_success = self.manager.reload_daemon()
 
             if not reload_success:
@@ -1316,20 +1579,36 @@ Provide a structured analysis focusing on actionable insights. If no significant
                     "[yellow]Warning: Additional daemon reload failed[/yellow]"
                 )
             else:
-                time.sleep(2)  # Brief pause after reload
+                time.sleep(1)  # Brief pause after reload
 
-        # Step 4: Start all services
-        console.print(
-            f"[yellow]Step {'4' if build_type else '3'}: Starting all {project} services...[/yellow]"
-        )
+        # Restart all services
+        console.print(f"[green]Restarting all {project} services...[/green]")
         start_success = True
         for service in services:
-            console.print(f"[dim]  Starting {service}...[/dim]")
-            if not self.manager.start_service(service):
+            console.print(f"[dim]  Restarting {service}...[/dim]")
+            service_name = self.manager._find_service_name(
+                service, allow_interactive=False
+            )
+            if service_name:
+                restart_cmd = ["systemctl", "--user", "restart", service_name]
+                console.print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
+                restart_result = subprocess.run(
+                    restart_cmd, capture_output=True, text=True
+                )
+                if restart_result.returncode != 0:
+                    start_success = False
+                    if restart_result.stderr:
+                        console.print(
+                            f"[red]Restart failed for {service}: {restart_result.stderr.strip() if restart_result.stderr else 'Unknown error'}[/red]"
+                        )
+            else:
+                console.print(f"[red]Could not find service for {service}[/red]")
                 start_success = False
 
         if start_success:
-            console.print(f"[green]Successfully reinitialized {project} stack[/green]")
+            console.print(
+                f"\n[green]Successfully reinitialized {project} stack[/green]\n"
+            )
             return True
         else:
             console.print(
@@ -1375,6 +1654,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
     def show_service_status(self, target: str) -> None:
         """Show detailed status for a specific service"""
+        self.manager._clear_auto_match_cache()
         service_name = self.manager._find_service_name(target, allow_interactive=False)
 
         # Handle stack operations (STACK: prefix)
@@ -1407,10 +1687,8 @@ Provide a structured analysis focusing on actionable insights. If no significant
             console.print(f"[red]Error getting service status: {e}[/red]")
 
     def install_stack(self, stack: str) -> bool:
-        """Install/build quadlet stack using integrated installer module"""
+        """Install/build quadlet stack or service using integrated installer module"""
         from installer import QuadletInstaller
-
-        console.print(f"[yellow]Installing {stack} stack...[/yellow]")
 
         try:
             installer = QuadletInstaller()
@@ -1418,32 +1696,19 @@ Provide a structured analysis focusing on actionable insights. If no significant
             console.print(f"[red]{e}[/red]")
             return False
 
-        # Map shortened stack names to full stack names
-        stack_name_mapping = {
-            "vllm": "vllm-stack",
-            "vllm-stack": "vllm-stack",
-            "local-ai": "local-ai-stack",
-            "local-ai-stack": "local-ai-stack",
-            "supabase": "supabase-stack",
-            "supabase-stack": "supabase-stack",
-            "taskflow": "taskflow-stack",
-            "taskflow-stack": "taskflow-stack",
-            "mcp-services": "mcp-services-stack",
-            "mcp-services-stack": "mcp-services-stack",
-            "user-management": "user-management-stack",
-            "user-management-stack": "user-management-stack",
-            "web-apps": "web-apps-stack",
-            "web-apps-stack": "web-apps-stack",
-            "sys-services": "sys-services-stack",
-            "sys-services-stack": "sys-services-stack",
-        }
-
-        # Get the full stack name
-        full_stack_name = stack_name_mapping.get(stack, stack)
-
-        # Validate stack exists
-        if not installer.validate_stack(full_stack_name):
+        # Check if it's a stack or service first to show correct message
+        is_valid, resolved_stack, service_file = installer.validate_stack_or_service(
+            stack
+        )
+        if not is_valid:
             return False
+
+        console.print()
+        if service_file:
+            console.print(f"[green]Installing {stack} service...[/green]")
+        else:
+            console.print(f"[green]Installing {stack} stack...[/green]")
+        console.print()
 
         # Check systemd health
         if not installer.check_systemd_user_session():
@@ -1451,12 +1716,16 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 "[yellow]Systemd health check failed. Installation may encounter issues.[/yellow]"
             )
 
-        # Install the stack
-        success = installer.install_stack(full_stack_name)
+        # Install the stack or service - pass original user input, not resolved stack
+        success = installer.install_stack(stack)
 
         if success:
-            # Final success message
-            console.print(f"[green]Successfully installed {stack} stack[/green]")
+            # Final success message - use appropriate term based on what was installed
+            if service_file:
+                console.print(f"[green]Successfully installed {stack} service[/green]")
+            else:
+                console.print(f"[green]Successfully installed {stack} stack[/green]")
+            console.print()
 
         return success
 
@@ -1488,7 +1757,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
             return self.restart(target)
         else:
             console.print(
-                f"[red]Failed to update images: {result.stderr.strip()}[/red]"
+                f"[red]Failed to update images: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
             )
             return False
 
@@ -1535,7 +1804,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
             return True
         else:
             console.print(
-                f"[red]Failed to enable auto-update timer: {result.stderr.strip()}[/red]"
+                f"[red]Failed to enable auto-update timer: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
             )
             return False
 
@@ -1553,7 +1822,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
             return True
         else:
             console.print(
-                f"[red]Failed to trigger auto-update: {result.stderr.strip()}[/red]"
+                f"[red]Failed to trigger auto-update: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
             )
             return False
 
@@ -1607,6 +1876,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
     def exec_command(self, target: str, command: List[str]) -> None:
         """Execute command in container (find container by service name)"""
         # First, we need to find the container name from the service
+        self.manager._clear_auto_match_cache()
         service_name = self.manager._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
@@ -1780,7 +2050,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
         for service in services:
             console.print(f"  Stopping {service}...")
-            if self.manager.stop_service(service, quiet=True):
+            if self.manager.stop_service(service, quiet=False):
                 stopped_services.append(service)
             else:
                 failed_services.append(service)
@@ -2150,6 +2420,9 @@ Provide a structured analysis focusing on actionable insights. If no significant
         """Rebuild vLLM Delegator MCP container image (for quadlet management)"""
         import os
 
+        # Initialize original_cwd to prevent unbound variable error
+        original_cwd = os.getcwd()
+
         # Configuration for vLLM Delegator MCP rebuild
         CONTAINER_NAME = "vllm-delegator-mcp"
         IMAGE_NAME = "localhost/vllm-delegator-mcp:latest"
@@ -2251,6 +2524,9 @@ Provide a structured analysis focusing on actionable insights. If no significant
         """Rebuild vLLM Proxy container image (for quadlet management)"""
         import os
 
+        # Initialize original_cwd to prevent unbound variable error
+        original_cwd = os.getcwd()
+
         # Configuration for vLLM Proxy rebuild
         CONTAINER_NAME = "vllm-proxy"
         IMAGE_NAME = "localhost/vllm-proxy:latest"
@@ -2350,6 +2626,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
     def diagnose_container_failure(self, target: str) -> None:
         """Diagnose why a container is failing to start"""
+        self.manager._clear_auto_match_cache()
         service_name = self.manager._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
@@ -2360,6 +2637,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
         # Check systemd service status
         console.print("\n[cyan]📊 Service Status:[/cyan]")
         status_cmd = ["systemctl", "--user", "status", service_name, "--no-pager", "-l"]
+        console.print(f"[cyan]exec: {' '.join(status_cmd)}[/cyan]")
         status_result = subprocess.run(status_cmd, capture_output=True, text=True)
         if status_result.stdout:
             console.print(status_result.stdout)
@@ -2452,6 +2730,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
             "20",
             "--no-pager",
         ]
+        console.print(f"[cyan]exec: {' '.join(logs_cmd)}[/cyan]")
         logs_result = subprocess.run(logs_cmd, capture_output=True, text=True)
         if logs_result.stdout:
             console.print(logs_result.stdout)
@@ -2594,7 +2873,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
             )
             stop_success = True
             for service in services:
-                if not self.manager.stop_service(service, quiet=True):
+                if not self.manager.stop_service(service, quiet=False):
                     stop_success = False
             progress.remove_task(task1)
 
@@ -2670,74 +2949,14 @@ Provide a structured analysis focusing on actionable insights. If no significant
     def _restart_service_with_build(self, target: str, build: bool = False) -> bool:
         """Restart a service with optional build"""
         if build:
-            # Stop first
+            # Stop first (clear cache to prevent duplicate messages)
+            self.manager._clear_auto_match_cache()
             self.manager.stop_service(target, quiet=True)
             # Build
             if not self._build_service(target):
                 return False
             # Reload daemon
             self.manager.reload_daemon()
+            # Clear cache again before restart
+            self.manager._clear_auto_match_cache()
         return self.manager.restart_service(target)
-
-    def _start_stack(self, project: str, build: bool = False) -> bool:
-        """Start all services in a project stack with optional build"""
-        services = self._get_stack_services(project)
-        if not services:
-            console.print(f"[red]No services found for {project} stack[/red]")
-            return False
-
-        console.print(f"[yellow]Starting {project} stack...[/yellow]")
-
-        if build:
-            console.print(f"[yellow]Building {project} stack images...[/yellow]")
-            if not self._build_stack(project, services):
-                console.print(f"[red]Build failed for {project} stack[/red]")
-                return False
-
-        success = True
-        for service in services:
-            if not self.manager.start_service(service):
-                success = False
-
-        if success:
-            console.print(f"[green]Successfully started {project} stack[/green]")
-        else:
-            console.print(
-                f"[yellow]Some services in {project} stack failed to start[/yellow]"
-            )
-        return success
-
-    def _restart_stack(self, project: str, build: bool = False) -> bool:
-        """Restart all services in a project stack with optional build"""
-        services = self._get_stack_services(project)
-        if not services:
-            console.print(f"[red]No services found for {project} stack[/red]")
-            return False
-
-        console.print(f"[yellow]Restarting {project} stack...[/yellow]")
-
-        if build:
-            # Stop all services first
-            for service in services:
-                self.manager.stop_service(service, quiet=True)
-
-            console.print(f"[yellow]Building {project} stack images...[/yellow]")
-            if not self._build_stack(project, services):
-                console.print(f"[red]Build failed for {project} stack[/red]")
-                return False
-
-            # Reload daemon after build
-            self.manager.reload_daemon()
-
-        success = True
-        for service in services:
-            if not self.manager.restart_service(service):
-                success = False
-
-        if success:
-            console.print(f"[green]Successfully restarted {project} stack[/green]")
-        else:
-            console.print(
-                f"[yellow]Some services in {project} stack failed to restart[/yellow]"
-            )
-        return success

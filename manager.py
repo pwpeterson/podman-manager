@@ -39,9 +39,9 @@ class PodmanManager:
             return False
 
         # Check podman compose
-        result = subprocess.run(
-            ["podman", "compose", "--help"], capture_output=True, text=True
-        )
+        cmd = ["podman", "compose", "--help"]
+        console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
+        result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             logger.error("'podman compose' is not available!")
             console.print(
@@ -66,7 +66,9 @@ class PodmanManager:
 
     def _command_exists(self, command: str) -> bool:
         """Check if a command exists in PATH"""
-        result = subprocess.run(["which", command], capture_output=True)
+        cmd = ["which", command]
+        console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
+        result = subprocess.run(cmd, capture_output=True)
         exists = result.returncode == 0
         logger.debug("Command '{}' exists: {}", command, exists)
         return exists
@@ -443,6 +445,7 @@ class PodmanManager:
                 "--format",
                 "{{.Names}}",
             ]
+            console.print(f"  [cyan]exec: {' '.join(dep_cmd)}[/cyan]")
             result = subprocess.run(
                 dep_cmd,
                 capture_output=True,
@@ -456,3 +459,9 @@ class PodmanManager:
             logger.warning("Missing dependencies for {}: {}", service, missing_deps)
 
         return missing_deps
+
+    def refresh_service_discovery(self) -> None:
+        """Refresh service discovery cache - only available in quadlet mode"""
+        console.print(
+            "[red]Refresh service discovery only available in quadlet mode[/red]"
+        )

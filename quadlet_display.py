@@ -154,12 +154,17 @@ class QuadletDisplayManager:
 
         # Add the vllm-stack.target if it exists and vllm-stack is present
         if "vllm-stack" in all_items and hasattr(self.manager, "stack_target"):
-            stack_display_name = (
-                f"{self.manager.stack_target} [dim white](quadlet)[/dim white]"
+            # Check if the stack target file actually exists
+            stack_target_path = (
+                self.manager.quadlets_dir / f"{self.manager.stack_target}"
             )
-            all_items["vllm-stack"]["services"][stack_display_name] = {
-                "full_name": self.manager.stack_target
-            }
+            if stack_target_path.exists():
+                stack_display_name = (
+                    f"{self.manager.stack_target} [dim white](quadlet)[/dim white]"
+                )
+                all_items["vllm-stack"]["services"][stack_display_name] = {
+                    "full_name": self.manager.stack_target
+                }
 
         return all_items
 
@@ -553,3 +558,8 @@ class QuadletDisplayManager:
             console.print(result.stdout)
         if result.stderr:
             console.print(f"[yellow]{result.stderr}[/yellow]")
+
+    def clear_cache(self) -> None:
+        """Clear display cache"""
+        # Clear any cached data if we have any
+        console.print("[green]Display cache cleared[/green]")

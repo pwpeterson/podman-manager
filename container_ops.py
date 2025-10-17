@@ -5,6 +5,11 @@ import time
 from pathlib import Path
 from typing import List
 
+try:
+    import requests
+except ImportError:
+    requests = None
+
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from config import console
@@ -209,7 +214,9 @@ class ContainerOperations:
                     console.print(f"[dim]Container {service} already removed[/dim]")
                     return True
                 else:
-                    console.print(f"[red]Error removing container: {error_msg}[/red]")
+                    console.print(
+                        f"[red]Error removing container: {error_msg or 'Unknown error'}[/red]"
+                    )
                     return False
 
         except Exception as e:
@@ -378,10 +385,13 @@ class ContainerOperations:
 
             # Get logs using podman logs
             cmd = ["podman", "logs", "--tail", str(lines), matched_service]
+            console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode != 0:
-                console.print(f"[red]Failed to get logs: {result.stderr.strip()}[/red]")
+                console.print(
+                    f"[red]Failed to get logs: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
+                )
                 return
 
             if not result.stdout.strip():
@@ -687,10 +697,13 @@ class ContainerOperations:
 
             # Get logs using podman logs
             cmd = ["podman", "logs", "--tail", str(lines), matched_service]
+            console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             if result.returncode != 0:
-                console.print(f"[red]Failed to get logs: {result.stderr.strip()}[/red]")
+                console.print(
+                    f"[red]Failed to get logs: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
+                )
                 return
 
             if not result.stdout.strip():
@@ -918,7 +931,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
         """
         if enhanced and not quick:
             # Use enhanced prune with full analysis
-            from pm_enhanced_prune import EnhancedPruner
+            from prune import EnhancedPruner
 
             pruner = EnhancedPruner(console)
             success = pruner.run_safe_prune_workflow()
@@ -929,7 +942,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 self._basic_prune()
         elif quick:
             # Use quick prune from enhanced pruner
-            from pm_enhanced_prune import EnhancedPruner
+            from prune import EnhancedPruner
 
             pruner = EnhancedPruner(console)
             pruner.run_quick_prune()
@@ -941,15 +954,46 @@ Provide a structured analysis focusing on actionable insights. If no significant
         """Basic prune functionality (original implementation)"""
         try:
             console.print("[yellow]Pruning unused containers...[/yellow]")
-            subprocess.run(["podman", "container", "prune", "-f"])
+            prune_containers_cmd = ["podman", "container", "prune", "-f"]
+            console.print(f"  [cyan]exec: {' '.join(prune_containers_cmd)}[/cyan]")
+            subprocess.run(prune_containers_cmd)
 
             console.print("[yellow]Pruning unused images...[/yellow]")
-            subprocess.run(["podman", "image", "prune", "-f"])
+            prune_images_cmd = ["podman", "image", "prune", "-f"]
+            console.print(f"  [cyan]exec: {' '.join(prune_images_cmd)}[/cyan]")
+            subprocess.run(prune_images_cmd)
 
             console.print("[green]Prune completed[/green]")
 
         except Exception as e:
             console.print(f"[red]Error pruning: {e}[/red]")
+
+    def diagnose_container_failure(self, target: str) -> bool:
+        """Diagnose container startup failures - only available in quadlet mode"""
+        console.print("[red]Diagnose command only available in quadlet mode[/red]")
+        return False
+
+    def reset_failed(self, target: str) -> bool:
+        """Reset failed service state - only available in quadlet mode"""
+        console.print("[red]Reset-failed command only available in quadlet mode[/red]")
+        return False
+
+    def show_service_file(self, target: str) -> bool:
+        """Show service file contents - only available in quadlet mode"""
+        console.print(
+            "[red]Show-service-file command only available in quadlet mode[/red]"
+        )
+        return False
+
+    def install_stack(self, target: str) -> bool:
+        """Install quadlet stack - only available in quadlet mode"""
+        console.print("[red]Install command only available in quadlet mode[/red]")
+        return False
+
+    def uninstall_stack(self, target: str) -> bool:
+        """Uninstall quadlet stack - only available in quadlet mode"""
+        console.print("[red]Uninstall command only available in quadlet mode[/red]")
+        return False
 
     def remove(self, target: str) -> None:
         """Remove containers"""
@@ -997,7 +1041,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
         build: bool = False,
         dry_run: bool = False,
         remove_orphans: bool = False,
-        build_type: str = None,
+        build_type: str | None = None,
     ) -> bool:
         """Reinitialize containers (remove and recreate)
 
