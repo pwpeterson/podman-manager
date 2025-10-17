@@ -3124,7 +3124,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
         import time
 
         # Wait a moment for service to start
-        time.sleep(5)
+        time.sleep(10)
 
         # Check service status first
         status_cmd = ["systemctl", "--user", "is-active", service_name]
