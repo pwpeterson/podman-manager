@@ -416,52 +416,64 @@ class LogAnalyzer:
         status_cmd = ["systemctl", "--user", "status", service_name, "--no-pager", "-l"]
         if _verbose_enabled:
             console.print(f"[cyan]exec: {' '.join(status_cmd)}[/cyan]")
+            console.print()  # Add newline after exec command
         console.print("[green]Service Status:[/green]")
         status_result = subprocess.run(status_cmd, capture_output=True, text=True)
         if status_result.stdout:
             console.print(status_result.stdout)
 
         # Try to run the container manually to see what fails
-        console.print("\n[cyan]🧪 Testing container manually:[/cyan]")
+        from rich.progress import Progress, SpinnerColumn, TextColumn
 
-        # Determine container name and image based on service
-        if target == "vllm-delegator":
-            container_name = "vllm-delegator-mcp-test"
-            image_name = "localhost/vllm-delegator-mcp:latest"
-            test_cmd = [
-                "podman",
-                "run",
-                "--rm",
-                "--name",
-                container_name,
-                "--network",
-                "host",
-                "--env",
-                "VLLM_API_URL=http://localhost:8002/v1/chat/completions",
-                "--env",
-                "VLLM_MODEL=Qwen/Qwen2.5-Coder-32B-Instruct-AWQ",
-                "--env",
-                "LOGGING_ON=true",
-                "--env",
-                "LOG_LEVEL=DEBUG",
-                image_name,
-            ]
-        elif target == "vllm-proxy":
-            container_name = "vllm-proxy-test"
-            image_name = "localhost/vllm-proxy:latest"
-            test_cmd = [
-                "podman",
-                "run",
-                "--rm",
-                "--name",
-                container_name,
-                "--network",
-                "host",
-                image_name,
-            ]
-        else:
-            console.print(f"[yellow]No diagnostic available for {target}[/yellow]")
-            return
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[cyan]Testing container manually:[/cyan]"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("testing", total=None)
+
+            # Determine container name and image based on service
+            if target == "vllm-delegator":
+                container_name = "vllm-delegator-mcp-test"
+                image_name = "localhost/vllm-delegator-mcp:latest"
+                test_cmd = [
+                    "podman",
+                    "run",
+                    "--rm",
+                    "--name",
+                    container_name,
+                    "--network",
+                    "host",
+                    "--env",
+                    "VLLM_API_URL=http://localhost:8002/v1/chat/completions",
+                    "--env",
+                    "VLLM_MODEL=Qwen/Qwen2.5-Coder-32B-Instruct-AWQ",
+                    "--env",
+                    "LOGGING_ON=true",
+                    "--env",
+                    "LOG_LEVEL=DEBUG",
+                    image_name,
+                ]
+            elif target == "vllm-proxy":
+                container_name = "vllm-proxy-test"
+                image_name = "localhost/vllm-proxy:latest"
+                test_cmd = [
+                    "podman",
+                    "run",
+                    "--rm",
+                    "--name",
+                    container_name,
+                    "--network",
+                    "host",
+                    image_name,
+                ]
+            else:
+                progress.remove_task(task)
+                console.print(f"[yellow]No diagnostic available for {target}[/yellow]")
+                return
+
+            progress.remove_task(task)
 
         console.print(f"[dim]Running: {' '.join(test_cmd)}[/dim]")
         console.print("[dim]Press Ctrl+C to stop if it hangs...[/dim]")
