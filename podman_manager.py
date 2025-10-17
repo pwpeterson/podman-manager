@@ -469,28 +469,71 @@ def main():
         nargs="?",
         help="Stack or service name (vllm-stack, vllm-qwen25, vllm-proxy, vllm-delegator)",
     )
+    list_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     # Keep 'status' as an alias for backward compatibility
     status_parser = subparsers.add_parser(
         "status", help="Show service status (detailed)"
     )
     status_parser.add_argument("target", help="Stack or service name")
-    subparsers.add_parser("ps", help="Show container status")
-    subparsers.add_parser("help", help="Show detailed help")
+    status_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+    ps_parser = subparsers.add_parser("ps", help="Show container status")
+    ps_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    help_parser = subparsers.add_parser("help", help="Show detailed help")
+    help_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     # Additional status commands
     images_parser = subparsers.add_parser("images", help="Show container images")
     images_parser.add_argument(
         "-a", "--all", action="store_true", help="Show all images"
     )
+    images_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     stats_parser = subparsers.add_parser("stats", help="Show container resource usage")
     stats_parser.add_argument(
         "-f", "--follow", action="store_true", help="Follow stats output"
     )
+    stats_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     events_parser = subparsers.add_parser("events", help="Show container events")
     events_parser.add_argument("--since", help="Show events since timestamp")
+    events_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     # Resource commands
     logs_parser = subparsers.add_parser("logs", help="Show service logs")
@@ -505,6 +548,12 @@ def main():
         default=100,
         help="Number of lines to show from end of logs (default: 100)",
     )
+    logs_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     log_check_parser = subparsers.add_parser(
         "log-check", help="Analyze service logs for errors and warnings"
@@ -516,6 +565,12 @@ def main():
         type=int,
         default=50,
         help="Number of lines to analyze from end of logs (default: 50)",
+    )
+    log_check_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
     )
 
     log_ai_parser = subparsers.add_parser(
@@ -535,18 +590,49 @@ def main():
         default="http://localhost:8002",
         help="vLLM proxy URL (default: http://localhost:8002)",
     )
+    log_ai_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     diagnose_parser = subparsers.add_parser(
         "diagnose", help="Diagnose container startup failures"
     )
     diagnose_parser.add_argument("target", help="Service name to diagnose")
+    diagnose_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     exec_parser = subparsers.add_parser("exec", help="Execute command in container")
     exec_parser.add_argument("target", help="Service name")
     exec_parser.add_argument("cmd", nargs="+", help="Command to execute")
+    exec_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
-    subparsers.add_parser("volumes", help="List volumes")
-    subparsers.add_parser("networks", help="List networks")
+    volumes_parser = subparsers.add_parser("volumes", help="List volumes")
+    volumes_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    networks_parser = subparsers.add_parser("networks", help="List networks")
+    networks_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     # Keep some original commands for container management
     prune_parser = subparsers.add_parser(
@@ -562,7 +648,20 @@ def main():
         action="store_true",
         help="Quick prune (dangling images and containers only)",
     )
-    subparsers.add_parser("system-df", help="Show disk usage")
+    prune_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    system_df_parser = subparsers.add_parser("system-df", help="Show disk usage")
+    system_df_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     # Service lifecycle commands
     reinit_parser = subparsers.add_parser(
@@ -702,6 +801,12 @@ def main():
         "target",
         help="Stack or service name (e.g., vllm, local-ai, local-ai-neo4j, supabase)",
     )
+    install_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     uninstall_parser = subparsers.add_parser(
         "uninstall", help="Uninstall quadlet stack or service from systemd directory"
@@ -712,16 +817,49 @@ def main():
 
     update_parser = subparsers.add_parser("update", help="Update images and restart")
     update_parser.add_argument("target", help="Stack or service name")
+    update_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
-    subparsers.add_parser("auto-update", help="Check/enable auto-update timer")
-    subparsers.add_parser("reload", help="Reload systemd daemon")
+    auto_update_parser = subparsers.add_parser(
+        "auto-update", help="Check/enable auto-update timer"
+    )
+    auto_update_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    reload_parser = subparsers.add_parser("reload", help="Reload systemd daemon")
+    reload_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     # Hidden refresh command (used internally by universal script)
-    subparsers.add_parser("refresh", help=argparse.SUPPRESS)
+    refresh_parser = subparsers.add_parser("refresh", help=argparse.SUPPRESS)
+    refresh_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
 
     # Fix Supabase environment variables
-    subparsers.add_parser(
+    fix_supabase_parser = subparsers.add_parser(
         "fix-supabase-env", help="Fix Supabase environment variable issues"
+    )
+    fix_supabase_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
     )
 
     # Keep restart for compatibility
@@ -741,8 +879,14 @@ def main():
     )
 
     # Add targets command to show available targets by type
-    subparsers.add_parser(
+    targets_parser = subparsers.add_parser(
         "targets", help="Show available targets by type (quadlet/compose)"
+    )
+    targets_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
     )
 
     args = parser.parse_args()
@@ -947,6 +1091,7 @@ def main():
                 )
                 sys.exit(1)
         elif args.command == "install":
+            handle_command_verbose(args)
             if selected_mode == "quadlet":
                 success = try_with_fallback(container_ops.install_stack, args.target)
                 sys.exit(0 if success else 1)

@@ -124,23 +124,34 @@ class QuadletInstaller:
         return None
 
     def validate_stack_or_service(self, name: str) -> tuple[bool, str, Optional[str]]:
-        """Validate that a stack or service exists.
+        """Validate that a stack or service exists with fuzzy matching support.
 
         Returns:
             Tuple of (is_valid, resolved_stack_name, service_file_if_service)
         """
-        # First try as a stack
+        # First try exact match as a stack
         stack_dir = self.quadlet_base_dir / name
         if stack_dir.exists():
             files = self.get_stack_files(name)
             if files:
                 return (True, name, None)  # It's a valid stack
 
-        # Try to find it as a service within stacks
+        # Try exact match as a service within stacks
         service_result = self.find_service_in_stacks(name)
         if service_result:
             stack_name, container_file = service_result
             return (True, stack_name, container_file)  # It's a valid service
+
+        # Try fuzzy matching for stacks
+        fuzzy_stack_result = self._fuzzy_match_stack(name)
+        if fuzzy_stack_result:
+            return (True, fuzzy_stack_result, None)
+
+        # Try fuzzy matching for services
+        fuzzy_service_result = self._fuzzy_match_service(name)
+        if fuzzy_service_result:
+            stack_name, container_file = fuzzy_service_result
+            return (True, stack_name, container_file)
 
         # Not found as either stack or service
         self._print_error(f"Stack or service '{name}' not found")
@@ -164,6 +175,208 @@ class QuadletInstaller:
             console.print(f"  {service}")
 
         return (False, name, None)
+
+    def _fuzzy_match_stack(self, partial_name: str) -> Optional[str]:
+        """Find stack using fuzzy matching for partial names"""
+        from rich.table import Table
+
+        available_stacks = self.discover_stacks()
+        if not available_stacks:
+            return None
+
+        # Find exact matches first
+        exact_matches = [stack for stack in available_stacks if stack == partial_name]
+        if len(exact_matches) == 1:
+            return exact_matches[0]
+
+        # Find partial matches (case-insensitive)
+        partial_matches = [
+            stack for stack in available_stacks if partial_name.lower() in stack.lower()
+        ]
+
+        # If no partial matches, try prefix matching
+        if not partial_matches:
+            partial_matches = [
+                stack
+                for stack in available_stacks
+                if stack.lower().startswith(partial_name.lower())
+            ]
+
+        # If still no matches, try fuzzy matching with edit distance
+        if not partial_matches:
+
+            def levenshtein_distance(s1: str, s2: str) -> int:
+                """Calculate Levenshtein distance between two strings"""
+                if len(s1) < len(s2):
+                    return levenshtein_distance(s2, s1)
+                if len(s2) == 0:
+                    return len(s1)
+
+                previous_row = list(range(len(s2) + 1))
+                for i, c1 in enumerate(s1):
+                    current_row = [i + 1]
+                    for j, c2 in enumerate(s2):
+                        insertions = previous_row[j + 1] + 1
+                        deletions = current_row[j] + 1
+                        substitutions = previous_row[j] + (c1 != c2)
+                        current_row.append(min(insertions, deletions, substitutions))
+                    previous_row = current_row
+                return previous_row[-1]
+
+            # Find stacks with small edit distance (max 2 for reasonable matches)
+            fuzzy_matches = []
+            for stack in available_stacks:
+                distance = levenshtein_distance(partial_name.lower(), stack.lower())
+                if (
+                    distance <= 2 and len(partial_name) >= 3
+                ):  # Only for reasonable length inputs
+                    fuzzy_matches.append((stack, distance))
+
+            # Sort by distance and take best matches
+            fuzzy_matches.sort(key=lambda x: x[1])
+            partial_matches = [match[0] for match in fuzzy_matches[:5]]  # Top 5 matches
+
+        if len(partial_matches) == 1:
+            # Single match found
+            matched_stack = partial_matches[0]
+            console.print(f"[dim]Matched '{partial_name}' to '{matched_stack}'[/dim]")
+            return matched_stack
+        elif len(partial_matches) > 1:
+            # Multiple matches - show selection menu
+            console.print(f"[yellow]Multiple stacks match '{partial_name}':[/yellow]")
+
+            table = Table(show_header=True, header_style="bold magenta")
+            table.add_column("#", style="cyan", width=3)
+            table.add_column("Stack", style="green")
+            table.add_column("Services", style="dim")
+
+            for i, stack in enumerate(partial_matches, 1):
+                services = self.get_service_names(stack)
+                table.add_row(
+                    str(i), stack, ", ".join(services) if services else "None"
+                )
+
+            console.print(table)
+            console.print(
+                "[cyan]Please specify the full stack name or use the number prefix:[/cyan]"
+            )
+
+            # Show example commands
+            for i, stack in enumerate(partial_matches, 1):
+                console.print(f"  [dim]{i}.[/dim] [cyan]pm install {stack}[/cyan]")
+
+            return None  # Let user choose
+
+        return None  # No matches found
+
+    def _fuzzy_match_service(self, partial_name: str) -> Optional[tuple[str, str]]:
+        """Find service using fuzzy matching for partial names
+
+        Returns:
+            Tuple of (stack_name, container_file) if found, None otherwise
+        """
+        from rich.table import Table
+
+        available_stacks = self.discover_stacks()
+
+        # Get all available service names from all stacks
+        all_services = []
+        service_to_stack = {}
+
+        for stack in available_stacks:
+            services = self.get_service_names(stack)
+            for service in services:
+                all_services.append(service)
+                service_to_stack[service] = stack
+
+        if not all_services:
+            return None
+
+        # Find exact matches first
+        exact_matches = [svc for svc in all_services if svc == partial_name]
+        if len(exact_matches) == 1:
+            service = exact_matches[0]
+            stack = service_to_stack[service]
+            return (stack, f"{service}.container")
+
+        # Find partial matches (case-insensitive)
+        partial_matches = [
+            svc for svc in all_services if partial_name.lower() in svc.lower()
+        ]
+
+        # If no partial matches, try prefix matching
+        if not partial_matches:
+            partial_matches = [
+                svc
+                for svc in all_services
+                if svc.lower().startswith(partial_name.lower())
+            ]
+
+        # If still no matches, try fuzzy matching with edit distance
+        if not partial_matches:
+
+            def levenshtein_distance(s1: str, s2: str) -> int:
+                """Calculate Levenshtein distance between two strings"""
+                if len(s1) < len(s2):
+                    return levenshtein_distance(s2, s1)
+                if len(s2) == 0:
+                    return len(s1)
+
+                previous_row = list(range(len(s2) + 1))
+                for i, c1 in enumerate(s1):
+                    current_row = [i + 1]
+                    for j, c2 in enumerate(s2):
+                        insertions = previous_row[j + 1] + 1
+                        deletions = current_row[j] + 1
+                        substitutions = previous_row[j] + (c1 != c2)
+                        current_row.append(min(insertions, deletions, substitutions))
+                    previous_row = current_row
+                return previous_row[-1]
+
+            # Find services with small edit distance (max 2 for reasonable matches)
+            fuzzy_matches = []
+            for svc in all_services:
+                distance = levenshtein_distance(partial_name.lower(), svc.lower())
+                if (
+                    distance <= 2 and len(partial_name) >= 3
+                ):  # Only for reasonable length inputs
+                    fuzzy_matches.append((svc, distance))
+
+            # Sort by distance and take best matches
+            fuzzy_matches.sort(key=lambda x: x[1])
+            partial_matches = [match[0] for match in fuzzy_matches[:5]]  # Top 5 matches
+
+        if len(partial_matches) == 1:
+            # Single match found
+            matched_service = partial_matches[0]
+            console.print(f"[dim]Matched '{partial_name}' to '{matched_service}'[/dim]")
+            stack = service_to_stack[matched_service]
+            return (stack, f"{matched_service}.container")
+        elif len(partial_matches) > 1:
+            # Multiple matches - show selection menu
+            console.print(f"[yellow]Multiple services match '{partial_name}':[/yellow]")
+
+            table = Table(show_header=True, header_style="bold magenta")
+            table.add_column("#", style="cyan", width=3)
+            table.add_column("Service", style="green")
+            table.add_column("Stack", style="dim")
+
+            for i, service in enumerate(partial_matches, 1):
+                stack = service_to_stack[service]
+                table.add_row(str(i), service, stack)
+
+            console.print(table)
+            console.print(
+                "[cyan]Please specify the full service name or use the number prefix:[/cyan]"
+            )
+
+            # Show example commands
+            for i, service in enumerate(partial_matches, 1):
+                console.print(f"  [dim]{i}.[/dim] [cyan]pm install {service}[/cyan]")
+
+            return None  # Let user choose
+
+        return None  # No matches found
 
     def validate_stack(self, stack_name: str) -> bool:
         """Validate that a stack exists and has files."""
