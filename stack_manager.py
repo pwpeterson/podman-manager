@@ -364,6 +364,10 @@ class StackManager:
         if not is_valid:
             return False
 
+        # Check if user cancelled the selection
+        if resolved_stack == "CANCELLED":
+            return False
+
         console.print()
         if service_file:
             console.print(f"[green]Installing {stack} service...[/green]")
@@ -377,8 +381,8 @@ class StackManager:
                 "[yellow]Systemd health check failed. Installation may encounter issues.[/yellow]"
             )
 
-        # Install the stack or service - pass original user input, not resolved stack
-        success = installer.install_stack(stack)
+        # Install the stack or service - use resolved stack name to avoid double fuzzy matching
+        success = installer.install_stack(resolved_stack)
 
         if success:
             # Final success message - use appropriate term based on what was installed

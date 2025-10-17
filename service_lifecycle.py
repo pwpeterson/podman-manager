@@ -224,7 +224,9 @@ class ServiceLifecycle:
             return
 
         if not service_name:
-            console.print(f"[red]Service '{target}' not found[/red]")
+            # When service_name is None, it could be due to user cancellation
+            # The fuzzy matcher already showed "Selection cancelled" message
+            # so we don't need to show an additional error message
             return
 
         # Use systemctl status for detailed output

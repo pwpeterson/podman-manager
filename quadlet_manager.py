@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 from loguru import logger
 
 from config import console, verbose_print  # pyright: ignore[reportAttributeAccessIssue]
+from fuzzy_matcher import FuzzyMatcher
 
 
 class QuadletManager:
@@ -606,9 +607,12 @@ class QuadletManager:
         if target.endswith(".service") or target.endswith(".target"):
             return target
 
-        # Try fuzzy matching for partial names
-        fuzzy_result = self._fuzzy_match_service(target)
-        if fuzzy_result:
+        # Try fuzzy matching for partial names using unified matcher
+        fuzzy_matcher = FuzzyMatcher(quadlet_manager=self)
+        fuzzy_result = fuzzy_matcher.fuzzy_match_service_or_stack(target)
+        if fuzzy_result == "CANCELLED":
+            return None
+        elif fuzzy_result:
             return fuzzy_result
 
         # Try adding .service extension for generic services
