@@ -147,7 +147,6 @@ class ReinitManager:
         # Start the service using the resolved service name
         verbose_print(f"[green]Starting {display_name}...[/green]")
         start_cmd = ["systemctl", "--user", "start", service_name]
-        verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
         start_result = self.manager._run_systemctl_command(
             start_cmd,
             f"start_{target}",

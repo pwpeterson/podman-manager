@@ -497,22 +497,6 @@ class LogAnalyzer:
             console.print("\n[yellow]Test interrupted by user[/yellow]")
             subprocess.run(["podman", "stop", container_name], capture_output=True)
 
-        # Show recent logs from the actual service
-        console.print("\n[cyan]📋 Recent service logs:[/cyan]")
-        logs_cmd = [
-            "journalctl",
-            "--user",
-            "-u",
-            service_name,
-            "-n",
-            "20",
-            "--no-pager",
-        ]
-        console.print(f"[cyan]exec: {' '.join(logs_cmd)}[/cyan]")
-        logs_result = subprocess.run(logs_cmd, capture_output=True, text=True)
-        if logs_result.stdout:
-            console.print(logs_result.stdout)
-
         self._show_troubleshooting_tips(target, service_name)
 
     def _show_troubleshooting_tips(self, target: str, service_name: str) -> None:
@@ -717,8 +701,184 @@ class LogAnalyzer:
                 else:
                     console.print(f"[red]Error: {extended_result.stderr.strip()}[/red]")
 
+        # Add diagnostic steps before recommended actions
+        self._run_diagnostic_steps(target, service_name)
+
         # Show recommended actions
         self._show_recommended_actions(target, service_name)
+
+    def _run_diagnostic_steps(self, target: str, service_name: str) -> None:
+        """Run diagnostic steps similar to pm diagnose command"""
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn(f"[yellow]Running diagnostic steps for {target}...[/yellow]"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("diagnostic", total=None)
+
+            # Step 2: Manual Container Testing
+            self._test_container_manually(target)
+
+            # Step 3: Troubleshooting Tips
+            console.print("\n[green]Troubleshooting tips:[/green]")
+            console.print("  [green]Check if the image was built correctly[/green]")
+            console.print(
+                "  [green]Verify all required files/configs are present[/green]"
+            )
+            console.print("  [green]Check if ports are already in use[/green]")
+            console.print("  [green]Verify environment variables are correct[/green]")
+
+            # Step 4: Specialized Diagnostics
+            self._show_specialized_diagnostics(target)
+
+            progress.remove_task(task)
+
+    def _test_container_manually(self, target: str) -> None:
+        """Test container manually to see what fails"""
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[cyan]Testing container manually:[/cyan]"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("testing", total=None)
+
+            # Determine container name and image based on service
+            if target == "vllm-delegator":
+                container_name = "vllm-delegator-mcp-test"
+                image_name = "localhost/vllm-delegator-mcp:latest"
+                test_cmd = [
+                    "podman",
+                    "run",
+                    "--rm",
+                    "--name",
+                    container_name,
+                    "--network",
+                    "host",
+                    "--env",
+                    "VLLM_API_URL=http://localhost:8002/v1/chat/completions",
+                    "--env",
+                    "VLLM_MODEL=Qwen/Qwen2.5-Coder-32B-Instruct-AWQ",
+                    "--env",
+                    "LOGGING_ON=true",
+                    "--env",
+                    "LOG_LEVEL=DEBUG",
+                    image_name,
+                ]
+            elif target == "vllm-proxy":
+                container_name = "vllm-proxy-test"
+                image_name = "localhost/vllm-proxy:latest"
+                test_cmd = [
+                    "podman",
+                    "run",
+                    "--rm",
+                    "--name",
+                    container_name,
+                    "--network",
+                    "host",
+                    image_name,
+                ]
+            else:
+                progress.remove_task(task)
+                console.print(
+                    f"\n[yellow]No manual test available for {target}[/yellow]"
+                )
+                return
+
+            progress.remove_task(task)
+
+        console.print(f"[dim]Running: {' '.join(test_cmd)}[/dim]")
+        console.print("[dim]Press Ctrl+C to stop if it hangs...[/dim]")
+
+        try:
+            # Run with timeout to prevent hanging
+            test_result = subprocess.run(
+                test_cmd, capture_output=True, text=True, timeout=30
+            )
+
+            if test_result.returncode == 0:
+                console.print("[green]✅ Container ran successfully![/green]")
+                if test_result.stdout:
+                    console.print("[cyan]Output:[/cyan]")
+                    console.print(test_result.stdout)
+            else:
+                console.print(
+                    f"[red]❌ Container failed with exit code {test_result.returncode}[/red]"
+                )
+                if test_result.stderr:
+                    console.print("[red]Error output:[/red]")
+                    console.print(test_result.stderr)
+                if test_result.stdout:
+                    console.print("[yellow]Standard output:[/yellow]")
+                    console.print(test_result.stdout)
+
+        except subprocess.TimeoutExpired:
+            console.print(
+                "[yellow]⏰ Container test timed out (30s) - may be running but not responding[/yellow]"
+            )
+            # Try to stop the test container
+            subprocess.run(["podman", "stop", container_name], capture_output=True)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Test interrupted by user[/yellow]")
+            subprocess.run(["podman", "stop", container_name], capture_output=True)
+        except Exception as e:
+            console.print(f"[red]Error running container test: {e}[/red]")
+
+    def _show_specialized_diagnostics(self, target: str) -> None:
+        """Show specialized diagnostics for specific services"""
+        # Special troubleshooting for vllm-delegator stdio/TCP mode issue
+        if target == "vllm-delegator":
+            console.print("\n[yellow]🔧 vLLM Delegator Specific Issues:[/yellow]")
+            console.print(
+                "[red]Issue detected:[/red] MCP server running in stdio mode instead of TCP mode"
+            )
+            console.print(
+                "[yellow]Root cause:[/yellow] MCP server immediately shuts down when no stdin available"
+            )
+            console.print("\n[cyan]Investigation needed:[/cyan]")
+            console.print("1. Check container's Dockerfile CMD/ENTRYPOINT")
+            console.print("2. Look for MCP server configuration options")
+            console.print("3. Find how to enable TCP mode in the MCP server")
+            console.print("\n[cyan]Inspect container startup:[/cyan]")
+            console.print(
+                r"podman inspect localhost/vllm-delegator-mcp:latest | grep -A5 -B5 'Cmd\|Entrypoint'"
+            )
+            console.print("\n[cyan]Check if MCP_HOST/MCP_PORT are being used:[/cyan]")
+            console.print("podman run --rm -e MCP_HOST=0.0.0.0 -e MCP_PORT=8003 \\")
+            console.print(
+                '  localhost/vllm-delegator-mcp:latest python -c "import os; print(f\'HOST: {os.getenv(\\"MCP_HOST\\")}, PORT: {os.getenv(\\"MCP_PORT\\")}\')"'
+            )
+            console.print(
+                "\n[red]Current issue:[/red] Server starts in stdio mode → no stdin → immediate shutdown"
+            )
+            console.print(
+                "[green]Solution needed:[/green] Configure MCP server to run in TCP/HTTP mode for systemd"
+            )
+            console.print("\n[cyan]Next steps to fix:[/cyan]")
+            console.print(
+                "1. Check the vllm_delegator.py file for TCP mode configuration"
+            )
+            console.print("2. Look for MCP server initialization code")
+            console.print("3. Find how to enable TCP/HTTP transport instead of stdio")
+            console.print("\n[cyan]Inspect the main delegator file:[/cyan]")
+            console.print(
+                "podman run --rm localhost/vllm-delegator-mcp:latest cat /app/vllm_delegator.py | head -100"
+            )
+            console.print("\n[cyan]Look for MCP server setup:[/cyan]")
+            console.print(
+                r"podman run --rm localhost/vllm-delegator-mcp:latest grep -n -A5 -B5 'server\|transport\|stdio\|tcp' /app/vllm_delegator.py"
+            )
+            console.print(
+                "\n[red]Root cause:[/red] MCP server hardcoded to stdio mode in vllm_delegator.py"
+            )
+            console.print(
+                "[green]Solution:[/green] Modify MCP server initialization to use TCP transport"
+            )
 
     def _show_fallback_problem_lines(
         self, extended_lines: List[str], shown_messages: set
@@ -781,25 +941,15 @@ class LogAnalyzer:
 
     def _show_recommended_actions(self, target: str, service_name: str) -> None:
         """Show recommended actions for troubleshooting"""
-        console.print()
-        console.print("[green]  Recommended actions:[/green]")
+        console.print("[green]Recommended actions:[/green]")
         console.print(
-            f"[green] Check service status:[/green] [white]systemctl --user status {service_name}[/white]"
+            f"[green]  View detailed logs:[/green] [white]pm logs {target}[/white]"
         )
         console.print(
-            f"[green]   View detailed logs:[/green] [white]journalctl --user -xeu {service_name}[/white]"
+            f"[green]  Diagnose the issue:[/green] [white]pm diagnose {target}[/white]"
         )
         console.print(
-            f"[green] Check service status:[/green] [white]pm status {target}[/white]"
-        )
-        console.print(
-            f"[green]   View detailed logs:[/green] [white]pm logs {target}[/white]"
-        )
-        console.print(
-            f"[green]   Diagnose the issue:[/green] [white]pm diagnose {target}[/white]"
-        )
-        console.print(
-            f"[green]   Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
+            f"[green]  Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
         )
         console.print()
 

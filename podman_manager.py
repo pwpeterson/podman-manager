@@ -38,15 +38,6 @@ def show_rich_help():
     console.print(
         "  [cyan]pm[/cyan] [dim][OPTIONS][/dim] [green]COMMAND[/green] [dim][ARGS][/dim]                    [dim]# Short alias[/dim]"
     )
-    console.print(
-        "  [cyan]pm --verbose reinit neo4j[/cyan]                    [dim]# Global verbose flag[/dim]"
-    )
-    console.print(
-        "  [cyan]pm reinit neo4j --verbose[/cyan]                   [dim]# Command-specific verbose flag[/dim]"
-    )
-    console.print(
-        "  [cyan]pm reinit neo4j -v[/cyan]                          [dim]# Short form verbose flag[/dim]"
-    )
     console.print()
     console.print(
         "[bold yellow]Note:[/bold yellow] Manages both quadlet services and compose stacks"
@@ -76,7 +67,7 @@ def show_rich_help():
             "Status & Information",
             [
                 (
-                    "list [[dim]<stack|service>[/dim]]",
+                    "list <stack|service>",
                     "List quadlet services and compose stacks",
                     "pm list",
                 ),
