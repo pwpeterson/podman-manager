@@ -1,0 +1,435 @@
+"""Service lifecycle operations for quadlet containers."""
+
+import subprocess
+
+from config import console, verbose_print
+
+
+class ServiceLifecycle:
+    """Handles basic service lifecycle operations: start, stop, restart, enable, disable"""
+
+    def __init__(self, manager):
+        self.manager = manager
+
+    def start(self, target: str, build: bool = False) -> bool:
+        """Start a service or stack"""
+        # PRIORITY 1: Check for stack names first
+        if target.endswith("-stack"):
+            project_name = target[:-6]  # Remove "-stack" suffix
+            return self._start_stack(project_name)
+
+        # PRIORITY 2: Check if target might be a stack name without -stack suffix
+        stack_variant = f"{target}-stack"
+        if (
+            hasattr(self.manager, "stack_services")
+            and stack_variant in self.manager.stack_services
+        ):
+            return self._start_stack(target)
+
+        # PRIORITY 3: Try service name resolution
+        service_name = self.manager._find_service_name(target, allow_interactive=False)
+
+        # Handle stack operations (STACK: prefix)
+        if service_name and service_name.startswith("STACK:"):
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            return self._start_stack(stack_name)
+
+        return self._start_service_with_build(target, build=build)
+
+    def stop(self, target: str) -> bool:
+        """Stop a service or stack"""
+        # PRIORITY 1: Check for stack names first
+        if target.endswith("-stack"):
+            project_name = target[:-6]  # Remove "-stack" suffix
+            return self._stop_stack(project_name)
+
+        # PRIORITY 2: Check if target might be a stack name without -stack suffix
+        stack_variant = f"{target}-stack"
+        if (
+            hasattr(self.manager, "stack_services")
+            and stack_variant in self.manager.stack_services
+        ):
+            return self._stop_stack(target)
+
+        # PRIORITY 3: Try service name resolution
+        service_name = self.manager._find_service_name(target, allow_interactive=False)
+
+        # Handle stack operations (STACK: prefix)
+        if service_name and service_name.startswith("STACK:"):
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            return self._stop_stack(stack_name)
+
+        return self.manager.stop_service(target)
+
+    def restart(self, target: str, build: bool = False) -> bool:
+        """Restart a service or stack"""
+        # Clear cache at the start of the operation
+        self.manager._clear_auto_match_cache()
+
+        # PRIORITY 1: Check for stack names first
+        if target.endswith("-stack"):
+            project_name = target[:-6]  # Remove "-stack" suffix
+            return self._restart_stack(project_name)
+
+        # PRIORITY 2: Check if target might be a stack name without -stack suffix
+        stack_variant = f"{target}-stack"
+        if (
+            hasattr(self.manager, "stack_services")
+            and stack_variant in self.manager.stack_services
+        ):
+            return self._restart_stack(target)
+
+        # PRIORITY 3: Try service name resolution
+        service_name = self.manager._find_service_name(target, allow_interactive=False)
+
+        # Handle stack operations (STACK: prefix)
+        if service_name and service_name.startswith("STACK:"):
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            return self._restart_stack(stack_name)
+
+        # If we found a service, call manager.restart_service directly to avoid duplicate resolution
+        if service_name:
+            if build:
+                # Stop first
+                self.manager.stop_service(target, quiet=True)
+                # Build - delegate to container_builder
+                from container_builder import ContainerBuilder
+
+                builder = ContainerBuilder(self.manager)
+                if not builder.build_service(target):
+                    return False
+                # Reload daemon
+                self.manager.reload_daemon()
+
+            # Call systemctl restart directly since we already resolved the service name
+            cmd = ["systemctl", "--user", "restart", service_name]
+            result = self.manager._run_systemctl_command(cmd, f"restart_{target}")
+
+            if result.returncode == 0:
+                console.print(f"[green]Restarted {service_name}[/green]")
+                return True
+            else:
+                console.print(f"[red]Failed to restart {service_name}[/red]")
+                return False
+        else:
+            console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+
+    def enable(self, target: str) -> bool:
+        """Enable a service or stack to start at boot"""
+        service_name = self.manager._find_service_name(target, allow_interactive=False)
+
+        # Handle stack operations (STACK: prefix)
+        if service_name and service_name.startswith("STACK:"):
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            return self._enable_stack(stack_name)
+
+        # Handle legacy stack targets
+        if target.endswith("-stack"):
+            project_name = target[:-6]  # Remove "-stack" suffix
+            return self._enable_stack(project_name)
+
+        return self.manager.enable_service(target)
+
+    def disable(self, target: str) -> bool:
+        """Disable a service or stack from starting at boot"""
+        service_name = self.manager._find_service_name(target, allow_interactive=False)
+
+        # Handle stack operations (STACK: prefix)
+        if service_name and service_name.startswith("STACK:"):
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            return self._disable_stack(stack_name)
+
+        # Handle legacy stack targets
+        if target.endswith("-stack"):
+            project_name = target[:-6]  # Remove "-stack" suffix
+            return self._disable_stack(project_name)
+
+        return self.manager.disable_service(target)
+
+    def reset_failed(self, target: str) -> bool:
+        """Reset failed service state"""
+        self.manager._clear_auto_match_cache()
+        service_name = self.manager._find_service_name(target, allow_interactive=False)
+
+        if not service_name:
+            console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+
+        console.print(f"[yellow]Resetting failed state for {target}...[/yellow]")
+
+        cmd = ["systemctl", "--user", "reset-failed", service_name]
+        verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                console.print(
+                    f"[green]Successfully reset failed state for {target}[/green]"
+                )
+                return True
+            else:
+                console.print(
+                    f"[red]Failed to reset failed state: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
+                )
+                return False
+        except Exception as e:
+            console.print(f"[red]Error resetting failed state: {e}[/red]")
+            return False
+
+    def show_service_file(self, target: str) -> bool:
+        """Show service file contents"""
+        self.manager._clear_auto_match_cache()
+        service_name = self.manager._find_service_name(target, allow_interactive=False)
+
+        if not service_name:
+            console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+
+        console.print(f"[yellow]Showing service file for {target}...[/yellow]")
+
+        cmd = ["systemctl", "--user", "cat", service_name]
+        verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                console.print(f"\n[bold cyan]=== {service_name} ===[/bold cyan]")
+                console.print(result.stdout)
+                return True
+            else:
+                console.print(
+                    f"[red]Failed to show service file: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
+                )
+                return False
+        except Exception as e:
+            console.print(f"[red]Error showing service file: {e}[/red]")
+            return False
+
+    def show_service_status(self, target: str) -> None:
+        """Show detailed status for a specific service"""
+        self.manager._clear_auto_match_cache()
+        service_name = self.manager._find_service_name(target, allow_interactive=False)
+
+        # Handle stack operations (STACK: prefix)
+        if service_name and service_name.startswith("STACK:"):
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            self._show_stack_status(stack_name)
+            return
+
+        # Handle legacy stack targets
+        if target.endswith("-stack"):
+            project_name = target[:-6]  # Remove "-stack" suffix
+            self._show_stack_status(project_name)
+            return
+
+        if not service_name:
+            console.print(f"[red]Service '{target}' not found[/red]")
+            return
+
+        # Use systemctl status for detailed output
+        cmd = ["systemctl", "--user", "status", service_name]
+        console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.stdout:
+                console.print(result.stdout)
+            if result.stderr:
+                console.print(f"[yellow]{result.stderr}[/yellow]")
+        except Exception as e:
+            console.print(f"[red]Error getting service status: {e}[/red]")
+
+    def reload_daemon(self) -> bool:
+        """Reload systemd user daemon"""
+        return self.manager.reload_daemon()
+
+    def _get_stack_services(self, project: str) -> list[str]:
+        """Get list of services for a project stack"""
+        # Normalize project name to stack name format
+        if not project.endswith("-stack"):
+            stack_name = f"{project}-stack"
+        else:
+            stack_name = project
+
+        # Look up in discovered stack services
+        if (
+            hasattr(self.manager, "stack_services")
+            and stack_name in self.manager.stack_services
+        ):
+            return self.manager.stack_services[stack_name]
+
+        # If not found, return empty list
+        return []
+
+    def _start_stack(self, project: str) -> bool:
+        """Start all services in a project stack"""
+        services = self._get_stack_services(project)
+        if not services:
+            console.print(f"[red]No services found for {project} stack[/red]")
+            return False
+
+        console.print(f"[yellow]Starting {project} stack...[/yellow]")
+
+        success = True
+        for service in services:
+            console.print(f"[dim]  Starting {service}...[/dim]")
+            if not self.manager.start_service(service):
+                success = False
+
+        if success:
+            console.print(f"[green]Successfully started {project} stack[/green]")
+        else:
+            console.print(
+                f"[yellow]Some services in {project} stack failed to start[/yellow]"
+            )
+        return success
+
+    def _stop_stack(self, project: str) -> bool:
+        """Stop all services in a project stack"""
+        services = self._get_stack_services(project)
+        if not services:
+            console.print(f"[red]No services found for {project} stack[/red]")
+            return False
+
+        console.print(f"[yellow]Stopping {project} stack...[/yellow]")
+
+        success = True
+        stopped_services = []
+        failed_services = []
+
+        for service in services:
+            console.print(f"  Stopping {service}...")
+            if self.manager.stop_service(service, quiet=False):
+                stopped_services.append(service)
+            else:
+                failed_services.append(service)
+                success = False
+
+        if success:
+            console.print(
+                f"[green]Successfully stopped {project} stack ({len(stopped_services)} services)[/green]"
+            )
+        else:
+            if stopped_services:
+                console.print(
+                    f"[yellow]Partially stopped {project} stack: {len(stopped_services)} succeeded, {len(failed_services)} failed[/yellow]"
+                )
+                console.print(f"[dim]  Stopped: {', '.join(stopped_services)}[/dim]")
+                console.print(f"[dim]  Failed: {', '.join(failed_services)}[/dim]")
+            else:
+                console.print(
+                    f"[yellow]No services in {project} stack were running or could be stopped[/yellow]"
+                )
+        return success
+
+    def _restart_stack(self, project: str) -> bool:
+        """Restart all services in a project stack"""
+        services = self._get_stack_services(project)
+        if not services:
+            console.print(f"[red]No services found for {project} stack[/red]")
+            return False
+
+        console.print(f"[yellow]Restarting {project} stack...[/yellow]")
+
+        success = True
+        for service in services:
+            console.print(f"[dim]  Restarting {service}...[/dim]")
+            if not self.manager.restart_service(service):
+                success = False
+
+        if success:
+            console.print(f"[green]Successfully restarted {project} stack[/green]")
+        else:
+            console.print(
+                f"[yellow]Some services in {project} stack failed to restart[/yellow]"
+            )
+        return success
+
+    def _enable_stack(self, project: str) -> bool:
+        """Enable all services in a project stack"""
+        services = self._get_stack_services(project)
+        if not services:
+            console.print(f"[red]No services found for {project} stack[/red]")
+            return False
+
+        console.print(f"[yellow]Enabling {project} stack...[/yellow]")
+        success = True
+        for service in services:
+            console.print(f"[dim]  Enabling {service}...[/dim]")
+            if not self.manager.enable_service(service):
+                success = False
+
+        if success:
+            console.print(f"[green]Successfully enabled {project} stack[/green]")
+        else:
+            console.print(
+                f"[yellow]Some services in {project} stack failed to enable[/yellow]"
+            )
+        return success
+
+    def _disable_stack(self, project: str) -> bool:
+        """Disable all services in a project stack"""
+        services = self._get_stack_services(project)
+        if not services:
+            console.print(f"[red]No services found for {project} stack[/red]")
+            return False
+
+        console.print(f"[yellow]Disabling {project} stack...[/yellow]")
+        success = True
+        for service in services:
+            console.print(f"[dim]  Disabling {service}...[/dim]")
+            if not self.manager.disable_service(service):
+                success = False
+
+        if success:
+            console.print(f"[green]Successfully disabled {project} stack[/green]")
+        else:
+            console.print(
+                f"[yellow]Some services in {project} stack failed to disable[/yellow]"
+            )
+        return success
+
+    def _show_stack_status(self, project: str) -> None:
+        """Show status for all services in a project stack"""
+        services = self._get_stack_services(project)
+        if not services:
+            console.print(f"[red]No services found for {project} stack[/red]")
+            return
+
+        console.print(f"[bold cyan]{project.title()} Stack Status[/bold cyan]")
+
+        for service in services:
+            console.print(f"\n[bold yellow]=== {service} ===[/bold yellow]")
+            service_name = self.manager._find_service_name(service)
+            if service_name:
+                cmd = [
+                    "systemctl",
+                    "--user",
+                    "status",
+                    service_name,
+                    "--no-pager",
+                    "-l",
+                ]
+                console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    if result.stdout:
+                        console.print(result.stdout)
+                    if result.stderr:
+                        console.print(f"[yellow]{result.stderr}[/yellow]")
+                except Exception as e:
+                    console.print(f"[red]Error getting status for {service}: {e}[/red]")
+            else:
+                console.print(f"[red]Service '{service}' not found[/red]")
+
+    def _start_service_with_build(self, target: str, build: bool = False) -> bool:
+        """Start a service with optional build"""
+        if build:
+            from container_builder import ContainerBuilder
+
+            builder = ContainerBuilder(self.manager)
+            if not builder.build_service(target):
+                return False
+        return self.manager.start_service(target)
