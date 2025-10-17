@@ -3243,6 +3243,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
         # Show recommended actions
         console.print()
         console.print("[yellow]Recommended actions:[/yellow]")
+        console.print()
         console.print(
             f"[cyan]1.[/cyan] Check service status: [white]systemctl --user status {service_name}[/white]"
         )
