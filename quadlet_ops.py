@@ -1064,8 +1064,19 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
         if start_success:
             console.print(f"[green]Started {target}[/green]")
-            console.print(f"\n[green]Successfully reinitialized {target}[/green]\n")
-            return True
+
+            # Monitor service logs to verify successful startup
+            verbose_print("[yellow]Monitoring service startup...[/yellow]")
+            actual_success = self._monitor_service_startup(target, service_name)
+
+            if actual_success:
+                console.print(f"\n[green]Successfully reinitialized {target}[/green]\n")
+                return True
+            else:
+                console.print(
+                    f"\n[red]Failed to reinitialize {target} - service did not start properly[/red]\n"
+                )
+                return False
         else:
             console.print(f"[red]Failed to start {target} after reinit[/red]")
             return False
@@ -1642,6 +1653,14 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 )
                 if restart_result.returncode == 0:
                     console.print(f"[green]Started {service}[/green]")
+
+                    # Monitor service startup for this service
+                    verbose_print(f"[yellow]Monitoring {service} startup...[/yellow]")
+                    service_success = self._monitor_service_startup(
+                        service, service_name
+                    )
+                    if not service_success:
+                        start_success = False
                 else:
                     start_success = False
                     if restart_result.stderr:
@@ -3042,6 +3061,154 @@ Provide a structured analysis focusing on actionable insights. If no significant
             if not self._build_service(target):
                 return False
         return self.manager.start_service(target)
+
+    def _monitor_service_startup(
+        self, target: str, service_name: str, timeout: int = 10
+    ) -> bool:
+        """Monitor service logs to verify successful startup"""
+        import time
+
+        # Wait a moment for service to start
+        time.sleep(2)
+
+        # Check service status first
+        status_cmd = ["systemctl", "--user", "is-active", service_name]
+        status_result = subprocess.run(status_cmd, capture_output=True, text=True)
+
+        if status_result.returncode != 0:
+            verbose_print(f"[red]Service {target} is not active[/red]")
+            self._show_startup_failure_logs(target, service_name)
+            return False
+
+        # Get recent logs to check for errors
+        logs_cmd = [
+            "journalctl",
+            "--user",
+            "-u",
+            service_name,
+            "--since",
+            "10 seconds ago",
+            "-n",
+            "20",
+            "--no-pager",
+        ]
+
+        logs_result = subprocess.run(logs_cmd, capture_output=True, text=True)
+
+        if logs_result.returncode == 0 and logs_result.stdout:
+            log_content = logs_result.stdout.lower()
+
+            # Check for common error patterns in logs
+            error_patterns = [
+                "error",
+                "failed",
+                "exception",
+                "traceback",
+                "fatal",
+                "critical",
+                "cannot",
+                "unable to",
+                "connection refused",
+                "timeout",
+                "permission denied",
+            ]
+
+            # Check for success patterns
+            success_patterns = [
+                "started",
+                "listening",
+                "ready",
+                "running",
+                "initialized",
+                "server started",
+            ]
+
+            has_errors = any(pattern in log_content for pattern in error_patterns)
+            has_success = any(pattern in log_content for pattern in success_patterns)
+
+            if has_errors and not has_success:
+                verbose_print(f"[red]Detected errors in {target} startup logs[/red]")
+                self._show_startup_failure_logs(target, service_name)
+                return False
+            elif has_success:
+                verbose_print(f"[green]Service {target} started successfully[/green]")
+                return True
+
+        # If no clear success/failure indicators, assume success if service is active
+        verbose_print(
+            f"[yellow]Service {target} appears to be running (no clear startup indicators)[/yellow]"
+        )
+        return True
+
+    def _show_startup_failure_logs(self, target: str, service_name: str) -> None:
+        """Show recent logs when service fails to start properly"""
+        console.print(f"[red]❌ Service startup failed for {target}[/red]")
+        console.print("[yellow]Recent error logs:[/yellow]")
+
+        # Get recent logs
+        logs_cmd = [
+            "journalctl",
+            "--user",
+            "-u",
+            service_name,
+            "--since",
+            "30 seconds ago",
+            "-n",
+            "10",
+            "--no-pager",
+        ]
+
+        logs_result = subprocess.run(logs_cmd, capture_output=True, text=True)
+
+        if logs_result.returncode == 0 and logs_result.stdout:
+            # Filter and show only error-related lines
+            lines = logs_result.stdout.strip().split("\n")
+            error_lines = []
+
+            for line in lines:
+                line_lower = line.lower()
+                if any(
+                    pattern in line_lower
+                    for pattern in [
+                        "error",
+                        "failed",
+                        "exception",
+                        "traceback",
+                        "fatal",
+                        "critical",
+                    ]
+                ):
+                    error_lines.append(line)
+
+            if error_lines:
+                for line in error_lines[-5:]:  # Show last 5 error lines
+                    console.print(f"[dim]{line}[/dim]")
+            else:
+                # Show last few lines if no specific errors found
+                for line in lines[-3:]:
+                    if line.strip():
+                        console.print(f"[dim]{line}[/dim]")
+
+        # Show recommended actions
+        console.print("[yellow]💡 Recommended actions:[/yellow]")
+        console.print(
+            f"[cyan]1.[/cyan] Check service status: [white]systemctl --user status {service_name}[/white]"
+        )
+        console.print(
+            f"[cyan]2.[/cyan] View detailed logs: [white]journalctl --user -xeu {service_name}[/white]"
+        )
+        console.print(
+            f"[cyan]3.[/cyan] Check service status: [white]pm status {target}[/white]"
+        )
+        console.print(
+            f"[cyan]4.[/cyan] View detailed logs: [white]pm logs {target}[/white]"
+        )
+        console.print(
+            f"[cyan]5.[/cyan] Diagnose the issue: [white]pm diagnose {target}[/white]"
+        )
+        console.print(
+            f"[cyan]6.[/cyan] Reset failed state: [white]pm reset-failed {target}[/white]"
+        )
 
     def _restart_service_with_build(self, target: str, build: bool = False) -> bool:
         """Restart a service with optional build"""
