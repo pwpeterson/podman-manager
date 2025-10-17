@@ -451,6 +451,8 @@ class QuadletManager:
         quiet: bool = False,
     ) -> subprocess.CompletedProcess:
         """Execute a systemctl command and return the result"""
+        from config import _verbose_enabled
+
         # Display command in a subtle way (unless quiet)
         if not quiet:
             verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
@@ -477,6 +479,14 @@ class QuadletManager:
                             else result.stdout
                         ),
                     )
+                    # Show stdout in verbose mode
+                    if _verbose_enabled and result.stdout.strip():
+                        console.print("[green]Command output:[/green]")
+                        console.print("[dim]" + "─" * 60 + "[/dim]")
+                        for line in result.stdout.strip().split("\n"):
+                            if line.strip():
+                                console.print(f"[green]{line}[/green]")
+                        console.print("[dim]" + "─" * 60 + "[/dim]")
             else:
                 if not suppress_errors:
                     logger.error(
@@ -486,15 +496,34 @@ class QuadletManager:
                     )
                     if result.stderr:
                         logger.error("Error output: {}", result.stderr)
-                        console.print(
-                            f"[red]Command failed: {result.stderr.strip()}[/red]"
-                        )
+
+                        # Show detailed error in verbose mode
+                        if _verbose_enabled:
+                            console.print("[red]❌ Complete command error:[/red]")
+                            console.print("[dim]" + "─" * 60 + "[/dim]")
+                            for line in result.stderr.strip().split("\n"):
+                                if line.strip():
+                                    console.print(f"[red]{line}[/red]")
+                            console.print("[dim]" + "─" * 60 + "[/dim]")
+                        else:
+                            # Show brief error in non-verbose mode
+                            console.print(
+                                f"[red]Command failed: {result.stderr.strip()}[/red]"
+                            )
                 else:
                     logger.debug(
                         "Command failed with code {} in {:.2f}s (suppressed)",
                         result.returncode,
                         execution_time,
                     )
+                    # Even in suppressed mode, show detailed error if verbose
+                    if _verbose_enabled and result.stderr:
+                        console.print("[yellow]Suppressed error details:[/yellow]")
+                        console.print("[dim]" + "─" * 60 + "[/dim]")
+                        for line in result.stderr.strip().split("\n"):
+                            if line.strip():
+                                console.print(f"[yellow]{line}[/yellow]")
+                        console.print("[dim]" + "─" * 60 + "[/dim]")
 
             return result
 

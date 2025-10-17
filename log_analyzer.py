@@ -576,13 +576,18 @@ class LogAnalyzer:
 
     def show_startup_failure_logs(self, target: str, service_name: str) -> None:
         """Show recent logs when service fails to start properly"""
+        from config import _verbose_enabled
+
         # Keep track of messages to avoid duplicates (empty set since no initial section)
         shown_messages = set()
 
         # Run extended journalctl command and extract timestamped messages
-        console.print()
-        console.print(f"[green]Journal extract for: {target}[/green]")
+        if _verbose_enabled:
+            console.print(f"[green]Journal extract for: {target}[/green]")
+        else:
+            console.print(f"[green]Journal extract for: {target}[/green]")
 
+        # Use complete output without line limits in verbose mode to get all messages
         extended_logs_cmd = [
             "journalctl",
             "--user",
@@ -593,6 +598,8 @@ class LogAnalyzer:
         ]
 
         verbose_print(f"[cyan]exec: {' '.join(extended_logs_cmd)}[/cyan]")
+        if _verbose_enabled:
+            print()  # Add newline after the exec command in verbose mode
         extended_result = subprocess.run(
             extended_logs_cmd, capture_output=True, text=True
         )
@@ -615,7 +622,10 @@ class LogAnalyzer:
                 elif re.search(end_pattern, line):
                     end_indices.append(i)
 
-            # Extract the most recent complete section
+            # Always extract the most recent complete section, but in verbose mode show all messages in that section
+            from config import _verbose_enabled
+
+            # Extract the most recent complete section (both verbose and non-verbose modes)
             section_lines = []
             if start_indices and end_indices:
                 # Find the most recent start that has a corresponding end
@@ -643,47 +653,69 @@ class LogAnalyzer:
             if not section_lines:
                 section_lines = extended_lines[-20:]  # Show last 20 lines as fallback
 
-            # Remove duplicates from already shown messages but keep everything else
-            all_messages = []
-            for line in section_lines:
-                if line.strip() and line.strip() not in shown_messages:
-                    all_messages.append(line)
+            # In verbose mode, show ALL messages without any deduplication or filtering
+            if _verbose_enabled:
+                # Show all messages in the section without any filtering or deduplication
+                unique_messages = section_lines  # Show ALL lines, even empty ones
+            else:
+                # Non-verbose mode: Remove duplicates from already shown messages but keep everything else
+                all_messages = []
+                for line in section_lines:
+                    if line.strip() and line.strip() not in shown_messages:
+                        all_messages.append(line)
 
-            # Remove duplicates by message content but keep most recent timestamp
-            message_dict = {}
+                # Remove duplicates by message content but keep most recent timestamp
+                message_dict = {}
 
-            for msg in all_messages:
-                # Extract the actual message content (after timestamp and service info)
-                # Remove timestamp and service prefix to get the core message
-                cleaned_msg = re.sub(
-                    r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\.?\d*\s+\S+\s+\S+\[?\d*\]?:?\s*",
-                    "",
-                    msg,
-                )
-                cleaned_msg = re.sub(
-                    r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.?\d*\s+\S+\s+\S+\[?\d*\]?:?\s*",
-                    "",
-                    cleaned_msg,
-                )
+                for msg in all_messages:
+                    # Extract the actual message content (after timestamp and service info)
+                    # Remove timestamp and service prefix to get the core message
+                    cleaned_msg = re.sub(
+                        r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\.?\d*\s+\S+\s+\S+\[?\d*\]?:?\s*",
+                        "",
+                        msg,
+                    )
+                    cleaned_msg = re.sub(
+                        r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.?\d*\s+\S+\s+\S+\[?\d*\]?:?\s*",
+                        "",
+                        cleaned_msg,
+                    )
 
-                # Use the cleaned message as key, keep the most recent full message
-                if cleaned_msg.strip():
-                    message_dict[cleaned_msg.strip()] = msg
+                    # Use the cleaned message as key, keep the most recent full message
+                    if cleaned_msg.strip():
+                        message_dict[cleaned_msg.strip()] = msg
 
-            # Convert back to list, sorted by original order (most recent last)
-            unique_messages = list(message_dict.values())
+                # Convert back to list, sorted by original order (most recent last)
+                unique_messages = list(message_dict.values())
 
             # Show all messages from the extracted section
             if unique_messages:
                 for line in unique_messages:
-                    self._format_and_print_log_line(line)
+                    if _verbose_enabled:
+                        # In verbose mode, show ALL lines exactly as they are with original colors
+                        if line.strip():  # Only skip completely empty lines
+                            print(
+                                line
+                            )  # Use print() to preserve original journalctl colors
+                        else:
+                            print("")  # Preserve empty lines
+                    else:
+                        self._format_and_print_log_line(line)
             else:
                 # Fallback: show last 5 lines from extended output that indicate problems
                 self._show_fallback_problem_lines(extended_lines, shown_messages)
         else:
             console.print("[yellow]Could not retrieve extended logs[/yellow]")
             if extended_result.stderr:
-                console.print(f"[red]Error: {extended_result.stderr.strip()}[/red]")
+                if _verbose_enabled:
+                    console.print("[red]❌ Complete journalctl error:[/red]")
+                    console.print("[dim]" + "─" * 60 + "[/dim]")
+                    for line in extended_result.stderr.strip().split("\n"):
+                        if line.strip():
+                            console.print(f"[red]{line}[/red]")
+                    console.print("[dim]" + "─" * 60 + "[/dim]")
+                else:
+                    console.print(f"[red]Error: {extended_result.stderr.strip()}[/red]")
 
         # Show recommended actions
         self._show_recommended_actions(target, service_name)
