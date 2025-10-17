@@ -3131,7 +3131,6 @@ Provide a structured analysis focusing on actionable insights. If no significant
         status_result = subprocess.run(status_cmd, capture_output=True, text=True)
 
         if status_result.returncode != 0:
-            verbose_print(f"[red]Service {target} is not active[/red]")
             return False
 
         # Get recent logs to check for errors
