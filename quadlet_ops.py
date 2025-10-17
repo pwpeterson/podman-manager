@@ -957,7 +957,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
 
         # Use the provided service_name to avoid duplicate resolution
         # Stop the service
-        console.print(f"[green]Stopping {target}...[/green]")
+        verbose_print(f"[green]Stopping {target}...[/green]")
         stop_cmd = ["systemctl", "--user", "stop", service_name]
         verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
         stop_result = self.manager._run_systemctl_command(
@@ -985,7 +985,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 return False
 
         # Handle daemon reload
-        console.print("[green]Reloading systemd daemon...[/green]")
+        verbose_print("[green]Reloading systemd daemon...[/green]")
 
         if build_type not in ["legacy", "quadlet"]:
             reload_success = self.manager.reload_daemon()
@@ -1005,7 +1005,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 time.sleep(1)
 
         # Start the service using the resolved service name
-        console.print(f"[green]Starting {target}...[/green]")
+        verbose_print(f"[green]Starting {target}...[/green]")
         start_cmd = ["systemctl", "--user", "start", service_name]
         verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
         start_result = self.manager._run_systemctl_command(
@@ -1014,11 +1014,38 @@ Provide a structured analysis focusing on actionable insights. If no significant
         start_success = start_result.returncode == 0
 
         if not start_success and start_result.stderr:
-            console.print(
-                f"[red]Start failed: {start_result.stderr.strip() if start_result.stderr else 'Unknown error'}[/red]"
-            )
+            # Extract and summarize the error message
+            error_msg = start_result.stderr.strip()
+            if "Job for" in error_msg and "failed because" in error_msg:
+                # Extract service name from error
+                import re
+
+                service_match = re.search(r"Job for ([^\s]+) failed", error_msg)
+                service_name_from_error = (
+                    service_match.group(1) if service_match else target
+                )
+
+                console.print(
+                    f"[red]❌ Service startup failed: {service_name_from_error}[/red]"
+                )
+                console.print("[yellow]💡 Recommended actions:[/yellow]")
+                console.print(
+                    f"[cyan]1.[/cyan] Check service status: [white]pm status {target}[/white]"
+                )
+                console.print(
+                    f"[cyan]2.[/cyan] View detailed logs: [white]pm logs {target}[/white]"
+                )
+                console.print(
+                    f"[cyan]3.[/cyan] Diagnose the issue: [white]pm diagnose {target}[/white]"
+                )
+                console.print(
+                    f"[cyan]4.[/cyan] Reset failed state: [white]pm reset-failed {target}[/white]"
+                )
+            else:
+                console.print(f"[red]Start failed: {error_msg}[/red]")
 
         if start_success:
+            console.print(f"[green]Started {target}[/green]")
             console.print(f"\n[green]Successfully reinitialized {target}[/green]\n")
             return True
         else:
@@ -1521,10 +1548,10 @@ Provide a structured analysis focusing on actionable insights. If no significant
             console.print(f"[red]No services found for {project} stack[/red]")
             return False
 
-        console.print(f"[green]Stopping all {project} services...[/green]")
+        verbose_print(f"[green]Stopping all {project} services...[/green]")
         stop_success = True
         for service in services:
-            console.print(f"  Stopping {service}...")
+            verbose_print(f"  Stopping {service}...")
             if not self.manager.stop_service(service, quiet=False):
                 stop_success = False
 
@@ -1557,7 +1584,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 return False
 
         # Handle daemon reload and timing
-        console.print("[green]Reloading systemd daemon...[/green]")
+        verbose_print("[green]Reloading systemd daemon...[/green]")
 
         if build_type not in ["legacy", "quadlet"]:
             # For podman build, we need to reload daemon manually
@@ -1582,25 +1609,59 @@ Provide a structured analysis focusing on actionable insights. If no significant
                 time.sleep(1)  # Brief pause after reload
 
         # Restart all services
-        console.print(f"[green]Restarting all {project} services...[/green]")
+        verbose_print(f"[green]Starting all {project} services...[/green]")
         start_success = True
         for service in services:
-            console.print(f"[dim]  Restarting {service}...[/dim]")
+            verbose_print(f"[dim]  Starting {service}...[/dim]")
             service_name = self.manager._find_service_name(
                 service, allow_interactive=False
             )
             if service_name:
                 restart_cmd = ["systemctl", "--user", "restart", service_name]
-                console.print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
+                verbose_print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
                 restart_result = subprocess.run(
                     restart_cmd, capture_output=True, text=True
                 )
-                if restart_result.returncode != 0:
+                if restart_result.returncode == 0:
+                    console.print(f"[green]Started {service}[/green]")
+                else:
                     start_success = False
                     if restart_result.stderr:
-                        console.print(
-                            f"[red]Restart failed for {service}: {restart_result.stderr.strip() if restart_result.stderr else 'Unknown error'}[/red]"
-                        )
+                        # Extract and summarize the error message
+                        error_msg = restart_result.stderr.strip()
+                        if "Job for" in error_msg and "failed because" in error_msg:
+                            # Extract service name from error
+                            import re
+
+                            service_match = re.search(
+                                r"Job for ([^\s]+) failed", error_msg
+                            )
+                            service_name_from_error = (
+                                service_match.group(1) if service_match else service
+                            )
+
+                            console.print(
+                                f"[red]❌ Service startup failed: {service} ({service_name_from_error})[/red]"
+                            )
+                            console.print(
+                                f"[yellow]💡 Recommended actions for {service}:[/yellow]"
+                            )
+                            console.print(
+                                f"[cyan]1.[/cyan] Check service status: [white]pm status {service}[/white]"
+                            )
+                            console.print(
+                                f"[cyan]2.[/cyan] View detailed logs: [white]pm logs {service}[/white]"
+                            )
+                            console.print(
+                                f"[cyan]3.[/cyan] Diagnose the issue: [white]pm diagnose {service}[/white]"
+                            )
+                            console.print(
+                                f"[cyan]4.[/cyan] Reset failed state: [white]pm reset-failed {service}[/white]"
+                            )
+                        else:
+                            console.print(
+                                f"[red]Restart failed for {service}: {error_msg}[/red]"
+                            )
             else:
                 console.print(f"[red]Could not find service for {service}[/red]")
                 start_success = False
