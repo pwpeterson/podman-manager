@@ -386,7 +386,7 @@ class ReinitManager:
 
     def _show_next_steps(self, target: str) -> None:
         """Show optional next steps after successful reinit"""
-        console.print("[green]Optional:[/green]")
+        console.print("[green]Optional: commands:[/green]")
         console.print(
             f"[green] Check service status:[/green] [white]pm status {target}[/white]"
         )
