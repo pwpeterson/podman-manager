@@ -40,7 +40,6 @@ class PodmanManager:
 
         # Check podman compose
         cmd = ["podman", "compose", "--help"]
-        console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             logger.error("'podman compose' is not available!")
@@ -67,7 +66,6 @@ class PodmanManager:
     def _command_exists(self, command: str) -> bool:
         """Check if a command exists in PATH"""
         cmd = ["which", command]
-        console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
         result = subprocess.run(cmd, capture_output=True)
         exists = result.returncode == 0
         logger.debug("Command '{}' exists: {}", command, exists)

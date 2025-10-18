@@ -89,13 +89,14 @@ class FuzzyMatcher:
             for stack_name in self.quadlet_manager.stack_services.keys():
                 items.append({"name": stack_name, "type": "stack", "source": "manager"})
 
-            # Add stack aliases
-            items.extend(
-                [
-                    {"name": "stack", "type": "stack", "source": "manager"},
-                    {"name": "vllm-stack", "type": "stack", "source": "manager"},
-                ]
-            )
+            # Add stack aliases (only if not already present)
+            alias_items = [
+                {"name": "stack", "type": "stack", "source": "manager"},
+                {"name": "vllm-stack", "type": "stack", "source": "manager"},
+            ]
+            for alias_item in alias_items:
+                if not any(item["name"] == alias_item["name"] for item in items):
+                    items.append(alias_item)
 
         # Get items from QuadletInstaller if available
         if self.quadlet_installer:
@@ -176,16 +177,18 @@ class FuzzyMatcher:
         has_stacks = any(item["type"] == "stack" for item in matches)
 
         if has_services and has_stacks:
+            console.print()
             console.print(
-                f"[yellow]Multiple services and stacks match '{partial_name}':[/yellow]"
+                f"[green]Multiple services and stacks match '{partial_name}':[/green]"
             )
+            console.print()
         elif has_services:
             console.print(f"[yellow]Multiple services match '{partial_name}':[/yellow]")
         else:
             console.print(f"[yellow]Multiple stacks match '{partial_name}':[/yellow]")
 
         console.print(
-            "[cyan]Please specify the full name or use the number prefix:[/cyan]"
+            "[green]Please specify the full name or use the number prefix:[/green]"
         )
 
         # Show numbered options

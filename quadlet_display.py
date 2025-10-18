@@ -26,39 +26,43 @@ class QuadletDisplayManager:
 
         # Filter by target if specified
         if target:
-            # Use the quadlet manager's service resolution logic
-            resolved_target = self.manager._find_service_name(
-                target, allow_interactive=False
-            )
-
-            if resolved_target and resolved_target.startswith("STACK:"):
-                # It's a stack - extract the stack name
-                stack_name = resolved_target[6:]  # Remove "STACK:" prefix
-                if stack_name in all_items:
-                    filtered_items = {stack_name: all_items[stack_name]}
-                else:
-                    console.print(
-                        f"[red]No project or service found matching '{target}'[/red]"
-                    )
-                    return
+            # For list command, only accept stack names
+            # Check if target matches any stack directly
+            if target in all_items:
+                filtered_items = {target: all_items[target]}
             else:
-                # Original logic for direct matches
-                filtered_items = {}
-                for project_name, project_info in all_items.items():
-                    if target == project_name:
-                        # Show entire project
-                        filtered_items[project_name] = project_info
-                    elif target in project_info.get("services", {}):
-                        # Show specific service within project
-                        filtered_items[project_name] = {
-                            "type": project_info["type"],
-                            "services": {target: project_info["services"][target]},
-                        }
+                # Check if it's a stack alias or partial match
+                stack_matches = []
+                for stack_name in all_items.keys():
+                    if (
+                        target.lower() in stack_name.lower()
+                        or stack_name.lower().startswith(target.lower())
+                    ):
+                        stack_matches.append(stack_name)
 
-                if not filtered_items:
-                    console.print(
-                        f"[red]No project or service found matching '{target}'[/red]"
-                    )
+                if len(stack_matches) == 1:
+                    # Single stack match found
+                    filtered_items = {stack_matches[0]: all_items[stack_matches[0]]}
+                elif len(stack_matches) > 1:
+                    # Multiple stack matches - show selection
+                    console.print()
+                    console.print(f"[green]Multiple stacks match '{target}':[/green]")
+                    console.print()
+                    console.print("[green]Please specify the full stack name:[/green]")
+                    for i, stack_name in enumerate(stack_matches, 1):
+                        console.print(
+                            f"  [dim]{i}.[/dim] [cyan]pm list {stack_name}[/cyan]"
+                        )
+                    return
+                else:
+                    # No stack found - show error with suggestions
+                    console.print()
+                    console.print(f"[red]No stack was found matching '{target}'[/red]")
+                    console.print()
+                    console.print("[green]Available stacks:[/green]")
+                    console.print("  [cyan]pm list[/cyan] [dim](show all stacks)[/dim]")
+                    for stack_name in sorted(all_items.keys()):
+                        console.print(f"  [cyan]pm list {stack_name}[/cyan]")
                     return
 
             all_items = filtered_items

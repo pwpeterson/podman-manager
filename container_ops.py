@@ -12,6 +12,7 @@ except ImportError:
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
+from ai_diagnostics import AIDiagnostics
 from config import console
 
 
@@ -20,6 +21,7 @@ class ContainerOperations:
 
     def __init__(self, manager):
         self.manager = manager
+        self.ai_diagnostics = AIDiagnostics(manager)
 
     def _extract_log_message(self, log_line: str, msg_type: str) -> str:
         """Extract the actual error/warning message from a log line with timestamp"""
@@ -577,7 +579,7 @@ class ContainerOperations:
 
             console.print("\nFollow-up Commands:")
             console.print(
-                f"[cyan]1[/cyan]  pm log-ai-analyze {cmd_service}\t# Analyze logs with AI"
+                f"[cyan]1[/cyan]  pm logs {cmd_service} -ai\t\t# Analyze logs with AI"
             )
             console.print(f"[cyan]2[/cyan]  pm logs {cmd_service:<20}\t\t# View logs")
             console.print(
@@ -608,8 +610,9 @@ class ContainerOperations:
                             cmd = [
                                 "python",
                                 "podman_manager.py",
-                                "log-ai-analyze",
+                                "logs",
                                 cmd_service,
+                                "-ai",
                             ]
                         elif choice_num == 2:
                             cmd = ["python", "podman_manager.py", "logs", cmd_service]
@@ -652,236 +655,16 @@ class ContainerOperations:
             console.print(f"[red]Error analyzing logs: {e}[/red]")
 
     def ai_analyze_logs(
-        self, target: str, lines: int = 50, vllm_url: str = "http://localhost:8002"
+        self,
+        target: str,
+        lines: int = 50,
+        vllm_url: str = "http://localhost:8002",
+        verbose: bool = False,
     ) -> None:
         """AI-powered analysis of container logs for root causes and solutions"""
-        import json
-        import subprocess
-        from datetime import datetime
-
-        import requests
-
-        try:
-            project = self.manager._find_service_project(target)
-            if not project:
-                console.print(f"[red]Service '{target}' not found[/red]")
-                return
-
-            # Get the actual matched service name
-            matched_service = self.manager.get_matched_service_name(target)
-
-            # Check if container exists first
-            check_cmd = [
-                "podman",
-                "ps",
-                "-a",
-                "--filter",
-                f"name={matched_service}",
-                "--format",
-                "{{.Names}}",
-            ]
-            check_result = subprocess.run(check_cmd, capture_output=True, text=True)
-
-            if not check_result.stdout.strip():
-                console.print(
-                    f"[yellow]Container '{matched_service}' not found or not running[/yellow]"
-                )
-                console.print(
-                    "[dim]Try running: pm list to see available services[/dim]"
-                )
-                return
-
-            console.print(
-                f"[cyan]AI analyzing logs for {matched_service} (last {lines} lines)...[/cyan]"
-            )
-
-            # Get logs using podman logs
-            cmd = ["podman", "logs", "--tail", str(lines), matched_service]
-            console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if result.returncode != 0:
-                console.print(
-                    f"[red]Failed to get logs: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
-                )
-                return
-
-            if not result.stdout.strip():
-                console.print(f"[yellow]No logs found for {matched_service}[/yellow]")
-                return
-
-            log_content = result.stdout.strip()
-
-            # Check vLLM proxy availability
-            try:
-                health_response = requests.get(f"{vllm_url}/health", timeout=5)
-                if health_response.status_code != 200:
-                    console.print(f"[red]vLLM proxy not healthy at {vllm_url}[/red]")
-                    return
-            except requests.exceptions.RequestException as e:
-                console.print(
-                    f"[red]Cannot connect to vLLM proxy at {vllm_url}: {e}[/red]"
-                )
-                console.print(
-                    "[dim]Make sure vLLM proxy is running: pm start vllm-proxy[/dim]"
-                )
-                return
-
-            # Prepare AI analysis prompt
-            analysis_prompt = f"""You are an expert system administrator and DevOps engineer. Analyze the following container logs and provide:
-
-1. **Root Cause Analysis**: Identify the primary issues causing errors or warnings
-2. **Impact Assessment**: Severity and potential consequences of identified issues
-3. **Recommended Solutions**: Specific, actionable steps to resolve the problems
-4. **Prevention Strategies**: How to prevent these issues in the future
-
-Container: {matched_service}
-Timestamp: {datetime.now().isoformat()}
-Log Lines Analyzed: {len(log_content.split())}
-
-=== LOG CONTENT ===
-{log_content}
-=== END LOG CONTENT ===
-
-Provide a structured analysis focusing on actionable insights. If no significant issues are found, provide a brief health assessment."""
-
-            # Call vLLM API
-            api_payload = {
-                "model": "qwen2.5-coder",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are an expert system administrator and DevOps engineer specializing in container log analysis and troubleshooting.",
-                    },
-                    {"role": "user", "content": analysis_prompt},
-                ],
-                "max_tokens": 2048,
-                "temperature": 0.1,
-                "stream": False,
-            }
-
-            console.print("[yellow]Analyzing logs with AI...[/yellow]")
-
-            try:
-                api_response = requests.post(
-                    f"{vllm_url}/v1/chat/completions",
-                    json=api_payload,
-                    headers={"Content-Type": "application/json"},
-                    timeout=60,
-                )
-
-                if api_response.status_code != 200:
-                    console.print(
-                        f"[red]AI analysis failed: HTTP {api_response.status_code}[/red]"
-                    )
-                    console.print(f"[red]{api_response.text}[/red]")
-                    return
-
-                response_data = api_response.json()
-                ai_analysis = response_data["choices"][0]["message"]["content"]
-
-                # Display results
-                console.print(
-                    f"\n[bold green]🤖 AI Log Analysis for {matched_service}[/bold green]"
-                )
-                console.print("=" * 60)
-                console.print(ai_analysis)
-                console.print("=" * 60)
-
-                # Show follow-up commands with interactive menu
-                cmd_service = matched_service
-                console.print("\n[bold cyan]Follow-up Commands:[/bold cyan]")
-                console.print(
-                    f"[cyan]1[/cyan]  pm logs {cmd_service:<20}\t\t# View logs"
-                )
-                console.print(
-                    f"[cyan]2[/cyan]  pm logs {cmd_service} --follow\t# Monitor live logs"
-                )
-                console.print(
-                    f"[cyan]3[/cyan]  pm status {cmd_service:<18}\t\t# Check service status"
-                )
-                console.print(
-                    f"[cyan]4[/cyan]  pm restart {cmd_service:<17}\t\t# Restart if needed"
-                )
-                console.print(
-                    f"[cyan]5[/cyan]  pm log-ai-analyze {cmd_service}\t# Re-run AI analysis"
-                )
-
-                # Interactive command selection
-                try:
-                    choice = input(
-                        "\nSelect command (1-5) or press Enter to skip: "
-                    ).strip()
-                    if choice and choice.isdigit():
-                        choice_num = int(choice)
-                        if 1 <= choice_num <= 5:
-                            import subprocess
-
-                            if choice_num == 1:
-                                cmd = [
-                                    "python",
-                                    "podman_manager.py",
-                                    "logs",
-                                    cmd_service,
-                                ]
-                            elif choice_num == 2:
-                                cmd = [
-                                    "python",
-                                    "podman_manager.py",
-                                    "logs",
-                                    cmd_service,
-                                    "--follow",
-                                ]
-                            elif choice_num == 3:
-                                cmd = [
-                                    "python",
-                                    "podman_manager.py",
-                                    "status",
-                                    cmd_service,
-                                ]
-                            elif choice_num == 4:
-                                cmd = [
-                                    "python",
-                                    "podman_manager.py",
-                                    "restart",
-                                    cmd_service,
-                                ]
-                            elif choice_num == 5:
-                                cmd = [
-                                    "python",
-                                    "podman_manager.py",
-                                    "log-ai-analyze",
-                                    cmd_service,
-                                ]
-
-                            console.print(f"\n[cyan]Executing: {' '.join(cmd)}[/cyan]")
-                            subprocess.run(cmd)
-                        else:
-                            console.print(
-                                "[yellow]Invalid choice. Please select 1-5[/yellow]"
-                            )
-                    elif choice:
-                        console.print(
-                            "[yellow]Invalid choice. Please select 1-5[/yellow]"
-                        )
-                except KeyboardInterrupt:
-                    console.print("\n[yellow]Command selection cancelled[/yellow]")
-                except Exception as e:
-                    console.print(f"[red]Error executing command: {e}[/red]")
-
-            except requests.exceptions.Timeout:
-                console.print("[red]AI analysis timed out (60s limit)[/red]")
-            except requests.exceptions.RequestException as e:
-                console.print(f"[red]AI analysis request failed: {e}[/red]")
-            except json.JSONDecodeError as e:
-                console.print(f"[red]Invalid JSON response from AI: {e}[/red]")
-            except KeyError as e:
-                console.print(f"[red]Unexpected AI response format: {e}[/red]")
-
-        except subprocess.TimeoutExpired:
-            console.print("[red]Timeout while fetching logs[/red]")
-        except Exception as e:
-            console.print(f"[red]Error in AI log analysis: {e}[/red]")
+        # For compose mode, we need to adapt the target to work with the AI diagnostics
+        # The AI diagnostics expects a service name that can be resolved by the manager
+        self.ai_diagnostics.ai_analyze_logs(target, lines, vllm_url, verbose)
 
     def exec_command(self, target: str, command: List[str]) -> None:
         """Execute command in container"""

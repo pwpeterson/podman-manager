@@ -172,19 +172,9 @@ def show_rich_help():
                 ("volumes", "List volumes", "pm volumes"),
                 ("networks", "List networks", "pm networks"),
                 (
-                    "logs [cyan]<stack|service>[/cyan] [-f] [-n N]",
-                    "Show service logs (default: 100 lines)",
-                    "pm logs vllm-qwen25 -f -n 50",
-                ),
-                (
-                    "log-check [cyan]<service>[/cyan] [-n N]",
-                    "Analyze service logs for errors and warnings",
-                    "pm log-check vllm-qwen25 -n 100",
-                ),
-                (
-                    "log-ai [cyan]<service>[/cyan] [-n N]",
-                    "AI-powered log analysis for root causes and solutions",
-                    "pm log-ai vllm-qwen25 -n 100",
+                    "logs [cyan]<stack|service>[/cyan] [-f] [-n N] [-ai]",
+                    "Show service logs with optional AI analysis",
+                    "pm logs vllm-qwen25 -f -n 50 -ai",
                 ),
                 (
                     "diagnose [cyan]<service>[/cyan]",
@@ -540,48 +530,17 @@ def main():
         help="Number of lines to show from end of logs (default: 100)",
     )
     logs_parser.add_argument(
-        "-v",
-        "--verbose",
+        "-ai",
+        "--ai-diagnose",
         action="store_true",
-        help="Show detailed command execution (exec lines)",
+        help="AI-powered log analysis for root causes and solutions",
     )
-
-    log_check_parser = subparsers.add_parser(
-        "log-check", help="Analyze service logs for errors and warnings"
-    )
-    log_check_parser.add_argument("target", help="Service name")
-    log_check_parser.add_argument(
-        "-n",
-        "--lines",
-        type=int,
-        default=50,
-        help="Number of lines to analyze from end of logs (default: 50)",
-    )
-    log_check_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show detailed command execution (exec lines)",
-    )
-
-    log_ai_parser = subparsers.add_parser(
-        "log-ai",
-        help="AI-powered analysis of service logs for root causes and solutions",
-    )
-    log_ai_parser.add_argument("target", help="Service name")
-    log_ai_parser.add_argument(
-        "-n",
-        "--lines",
-        type=int,
-        default=50,
-        help="Number of lines to analyze from end of logs (default: 50)",
-    )
-    log_ai_parser.add_argument(
+    logs_parser.add_argument(
         "--vllm-url",
         default="http://localhost:8002",
-        help="vLLM proxy URL (default: http://localhost:8002)",
+        help="vLLM proxy URL for AI analysis (default: http://localhost:8002)",
     )
-    log_ai_parser.add_argument(
+    logs_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -981,13 +940,15 @@ def main():
         elif args.command == "events":
             display.show_events(since=args.since)
         elif args.command == "logs":
-            container_ops.show_logs(args.target, follow=args.follow, tail=args.tail)
-        elif args.command == "log-check":
-            container_ops.analyze_logs(args.target, lines=args.lines)
-        elif args.command == "log-ai":
-            container_ops.ai_analyze_logs(
-                args.target, lines=args.lines, vllm_url=args.vllm_url
-            )
+            if getattr(args, "ai_diagnose", False):
+                container_ops.ai_analyze_logs(
+                    args.target,
+                    lines=args.tail,
+                    vllm_url=args.vllm_url,
+                    verbose=args.verbose,
+                )
+            else:
+                container_ops.show_logs(args.target, follow=args.follow, tail=args.tail)
         elif args.command == "diagnose":
             if selected_mode == "quadlet":
                 container_ops.diagnose_container_failure(args.target)

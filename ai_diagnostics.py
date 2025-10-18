@@ -20,33 +20,84 @@ class AIDiagnostics:
         self.manager = manager
 
     def ai_analyze_logs(
-        self, target: str, lines: int = 50, vllm_url: str = "http://localhost:8002"
+        self,
+        target: str,
+        lines: int = 50,
+        vllm_url: str = "http://localhost:8002",
+        verbose: bool = False,
     ) -> None:
         """AI-powered analysis of service logs for root causes and solutions"""
         if requests is None:
             console.print("[red]requests library not available for AI analysis[/red]")
             return
 
-        self.manager._clear_auto_match_cache()
-        service_name = self.manager._find_service_name(target)
+        # Determine if we're in quadlet or compose mode
+        is_quadlet_mode = hasattr(self.manager, "_find_service_name")
 
-        if not service_name:
-            return
+        if is_quadlet_mode:
+            # Quadlet mode - use journalctl
+            self.manager._clear_auto_match_cache()
+            service_name = self.manager._find_service_name(target)
 
-        console.print(
-            f"[cyan]AI analyzing logs for {service_name} (last {lines} lines)...[/cyan]"
-        )
+            if not service_name:
+                return
 
-        # Get logs using journalctl
-        cmd = [
-            "journalctl",
-            "--user",
-            "-u",
-            service_name,
-            "-n",
-            str(lines),
-            "--no-pager",
-        ]
+            console.print()
+            console.print(
+                f"[green]AI analyzing logs for {service_name} (last {lines} lines)...[/green]"
+            )
+            console.print()
+
+            # Get logs using journalctl
+            cmd = [
+                "journalctl",
+                "--user",
+                "-u",
+                service_name,
+                "-n",
+                str(lines),
+                "--no-pager",
+            ]
+        else:
+            # Compose mode - use podman logs
+            project = self.manager._find_service_project(target)
+            if not project:
+                console.print(f"[red]Service '{target}' not found[/red]")
+                return
+
+            # Get the actual matched service name
+            matched_service = self.manager.get_matched_service_name(target)
+            service_name = matched_service
+
+            # Check if container exists first
+            check_cmd = [
+                "podman",
+                "ps",
+                "-a",
+                "--filter",
+                f"name={matched_service}",
+                "--format",
+                "{{.Names}}",
+            ]
+            check_result = subprocess.run(check_cmd, capture_output=True, text=True)
+
+            if not check_result.stdout.strip():
+                console.print(
+                    f"[yellow]Container '{matched_service}' not found or not running[/yellow]"
+                )
+                console.print(
+                    "[dim]Try running: pm list to see available services[/dim]"
+                )
+                return
+
+            console.print()
+            console.print(
+                f"[green]AI analyzing logs for {matched_service} (last {lines} lines)...[/green]"
+            )
+            console.print()
+
+            # Get logs using podman logs
+            cmd = ["podman", "logs", "--tail", str(lines), matched_service]
 
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -63,7 +114,7 @@ class AIDiagnostics:
             log_content = result.stdout.strip()
 
             # Check vLLM proxy availability
-            if not self._check_vllm_availability(vllm_url):
+            if not self._check_vllm_availability(vllm_url, verbose):
                 return
 
             # Prepare AI analysis prompt
@@ -84,7 +135,7 @@ class AIDiagnostics:
         except Exception as e:
             console.print(f"[red]Error in AI log analysis: {e}[/red]")
 
-    def _check_vllm_availability(self, vllm_url: str) -> bool:
+    def _check_vllm_availability(self, vllm_url: str, verbose: bool = False) -> bool:
         """Check if vLLM proxy is available"""
         if requests is None:
             console.print("[red]requests library not available for health check[/red]")
@@ -93,14 +144,29 @@ class AIDiagnostics:
         try:
             health_response = requests.get(f"{vllm_url}/health", timeout=5)
             if health_response.status_code != 200:
-                console.print(f"[red]vLLM proxy not healthy at {vllm_url}[/red]")
+                if verbose:
+                    console.print(f"[red]vLLM proxy not healthy at {vllm_url}[/red]")
+                else:
+                    console.print("[red]Cannot connect to your local vllm server[/red]")
+                    console.print()
+                    console.print(
+                        "[green]Make sure vLLM proxy is running:[/green] [white]pm start vllm-proxy[/white]"
+                    )
+                    console.print()
                 return False
             return True
         except requests.exceptions.RequestException as e:
-            console.print(f"[red]Cannot connect to vLLM proxy at {vllm_url}: {e}[/red]")
+            if verbose:
+                console.print(
+                    f"[red]Cannot connect to vLLM proxy at {vllm_url}: {e}[/red]"
+                )
+            else:
+                console.print("[red]Cannot connect to your local vllm server[/red]")
+            console.print()
             console.print(
-                "[dim]Make sure vLLM proxy is running: pm start vllm-proxy[/dim]"
+                "[green]Make sure vLLM proxy is running:[/green] [white]pm start vllm-proxy[/white]"
             )
+            console.print()
             return False
 
     def _prepare_analysis_prompt(
@@ -220,7 +286,7 @@ Provide a structured analysis focusing on actionable insights. If no significant
             f"[cyan]4[/cyan]  pm restart {display_service:<17}\t\t# Restart if needed"
         )
         console.print(
-            f"[cyan]5[/cyan]  pm log-ai-analyze {display_service}\t# Re-run AI analysis"
+            f"[cyan]5[/cyan]  pm logs {display_service} -ai\t\t# Re-run AI analysis"
         )
 
         # Interactive command selection
@@ -265,8 +331,9 @@ Provide a structured analysis focusing on actionable insights. If no significant
                         cmd = [
                             "python",
                             "podman_manager.py",
-                            "log-ai-analyze",
+                            "logs",
                             display_service,
+                            "-ai",
                         ]
 
                     console.print(f"\n[cyan]Executing: {' '.join(cmd)}[/cyan]")
