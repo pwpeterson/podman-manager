@@ -70,7 +70,10 @@ class ReinitManager:
             return stack_mgr.reinit_stack(stack_name, build_type=build_type)
 
         # PRIORITY 4: Handle individual service (only if not a stack)
-        if service_name:
+        if service_name == "CANCELLED":
+            # User cancelled fuzzy match selection, return silently
+            return False
+        elif service_name:
             return self._reinit_service_direct(
                 target, service_name, build_type=build_type
             )
