@@ -436,6 +436,51 @@ class QuadletManager:
         # Auto-match cache is no longer used since fuzzy matching is always enabled
         pass
 
+    def _check_container_file_exists(self, target: str) -> bool:
+        """Check if the container file exists in systemd directory for a given target"""
+        # Handle stack targets
+        if target.endswith("-stack") or target in self.stack_services:
+            # For stacks, check if any service in the stack has a container file
+            stack_name = target if target in self.stack_services else target
+            if target.endswith("-stack") and target not in self.stack_services:
+                stack_name = target[:-6] + "-stack"  # Convert to proper stack name
+                if stack_name not in self.stack_services:
+                    return False
+
+            if stack_name in self.stack_services:
+                # Check if at least one service in the stack has a container file
+                for service_name in self.stack_services[stack_name]:
+                    container_file = self.quadlets_dir / f"{service_name}.container"
+                    target_file = self.quadlets_dir / f"{service_name}.target"
+                    if container_file.exists() or target_file.exists():
+                        return True
+                return False
+
+        # Handle individual services
+        # First try to resolve the service name
+        if target in self.quadlet_services:
+            service_name = target
+        else:
+            # Try to find the service name without fuzzy matching
+            service_name = None
+            for short_name, full_name in self.quadlet_services.items():
+                if short_name == target or full_name == target:
+                    service_name = short_name
+                    break
+
+        if service_name:
+            container_file = self.quadlets_dir / f"{service_name}.container"
+            target_file = self.quadlets_dir / f"{service_name}.target"
+            return container_file.exists() or target_file.exists()
+
+        return False
+
+    def _show_install_suggestion(self, target: str) -> None:
+        """Show suggestion to install the missing container file"""
+        console.print(
+            f"[yellow]Required container file is missing, run pm install {target}[/yellow]"
+        )
+
     def _command_exists(self, command: str) -> bool:
         """Check if a command exists in PATH"""
         result = subprocess.run(["which", command], capture_output=True)
@@ -856,9 +901,17 @@ class QuadletManager:
     def start_service(self, target: str) -> bool:
         """Start a service or the stack target"""
         self._clear_auto_match_cache()
+
+        # Check if container file exists first
+        if not self._check_container_file_exists(target):
+            self._show_install_suggestion(target)
+            return False
+
         service_name = self._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+        elif service_name == "CANCELLED":
             return False
 
         cmd = ["systemctl", "--user", "start", service_name]
@@ -876,10 +929,19 @@ class QuadletManager:
     ) -> bool:
         """Stop a service or the stack target"""
         self._clear_auto_match_cache()
+
+        # Check if container file exists first
+        if not self._check_container_file_exists(target):
+            if not quiet:
+                self._show_install_suggestion(target)
+            return False
+
         service_name = self._find_service_name(target)
         if not service_name:
             if not quiet:
                 console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+        elif service_name == "CANCELLED":
             return False
 
         # First try normal stop
@@ -1048,9 +1110,17 @@ class QuadletManager:
     def restart_service(self, target: str) -> bool:
         """Restart a service or the stack target"""
         self._clear_auto_match_cache()
+
+        # Check if container file exists first
+        if not self._check_container_file_exists(target):
+            self._show_install_suggestion(target)
+            return False
+
         service_name = self._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+        elif service_name == "CANCELLED":
             return False
 
         cmd = ["systemctl", "--user", "restart", service_name]
@@ -1066,9 +1136,17 @@ class QuadletManager:
     def enable_service(self, target: str) -> bool:
         """Enable a service or the stack target to start at boot"""
         self._clear_auto_match_cache()
+
+        # Check if container file exists first
+        if not self._check_container_file_exists(target):
+            self._show_install_suggestion(target)
+            return False
+
         service_name = self._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+        elif service_name == "CANCELLED":
             return False
 
         cmd = ["systemctl", "--user", "enable", service_name]
@@ -1084,9 +1162,17 @@ class QuadletManager:
     def disable_service(self, target: str) -> bool:
         """Disable a service or the stack target from starting at boot"""
         self._clear_auto_match_cache()
+
+        # Check if container file exists first
+        if not self._check_container_file_exists(target):
+            self._show_install_suggestion(target)
+            return False
+
         service_name = self._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+        elif service_name == "CANCELLED":
             return False
 
         cmd = ["systemctl", "--user", "disable", service_name]
@@ -1114,9 +1200,17 @@ class QuadletManager:
     def show_logs(self, target: str, follow: bool = False, lines: int = 100) -> bool:
         """Show logs for a service"""
         self._clear_auto_match_cache()
+
+        # Check if container file exists first
+        if not self._check_container_file_exists(target):
+            self._show_install_suggestion(target)
+            return False
+
         service_name = self._find_service_name(target)
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+        elif service_name == "CANCELLED":
             return False
 
         cmd = ["journalctl", "--user", "-u", service_name, "-n", str(lines)]

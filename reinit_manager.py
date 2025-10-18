@@ -58,7 +58,12 @@ class ReinitManager:
             stack_mgr = StackManager(self.manager)
             return stack_mgr.reinit_stack(target, build_type=build_type)
 
-        # PRIORITY 3: Try service name resolution
+        # PRIORITY 3: Check if container file exists first
+        if not self.manager._check_container_file_exists(target):
+            self.manager._show_install_suggestion(target)
+            return False
+
+        # PRIORITY 4: Try service name resolution
         service_name = self.manager._find_service_name(target)
 
         # Handle stack operations (STACK: prefix)
@@ -69,7 +74,7 @@ class ReinitManager:
             stack_mgr = StackManager(self.manager)
             return stack_mgr.reinit_stack(stack_name, build_type=build_type)
 
-        # PRIORITY 4: Handle individual service (only if not a stack)
+        # PRIORITY 5: Handle individual service (only if not a stack)
         if service_name == "CANCELLED":
             # User cancelled fuzzy match selection, return silently
             return False

@@ -150,10 +150,18 @@ class ServiceLifecycle:
     def reset_failed(self, target: str) -> bool:
         """Reset failed service state"""
         self.manager._clear_auto_match_cache()
+
+        # Check if container file exists first
+        if not self.manager._check_container_file_exists(target):
+            self.manager._show_install_suggestion(target)
+            return False
+
         service_name = self.manager._find_service_name(target)
 
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+        elif service_name == "CANCELLED":
             return False
 
         console.print(f"[yellow]Resetting failed state for {target}...[/yellow]")
@@ -180,10 +188,18 @@ class ServiceLifecycle:
     def show_service_file(self, target: str) -> bool:
         """Show service file contents"""
         self.manager._clear_auto_match_cache()
+
+        # Check if container file exists first
+        if not self.manager._check_container_file_exists(target):
+            self.manager._show_install_suggestion(target)
+            return False
+
         service_name = self.manager._find_service_name(target)
 
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+        elif service_name == "CANCELLED":
             return False
 
         console.print(f"[yellow]Showing service file for {target}...[/yellow]")
