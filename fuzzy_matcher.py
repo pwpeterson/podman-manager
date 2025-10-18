@@ -179,7 +179,7 @@ class FuzzyMatcher:
         if has_services and has_stacks:
             console.print()
             console.print(
-                f"[green]Multiple services and stacks match '{partial_name}':[/green]"
+                f"\n[green]Multiple services and stacks match '{partial_name}':[/green]"
             )
             console.print()
         elif has_services:

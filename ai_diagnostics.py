@@ -10,6 +10,7 @@ try:
 except ImportError:
     requests = None
 
+
 from config import console
 
 
@@ -46,7 +47,6 @@ class AIDiagnostics:
             console.print(
                 f"[green]AI analyzing logs for {service_name} (last {lines} lines)...[/green]"
             )
-            console.print()
 
             # Get logs using journalctl
             cmd = [
@@ -94,7 +94,6 @@ class AIDiagnostics:
             console.print(
                 f"[green]AI analyzing logs for {matched_service} (last {lines} lines)...[/green]"
             )
-            console.print()
 
             # Get logs using podman logs
             cmd = ["podman", "logs", "--tail", str(lines), matched_service]
@@ -210,38 +209,52 @@ Provide a structured analysis focusing on actionable insights. If no significant
             "stream": False,
         }
 
-        console.print("[yellow]Analyzing logs with AI...[/yellow]")
+        from rich.progress import Progress, SpinnerColumn, TextColumn
 
-        try:
-            api_response = requests.post(
-                f"{vllm_url}/v1/chat/completions",
-                json=api_payload,
-                headers={"Content-Type": "application/json"},
-                timeout=60,
-            )
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[yellow]Analyzing logs with AI...[/yellow]"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("analyzing", total=None)
 
-            if api_response.status_code != 200:
-                console.print(
-                    f"[red]AI analysis failed: HTTP {api_response.status_code}[/red]"
+            try:
+                api_response = requests.post(
+                    f"{vllm_url}/v1/chat/completions",
+                    json=api_payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=60,
                 )
-                console.print(f"[red]{api_response.text}[/red]")
+
+                progress.remove_task(task)
+
+                if api_response.status_code != 200:
+                    console.print(
+                        f"[red]AI analysis failed: HTTP {api_response.status_code}[/red]"
+                    )
+                    console.print(f"[red]{api_response.text}[/red]")
+                    return None
+
+                response_data = api_response.json()
+                return response_data["choices"][0]["message"]["content"]
+
+            except requests.exceptions.Timeout:
+                progress.remove_task(task)
+                console.print("[red]AI analysis timed out (60s limit)[/red]")
                 return None
-
-            response_data = api_response.json()
-            return response_data["choices"][0]["message"]["content"]
-
-        except requests.exceptions.Timeout:
-            console.print("[red]AI analysis timed out (60s limit)[/red]")
-            return None
-        except requests.exceptions.RequestException as e:
-            console.print(f"[red]AI analysis request failed: {e}[/red]")
-            return None
-        except json.JSONDecodeError as e:
-            console.print(f"[red]Invalid JSON response from AI: {e}[/red]")
-            return None
-        except KeyError as e:
-            console.print(f"[red]Unexpected AI response format: {e}[/red]")
-            return None
+            except requests.exceptions.RequestException as e:
+                progress.remove_task(task)
+                console.print(f"[red]AI analysis request failed: {e}[/red]")
+                return None
+            except json.JSONDecodeError as e:
+                progress.remove_task(task)
+                console.print(f"[red]Invalid JSON response from AI: {e}[/red]")
+                return None
+            except KeyError as e:
+                progress.remove_task(task)
+                console.print(f"[red]Unexpected AI response format: {e}[/red]")
+                return None
 
     def _display_ai_analysis_results(
         self, target: str, service_name: str, ai_analysis: str
@@ -262,87 +275,161 @@ Provide a structured analysis focusing on actionable insights. If no significant
         else:
             display_service = resolved_service
 
-        console.print(
-            f"\n[bold green]🤖 AI Log Analysis for {display_service}[/bold green]"
-        )
-        console.print("=" * 60)
-        console.print(ai_analysis)
-        console.print("=" * 60)
+        # The spinner will be replaced with the header when it disappears (transient=True)
+        console.print(f"[bold green]AI Log Analysis for {display_service}[/bold green]")
+        console.print()  # Add newline after header
+        # Manual markdown parsing and Rich formatting
+        self._render_markdown_manually(ai_analysis)
 
         # Show follow-up commands with interactive menu
         self._show_ai_analysis_menu(display_service)
 
-    def _show_ai_analysis_menu(self, display_service: str) -> None:
-        """Show interactive menu after AI analysis"""
-        console.print("\n[bold cyan]Follow-up Commands:[/bold cyan]")
-        console.print(f"[cyan]1[/cyan]  pm logs {display_service:<20}\t\t# View logs")
-        console.print(
-            f"[cyan]2[/cyan]  pm logs {display_service} --follow\t# Monitor live logs"
-        )
-        console.print(
-            f"[cyan]3[/cyan]  pm status {display_service:<18}\t\t# Check service status"
-        )
-        console.print(
-            f"[cyan]4[/cyan]  pm restart {display_service:<17}\t\t# Restart if needed"
-        )
-        console.print(
-            f"[cyan]5[/cyan]  pm logs {display_service} -ai\t\t# Re-run AI analysis"
-        )
+    def _render_markdown_manually(self, content: str) -> None:
+        """Manually render markdown content using Rich formatting with 120 character width"""
+        import re
+        import textwrap
 
-        # Interactive command selection
-        try:
-            choice = input("\nSelect command (1-5) or press Enter to skip: ").strip()
-            if choice and choice.isdigit():
-                choice_num = int(choice)
-                if 1 <= choice_num <= 5:
-                    # Initialize cmd variable
-                    cmd = ["python", "podman_manager.py"]
+        lines = content.split("\n")
+        previous_was_header = False
+        in_code_block = False
 
-                    if choice_num == 1:
-                        cmd = [
-                            "python",
-                            "podman_manager.py",
-                            "logs",
-                            display_service,
-                        ]
-                    elif choice_num == 2:
-                        cmd = [
-                            "python",
-                            "podman_manager.py",
-                            "logs",
-                            display_service,
-                            "--follow",
-                        ]
-                    elif choice_num == 3:
-                        cmd = [
-                            "python",
-                            "podman_manager.py",
-                            "status",
-                            display_service,
-                        ]
-                    elif choice_num == 4:
-                        cmd = [
-                            "python",
-                            "podman_manager.py",
-                            "restart",
-                            display_service,
-                        ]
-                    elif choice_num == 5:
-                        cmd = [
-                            "python",
-                            "podman_manager.py",
-                            "logs",
-                            display_service,
-                            "-ai",
-                        ]
+        for i, line in enumerate(lines):
+            line = line.strip()
 
-                    console.print(f"\n[cyan]Executing: {' '.join(cmd)}[/cyan]")
-                    subprocess.run(cmd)
+            # Skip multiple consecutive empty lines
+            if not line:
+                if not previous_was_header and i > 0 and lines[i - 1].strip():
+                    console.print()
+                continue
+
+            # Handle headers (### Header)
+            if line.startswith("### "):
+                header_text = line[4:].strip()
+                # Don't add blank lines before headers
+                console.print(f"[bold cyan]{header_text}[/bold cyan]")
+                previous_was_header = True
+                continue
+            else:
+                previous_was_header = False
+
+            # Handle bold text (**text**)
+            line = re.sub(r"\*\*([^*]+)\*\*", r"[bold]\1[/bold]", line)
+
+            # Handle inline code (`code`)
+            line = re.sub(r"`([^`]+)`", r"[cyan]\1[/cyan]", line)
+
+            # Handle code blocks (```)
+            if line.startswith("```"):
+                if line == "```text" or (line == "```" and not in_code_block):
+                    # Skip these markdown code block markers
+                    continue
+                elif line == "```" and in_code_block:
+                    # End of code block - skip the closing marker
+                    in_code_block = False
+                    continue
+                elif (
+                    "bash" in line
+                    or "ini" in line
+                    or any(lang in line for lang in ["python", "json", "yaml", "sh"])
+                ):
+                    # Start of code block - skip the opening marker
+                    in_code_block = True
+                    continue
                 else:
-                    console.print("[yellow]Invalid choice. Please select 1-5[/yellow]")
-            elif choice:
-                console.print("[yellow]Invalid choice. Please select 1-5[/yellow]")
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Command selection cancelled[/yellow]")
-        except Exception as e:
-            console.print(f"[red]Error executing command: {e}[/red]")
+                    # Unknown code block type - skip
+                    continue
+
+            # Handle content inside code blocks
+            if in_code_block:
+                # Indent code blocks and make them cyan
+                console.print(f"    [cyan]{line}[/cyan]")
+                continue
+
+            # Handle numbered lists (1. item)
+            if re.match(r"^\d+\.\s", line):
+                # Wrap list items at 120 characters with proper indentation
+                wrapped_lines = textwrap.fill(
+                    line, width=116, initial_indent="    ", subsequent_indent="       "
+                )
+                console.print(f"[white]{wrapped_lines}[/white]")
+                continue
+
+            # Handle bullet points (- item)
+            if line.startswith("- "):
+                # Wrap bullet points at 120 characters with proper indentation
+                wrapped_lines = textwrap.fill(
+                    line,
+                    width=112,
+                    initial_indent="        ",
+                    subsequent_indent="          ",
+                )
+                console.print(f"[white]{wrapped_lines}[/white]")
+                continue
+
+            # Handle code section markers like [Service]
+            if line.startswith("[") and line.endswith("]") and len(line) < 20:
+                # Indent code section markers
+                console.print(f"        [dim cyan]{line}[/dim cyan]")
+                continue
+
+            # Handle environment variable assignments
+            if line.startswith("Environment=") or "=" in line and "NEO4J_AUTH" in line:
+                # Double indent environment variable lines
+                console.print(f"            [cyan]{line}[/cyan]")
+                continue
+
+            # Handle command lines (sudo systemctl, etc.)
+            if line.startswith("sudo ") or line.startswith("systemctl "):
+                # Indent command lines as code
+                console.print(f"            [cyan]{line}[/cyan]")
+                continue
+
+            # Regular text - wrap at 120 characters with indentation
+            # Check if this looks like a log line (contains timestamp pattern)
+            if re.match(r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}", line):
+                # Double indent log lines
+                if len(line) > 112:  # Account for 8-space indent
+                    wrapped_lines = textwrap.fill(
+                        line,
+                        width=112,
+                        initial_indent="        ",
+                        subsequent_indent="        ",
+                    )
+                    console.print(wrapped_lines)
+                else:
+                    console.print(f"        {line}")
+            else:
+                # Single indent regular text paragraphs
+                if len(line) > 116:  # Account for 4-space indent
+                    wrapped_lines = textwrap.fill(
+                        line, width=116, initial_indent="    ", subsequent_indent="    "
+                    )
+                    console.print(wrapped_lines)
+                else:
+                    console.print(f"    {line}")
+
+    def _show_ai_analysis_menu(self, display_service: str) -> None:
+        """Show recommended actions after AI analysis"""
+        console.print("\n  [bold green]Recommended actions:[/bold green]")
+        console.print(
+            f"[green]   View detailed logs:[/green] [white]pm logs {display_service}[/white]"
+        )
+        console.print(
+            f"[green]    Monitor live logs:[/green] [white]pm logs {display_service} --f[/white]"
+        )
+        console.print(
+            f"[green]   Diagnose the issue:[/green] [white]pm diagnose {display_service}[/white]"
+        )
+        console.print(
+            f"[green]   Reset failed state:[/green] [white]pm reset-failed {display_service}[/white]"
+        )
+        console.print(
+            f"[green]    Restart if needed:[/green] [white]pm restart {display_service}[/white]"
+        )
+        console.print(
+            f"[green]   Re-run AI analysis:[/green] [white]pm logs {display_service} -ai[/white]"
+        )
+        console.print(
+            f"[green]         Reinitialize:[/green] [white]pm reinit {display_service} -v[/white]"
+        )
+        console.print()

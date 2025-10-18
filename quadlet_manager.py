@@ -437,16 +437,17 @@ class QuadletManager:
         pass
 
     def _check_container_file_exists(self, target: str) -> bool:
-        """Check if the container file exists in systemd directory for a given target"""
-        # Handle stack targets
-        if target.endswith("-stack") or target in self.stack_services:
-            # For stacks, check if any service in the stack has a container file
-            stack_name = target if target in self.stack_services else target
-            if target.endswith("-stack") and target not in self.stack_services:
-                stack_name = target[:-6] + "-stack"  # Convert to proper stack name
-                if stack_name not in self.stack_services:
-                    return False
+        """Check if the container file exists in systemd directory for a given target using fuzzy matching"""
+        # Use fuzzy matching to resolve the target
+        fuzzy_matcher = FuzzyMatcher(quadlet_manager=self)
+        resolved_target = fuzzy_matcher.fuzzy_match_service_or_stack(target)
 
+        if not resolved_target or resolved_target == "CANCELLED":
+            return False
+
+        # Handle stack targets
+        if resolved_target.startswith("STACK:"):
+            stack_name = resolved_target[6:]  # Remove "STACK:" prefix
             if stack_name in self.stack_services:
                 # Check if at least one service in the stack has a container file
                 for service_name in self.stack_services[stack_name]:
@@ -457,29 +458,24 @@ class QuadletManager:
                 return False
 
         # Handle individual services
-        # First try to resolve the service name
-        if target in self.quadlet_services:
-            service_name = target
-        else:
-            # Try to find the service name without fuzzy matching
-            service_name = None
-            for short_name, full_name in self.quadlet_services.items():
-                if short_name == target or full_name == target:
-                    service_name = short_name
-                    break
+        # Extract service name from full service name (remove .service suffix)
+        service_name = resolved_target
+        if service_name.endswith(".service"):
+            service_name = service_name[:-8]  # Remove ".service" suffix
+        elif service_name.endswith(".target"):
+            service_name = service_name[:-7]  # Remove ".target" suffix
 
-        if service_name:
-            container_file = self.quadlets_dir / f"{service_name}.container"
-            target_file = self.quadlets_dir / f"{service_name}.target"
-            return container_file.exists() or target_file.exists()
-
-        return False
+        container_file = self.quadlets_dir / f"{service_name}.container"
+        target_file = self.quadlets_dir / f"{service_name}.target"
+        return container_file.exists() or target_file.exists()
 
     def _show_install_suggestion(self, target: str) -> None:
         """Show suggestion to install the missing container file"""
+        console.print()
         console.print(
             f"[yellow]Required container file is missing, run pm install {target}[/yellow]"
         )
+        console.print()
 
     def _command_exists(self, command: str) -> bool:
         """Check if a command exists in PATH"""
