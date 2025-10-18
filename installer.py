@@ -301,11 +301,11 @@ class QuadletInstaller:
                 cmd = ["sudo", "mkdir", "-p", str(target_dir)]
                 verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
                 subprocess.run(cmd, check=True)
-                console.print(f"    Updated: [cyan]{target_dir}[/cyan]")
+                verbose_print(f"    Updated: [cyan]{target_dir}[/cyan]")
             else:
                 verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
                 target_dir.mkdir(parents=True, exist_ok=True)
-                console.print(f"    Updated: [cyan]{target_dir}[/cyan]")
+                verbose_print(f"    Updated: [cyan]{target_dir}[/cyan]")
 
             # Copy quadlet files
             for file in files:
@@ -317,13 +317,13 @@ class QuadletInstaller:
                     cmd = ["sudo", "cp", str(source_file), str(target_file)]
                     verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
                     subprocess.run(cmd, check=True)
-                    console.print(f"    Copied: {file}")
+                    verbose_print(f"    Copied: {file}")
                 else:
                     verbose_print(
                         f"  [cyan]exec: cp .../{file} .../systemd/{file}[/cyan]"
                     )
                     shutil.copy2(source_file, target_file)
-                    console.print(f"    Copied: {file}")
+                    verbose_print(f"    Copied: {file}")
 
             # Set proper permissions
             if use_sudo:
