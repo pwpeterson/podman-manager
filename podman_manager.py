@@ -252,9 +252,11 @@ class CustomArgumentParser(argparse.ArgumentParser):
             console.print("[dim]Run 'pm --help' to see command usage[/dim]")
             sys.exit(1)
         elif "the following arguments are required:" in message and "target" in message:
+            console.print()
             console.print(
                 "[green]A stack or service is required, use [white]pm list[/white] for names.[/green]"
             )
+            console.print()
             sys.exit(1)
         else:
             console.print(f"[red]Error: {message}[/red]")
