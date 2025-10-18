@@ -332,6 +332,9 @@ class QuadletInstaller:
                     verbose_print(f"  [cyan]exec: chmod 644 .../systemd/{file}[/cyan]")
                     (target_dir / file).chmod(0o644)
 
+            # Load .env file to system environment
+            self._load_env_to_environment(use_sudo)
+
             # Reload systemd
             self._print_success("Reloading systemd daemon...")
             if use_sudo:
@@ -558,6 +561,85 @@ class QuadletInstaller:
             )
 
         console.print(table)
+
+    def _load_env_to_environment(self, use_sudo: bool) -> None:
+        """Load .env file to system environment directory."""
+        env_file_path = Path("/home/pwp/srv/local-ai-packaged/.env")
+
+        if not env_file_path.exists():
+            self._print_warning(f"Environment file not found: {env_file_path}")
+            return
+
+        # Auto-detect if running with elevated privileges
+        try:
+            result = subprocess.run(["id", "-u"], capture_output=True, text=True)
+            is_root = result.returncode == 0 and result.stdout.strip() == "0"
+        except (subprocess.SubprocessError, OSError):
+            is_root = False
+
+        # Use sudo if explicitly requested OR if running as root
+        use_system_env = use_sudo or is_root
+
+        try:
+            if use_system_env:
+                env_target = "/etc/environment.d/00env.conf"
+                self._print_success("Reloading system .env")
+                verbose_print(
+                    f"  [cyan]exec: loaded {env_file_path} to {env_target}[/cyan]"
+                )
+
+                # Filter and load .env content
+                cmd = ["grep", "-v", "^#", str(env_file_path)]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+
+                if result.returncode == 0:
+                    filtered_lines = [
+                        line for line in result.stdout.split("\n") if line.strip()
+                    ]
+
+                    if filtered_lines:
+                        subprocess.run(
+                            ["sudo", "mkdir", "-p", "/etc/environment.d"], check=True
+                        )
+
+                        temp_file = "/tmp/00env.conf"
+                        with open(temp_file, "w") as f:
+                            for line in filtered_lines:
+                                if line.strip():
+                                    f.write(f"{line}\n")
+
+                        subprocess.run(
+                            ["sudo", "cp", temp_file, env_target], check=True
+                        )
+                        subprocess.run(["sudo", "chmod", "644", env_target], check=True)
+                        Path(temp_file).unlink(missing_ok=True)
+            else:
+                env_dir = Path.home() / ".config/environment.d"
+                env_target = env_dir / "00env.conf"
+                self._print_success("Reloading system .env")
+                verbose_print(
+                    f"  [cyan]exec: loaded {env_file_path} to {env_target}[/cyan]"
+                )
+
+                env_dir.mkdir(parents=True, exist_ok=True)
+
+                cmd = ["grep", "-v", "^#", str(env_file_path)]
+                result = subprocess.run(cmd, capture_output=True, text=True)
+
+                if result.returncode == 0:
+                    filtered_lines = [
+                        line for line in result.stdout.split("\n") if line.strip()
+                    ]
+
+                    with open(env_target, "w") as f:
+                        for line in filtered_lines:
+                            if line.strip():
+                                f.write(f"{line}\n")
+
+                    env_target.chmod(0o644)
+
+        except Exception as e:
+            self._print_error(f"Failed to load .env to environment: {e}")
 
     def uninstall_stack(
         self, name: str, target_dir: Optional[Path] = None, use_sudo: bool = False

@@ -12,7 +12,9 @@ class FuzzyMatcher:
         self.quadlet_manager = quadlet_manager
         self.quadlet_installer = quadlet_installer
 
-    def fuzzy_match_service_or_stack(self, partial_name: str) -> Optional[str]:
+    def fuzzy_match_service_or_stack(
+        self, partial_name: str, command: str = "install"
+    ) -> Optional[str]:
         """
         Find service or stack using fuzzy matching with interactive selection.
 
@@ -68,7 +70,9 @@ class FuzzyMatcher:
             return self._resolve_match(matched_item)
         elif len(partial_matches) > 1:
             # Multiple matches - show interactive selection menu
-            return self._show_interactive_selection(partial_name, partial_matches)
+            return self._show_interactive_selection(
+                partial_name, partial_matches, command
+            )
 
         # No matches found
         return None
@@ -169,7 +173,7 @@ class FuzzyMatcher:
         return [match[0] for match in fuzzy_matches[:5]]  # Top 5 matches
 
     def _show_interactive_selection(
-        self, partial_name: str, matches: List[dict]
+        self, partial_name: str, matches: List[dict], command: str = "install"
     ) -> Optional[str]:
         """Show interactive selection menu for multiple matches."""
         # Determine if we have services, stacks, or both
@@ -199,7 +203,7 @@ class FuzzyMatcher:
         for i, item in enumerate(matches, 1):
             item_type = "stack" if item["type"] == "stack" else "service"
             console.print(
-                f"  [dim]{i}.[/dim] [cyan]pm install {item['name']}[/cyan] [dim]({item_type})[/dim]"
+                f"  [dim]{i}.[/dim] [cyan]pm {command} {item['name']}[/cyan] [dim]({item_type})[/dim]"
             )
 
         # Interactive selection
@@ -215,7 +219,6 @@ class FuzzyMatcher:
                 selection = int(choice)
                 if 1 <= selection <= len(matches):
                     selected_item = matches[selection - 1]
-                    console.print(f"[dim]Selected: {selected_item['name']}[/dim]")
                     return self._resolve_match(selected_item)
                 else:
                     console.print(

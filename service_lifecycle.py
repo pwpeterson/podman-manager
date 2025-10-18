@@ -27,7 +27,7 @@ class ServiceLifecycle:
             return self._start_stack(target)
 
         # PRIORITY 3: Try service name resolution
-        service_name = self.manager._find_service_name(target)
+        service_name = self.manager._find_service_name(target, "start")
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
@@ -52,7 +52,7 @@ class ServiceLifecycle:
             return self._stop_stack(target)
 
         # PRIORITY 3: Try service name resolution
-        service_name = self.manager._find_service_name(target)
+        service_name = self.manager._find_service_name(target, "stop")
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
@@ -80,7 +80,7 @@ class ServiceLifecycle:
             return self._restart_stack(target)
 
         # PRIORITY 3: Try service name resolution
-        service_name = self.manager._find_service_name(target)
+        service_name = self.manager._find_service_name(target, "restart")
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
@@ -117,7 +117,7 @@ class ServiceLifecycle:
 
     def enable(self, target: str) -> bool:
         """Enable a service or stack to start at boot"""
-        service_name = self.manager._find_service_name(target)
+        service_name = self.manager._find_service_name(target, "enable")
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
@@ -133,7 +133,7 @@ class ServiceLifecycle:
 
     def disable(self, target: str) -> bool:
         """Disable a service or stack from starting at boot"""
-        service_name = self.manager._find_service_name(target)
+        service_name = self.manager._find_service_name(target, "disable")
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
@@ -423,7 +423,7 @@ class ServiceLifecycle:
 
         for service in services:
             console.print(f"\n[bold yellow]=== {service} ===[/bold yellow]")
-            service_name = self.manager._find_service_name(service)
+            service_name = self.manager._find_service_name(service, "status")
             if service_name:
                 cmd = [
                     "systemctl",

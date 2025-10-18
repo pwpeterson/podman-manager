@@ -436,14 +436,20 @@ class QuadletManager:
         # Auto-match cache is no longer used since fuzzy matching is always enabled
         pass
 
-    def _check_container_file_exists(self, target: str) -> bool:
-        """Check if the container file exists in systemd directory for a given target using fuzzy matching"""
+    def _check_container_file_exists(
+        self, target: str, command: str = "install"
+    ) -> tuple[bool, Optional[str]]:
+        """Check if the container file exists in systemd directory for a given target using fuzzy matching
+
+        Returns:
+            tuple[bool, Optional[str]]: (exists, resolved_service_name)
+        """
         # Use fuzzy matching to resolve the target
         fuzzy_matcher = FuzzyMatcher(quadlet_manager=self)
-        resolved_target = fuzzy_matcher.fuzzy_match_service_or_stack(target)
+        resolved_target = fuzzy_matcher.fuzzy_match_service_or_stack(target, command)
 
         if not resolved_target or resolved_target == "CANCELLED":
-            return False
+            return False, None
 
         # Handle stack targets
         if resolved_target.startswith("STACK:"):
@@ -454,8 +460,8 @@ class QuadletManager:
                     container_file = self.quadlets_dir / f"{service_name}.container"
                     target_file = self.quadlets_dir / f"{service_name}.target"
                     if container_file.exists() or target_file.exists():
-                        return True
-                return False
+                        return True, resolved_target
+                return False, None
 
         # Handle individual services
         # Extract service name from full service name (remove .service suffix)
@@ -467,7 +473,8 @@ class QuadletManager:
 
         container_file = self.quadlets_dir / f"{service_name}.container"
         target_file = self.quadlets_dir / f"{service_name}.target"
-        return container_file.exists() or target_file.exists()
+        exists = container_file.exists() or target_file.exists()
+        return exists, resolved_target if exists else None
 
     def _show_install_suggestion(self, target: str) -> None:
         """Show suggestion to install the missing container file"""
@@ -619,7 +626,9 @@ class QuadletManager:
         """Get status of the vllm-stack.target"""
         return self.get_service_status(self.stack_target)
 
-    def _find_service_name(self, target: str) -> Optional[str]:
+    def _find_service_name(
+        self, target: str, command: str = "install"
+    ) -> Optional[str]:
         """Find the full service name from a target (short name or full name)"""
         # Check if it's a numeric selection (e.g., "1", "2", etc.)
         if target.isdigit():
@@ -679,7 +688,7 @@ class QuadletManager:
 
         # Try fuzzy matching for partial names using unified matcher
         fuzzy_matcher = FuzzyMatcher(quadlet_manager=self)
-        fuzzy_result = fuzzy_matcher.fuzzy_match_service_or_stack(target)
+        fuzzy_result = fuzzy_matcher.fuzzy_match_service_or_stack(target, command)
         if fuzzy_result == "CANCELLED":
             return None
         elif fuzzy_result:
@@ -899,11 +908,13 @@ class QuadletManager:
         self._clear_auto_match_cache()
 
         # Check if container file exists first
-        if not self._check_container_file_exists(target):
+        exists, resolved_service = self._check_container_file_exists(target, "start")
+        if not exists:
             self._show_install_suggestion(target)
             return False
 
-        service_name = self._find_service_name(target)
+        # Use resolved service if available, otherwise try to find it
+        service_name = resolved_service or self._find_service_name(target, "start")
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
@@ -927,12 +938,14 @@ class QuadletManager:
         self._clear_auto_match_cache()
 
         # Check if container file exists first
-        if not self._check_container_file_exists(target):
+        exists, resolved_service = self._check_container_file_exists(target, "stop")
+        if not exists:
             if not quiet:
                 self._show_install_suggestion(target)
             return False
 
-        service_name = self._find_service_name(target)
+        # Use resolved service if available, otherwise try to find it
+        service_name = resolved_service or self._find_service_name(target, "stop")
         if not service_name:
             if not quiet:
                 console.print(f"[red]Service '{target}' not found[/red]")
@@ -1108,11 +1121,13 @@ class QuadletManager:
         self._clear_auto_match_cache()
 
         # Check if container file exists first
-        if not self._check_container_file_exists(target):
+        exists, resolved_service = self._check_container_file_exists(target, "restart")
+        if not exists:
             self._show_install_suggestion(target)
             return False
 
-        service_name = self._find_service_name(target)
+        # Use resolved service if available, otherwise try to find it
+        service_name = resolved_service or self._find_service_name(target, "restart")
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
@@ -1134,11 +1149,13 @@ class QuadletManager:
         self._clear_auto_match_cache()
 
         # Check if container file exists first
-        if not self._check_container_file_exists(target):
+        exists, resolved_service = self._check_container_file_exists(target, "enable")
+        if not exists:
             self._show_install_suggestion(target)
             return False
 
-        service_name = self._find_service_name(target)
+        # Use resolved service if available, otherwise try to find it
+        service_name = resolved_service or self._find_service_name(target, "enable")
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
@@ -1160,11 +1177,13 @@ class QuadletManager:
         self._clear_auto_match_cache()
 
         # Check if container file exists first
-        if not self._check_container_file_exists(target):
+        exists, resolved_service = self._check_container_file_exists(target, "disable")
+        if not exists:
             self._show_install_suggestion(target)
             return False
 
-        service_name = self._find_service_name(target)
+        # Use resolved service if available, otherwise try to find it
+        service_name = resolved_service or self._find_service_name(target, "disable")
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
@@ -1198,11 +1217,13 @@ class QuadletManager:
         self._clear_auto_match_cache()
 
         # Check if container file exists first
-        if not self._check_container_file_exists(target):
+        exists, resolved_service = self._check_container_file_exists(target, "logs")
+        if not exists:
             self._show_install_suggestion(target)
             return False
 
-        service_name = self._find_service_name(target)
+        # Use resolved service if available, otherwise try to find it
+        service_name = resolved_service or self._find_service_name(target, "logs")
         if not service_name:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False

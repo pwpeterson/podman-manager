@@ -59,12 +59,17 @@ class ReinitManager:
             return stack_mgr.reinit_stack(target, build_type=build_type)
 
         # PRIORITY 3: Check if container file exists first
-        if not self.manager._check_container_file_exists(target):
+        exists, resolved_service = self.manager._check_container_file_exists(
+            target, "reinit"
+        )
+        if not exists:
             self.manager._show_install_suggestion(target)
             return False
 
-        # PRIORITY 4: Try service name resolution
-        service_name = self.manager._find_service_name(target)
+        # PRIORITY 4: Try service name resolution (use resolved service if available)
+        service_name = resolved_service or self.manager._find_service_name(
+            target, "reinit"
+        )
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):

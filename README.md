@@ -26,7 +26,87 @@ A comprehensive Python-based container management tool for Podman with rich term
 
 ## Installation
 
-### Modern Installation (Recommended)
+### Quick Setup (Recommended)
+
+1. **Create pm symlink in ~/.local/bin:**
+   ```bash
+   # Ensure the script has proper shebang and is executable
+   sed -n '1p' /home/pwp/srv/apps/podman_manager/pm
+   chmod +x /home/pwp/srv/apps/podman_manager/pm
+
+   # Create the symlink
+   mkdir -p ~/.local/bin
+   ln -sf /home/pwp/srv/apps/podman_manager/pm ~/.local/bin/pm
+
+   # Ensure ~/.local/bin is on your PATH
+   echo "$PATH" | tr ':' '\n' | grep -x "$HOME/.local/bin" || \
+   { echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc; source ~/.bashrc; }
+
+   # Test the setup
+   which pm
+   readlink -f ~/.local/bin/pm
+   pm --help
+   ```
+
+2. **Configure passwordless sudo for environment management:**
+   ```bash
+   # Create sudoers configuration file
+   sudo visudo -f /etc/sudoers.d/user_pwp_rules
+   ```
+
+   Add this content to `/etc/sudoers.d/user_pwp_rules`:
+   ```bash
+   # Allow pwp user to run pm command and specific environment commands without password
+   # This enables pm install to create system-wide environment files
+
+   # Allow running pm command with sudo
+   pwp ALL=(root) NOPASSWD: /home/pwp/.local/bin/pm
+
+   # Allow specific environment management commands that pm uses internally
+   pwp ALL=(root) NOPASSWD: /bin/mkdir -p /etc/environment.d
+   pwp ALL=(root) NOPASSWD: /bin/cp /tmp/00env.conf /etc/environment.d/00env.conf
+   pwp ALL=(root) NOPASSWD: /bin/chmod 644 /etc/environment.d/00env.conf
+   ```
+
+   Verify the syntax:
+   ```bash
+   sudo visudo -c -f /etc/sudoers.d/user_pwp_rules
+   ```
+
+3. **Test the complete setup:**
+   ```bash
+   # Test regular pm command
+   pm status
+
+   # Test sudo pm command (should not prompt for password)
+   sudo pm --help
+
+   # Test environment file creation (creates /etc/environment.d/00env.conf)
+   pm install neo4j -v
+   ```
+
+#### Benefits of This Setup
+
+**Symlink Benefits:**
+- Clean command access: `pm` works from anywhere
+- Easy updates: Just update the source, symlink automatically points to latest
+- No system-wide installation required
+- Follows standard Unix conventions
+
+**Sudoers Configuration Benefits:**
+- **Automatic Environment Management**: `pm install` automatically creates system-wide environment files
+- **No Password Prompts**: Seamless operation without interrupting workflows
+- **Security**: Only specific commands are allowed, not full sudo access
+- **Quadlet Support**: Enables systemd services to access environment variables like `${POSTGRES_PASSWORD}`
+
+**Environment Variable Integration:**
+The sudoers setup enables the `pm install` command to automatically:
+1. Filter `.env` files (removes comments and empty lines)
+2. Create `/etc/environment.d/00env.conf` with system-wide environment variables
+3. Make variables available to systemd quadlet services
+4. Resolve issues like "Unit local-ai-postgres.service not found" caused by unresolved variables
+
+### Modern Installation (Alternative)
 
 1. **Install dependencies using uv:**
    ```bash
@@ -570,6 +650,60 @@ echo "$USER:100000:65536" | sudo tee -a /etc/subgid
 # Falls back to basic prune automatically
 # Or use basic mode explicitly
 pm prune --basic
+```
+
+**Symlink setup issues:**
+```bash
+# Check if symlink exists and points to correct location
+ls -la ~/.local/bin/pm
+readlink -f ~/.local/bin/pm
+
+# Recreate symlink if needed
+ln -sf /home/pwp/srv/apps/podman_manager/pm ~/.local/bin/pm
+
+# Check PATH includes ~/.local/bin
+echo $PATH | tr ':' '\n' | grep ~/.local/bin
+```
+
+**Sudoers configuration issues:**
+```bash
+# Test if sudoers rules are working
+sudo -l | grep pm
+
+# Verify sudoers file syntax
+sudo visudo -c -f /etc/sudoers.d/user_pwp_rules
+
+# Check if includedir is enabled in main sudoers
+sudo grep -E "^#includedir|^@includedir" /etc/sudoers
+
+# Test specific commands
+sudo mkdir -p /etc/environment.d  # Should not prompt for password
+```
+
+**Environment file creation issues:**
+```bash
+# Check if .env file exists
+ls -la /home/pwp/srv/local-ai-packaged/.env
+
+# Manually verify environment file creation
+pm install neo4j -v
+ls -la /etc/environment.d/00env.conf
+
+# Check file contents
+head -5 /etc/environment.d/00env.conf
+```
+
+**Quadlet variable resolution issues:**
+```bash
+# Check if systemd can access environment variables
+sudo systemctl show-environment | grep POSTGRES
+
+# Reload systemd to pick up new environment files
+sudo systemctl daemon-reload
+systemctl --user daemon-reload
+
+# Test quadlet service after environment setup
+pm reinit local-ai-caddy
 ```
 
 ## Contributing
