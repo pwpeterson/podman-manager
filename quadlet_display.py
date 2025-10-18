@@ -67,6 +67,7 @@ class QuadletDisplayManager:
 
             all_items = filtered_items
 
+        console.print()
         tree = Tree("Projects & Services", style="cyan")
 
         # Sort projects alphabetically
