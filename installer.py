@@ -301,11 +301,11 @@ class QuadletInstaller:
                 cmd = ["sudo", "mkdir", "-p", str(target_dir)]
                 verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
                 subprocess.run(cmd, check=True)
-                console.print(f"   Updated: {target_dir}")
+                console.print(f"    Updated: [cyan]{target_dir}[/cyan]")
             else:
                 verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
                 target_dir.mkdir(parents=True, exist_ok=True)
-                console.print(f"   Updated: {target_dir}")
+                console.print(f"    Updated: [cyan]{target_dir}[/cyan]")
 
             # Copy quadlet files
             for file in files:
