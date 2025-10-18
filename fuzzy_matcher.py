@@ -183,9 +183,13 @@ class FuzzyMatcher:
             )
             console.print()
         elif has_services:
-            console.print(f"[yellow]Multiple services match '{partial_name}':[/yellow]")
+            console.print()
+            console.print(f"[green]Multiple services match '{partial_name}':[/green]")
+            console.print()
         else:
-            console.print(f"[yellow]Multiple stacks match '{partial_name}':[/yellow]")
+            console.print()
+            console.print(f"[green]Multiple stacks match '{partial_name}':[/green]")
+            console.print()
 
         console.print(
             "[green]Please specify the full name or use the number prefix:[/green]"
