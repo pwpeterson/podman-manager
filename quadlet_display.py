@@ -89,6 +89,7 @@ class QuadletDisplayManager:
                 project_node.add("[dim](no services found)[/dim]")
 
         console.print(tree)
+        console.print()
 
     def _get_all_projects_and_services(self):
         """Get all projects and services from both quadlets and compose"""
