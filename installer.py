@@ -746,20 +746,35 @@ class ValidationManager:
     ) -> Optional[str]:
         """Get AI analysis of validation errors from local vLLM."""
         if requests is None:
+            verbose_print("[dim]DEBUG: requests library not available[/dim]")
             return None
 
+        verbose_print(
+            "[dim]DEBUG: Checking vLLM health at http://localhost:8000/health[/dim]"
+        )
         try:
             # Check if vLLM is available
             health_response = requests.get("http://localhost:8000/health", timeout=5)
+            verbose_print(
+                f"[dim]DEBUG: Health check response: status={health_response.status_code}[/dim]"
+            )
             if health_response.status_code != 200:
+                verbose_print(
+                    f"[dim]DEBUG: Health check failed with status {health_response.status_code}[/dim]"
+                )
                 return None
+            verbose_print("[dim]DEBUG: vLLM health check passed[/dim]")
 
-        except requests.RequestException:
+        except requests.RequestException as e:
+            verbose_print(f"[dim]DEBUG: Health check request failed: {e}[/dim]")
             return None
 
         # Prepare the analysis prompt
         prompt = self._build_analysis_prompt(errors, stack_name, container_files)
 
+        verbose_print(
+            "[dim]DEBUG: Sending AI analysis request to http://localhost:8000/v1/completions[/dim]"
+        )
         try:
             response = requests.post(
                 "http://localhost:8000/v1/completions",
@@ -774,13 +789,33 @@ class ValidationManager:
                 timeout=30,
             )
 
+            verbose_print(
+                f"[dim]DEBUG: AI analysis response: status={response.status_code}[/dim]"
+            )
             if response.status_code == 200:
                 result = response.json()
+                verbose_print(
+                    f"[dim]DEBUG: Response JSON keys: {list(result.keys()) if result else 'None'}[/dim]"
+                )
                 if "choices" in result and len(result["choices"]) > 0:
+                    verbose_print(
+                        "[dim]DEBUG: AI analysis successful, returning response[/dim]"
+                    )
                     return result["choices"][0]["text"].strip()
+                else:
+                    verbose_print(
+                        "[dim]DEBUG: No choices in response or empty choices[/dim]"
+                    )
+            else:
+                verbose_print(
+                    f"[dim]DEBUG: AI analysis request failed with status {response.status_code}[/dim]"
+                )
+                verbose_print(
+                    f"[dim]DEBUG: Response text: {response.text[:200]}...[/dim]"
+                )
 
         except requests.RequestException as e:
-            verbose_print(f"[dim]AI analysis request failed: {e}[/dim]")
+            verbose_print(f"[dim]DEBUG: AI analysis request failed: {e}[/dim]")
 
         return None
 
