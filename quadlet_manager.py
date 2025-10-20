@@ -539,23 +539,6 @@ class QuadletManager:
                 if not suppress_errors:
                     # Handle specific error cases with user-friendly messages
                     if (
-                        result.returncode == 5
-                        and result.stderr
-                        and (
-                            "not loaded" in result.stderr
-                            or "Unit" in result.stderr
-                            and "not loaded" in result.stderr
-                        )
-                    ):
-                        # Service not loaded - show friendly message
-                        console.print("[yellow]Service is not loaded[/yellow]")
-                        logger.debug(
-                            "Service not loaded (code {}) in {:.2f}s: {}",
-                            result.returncode,
-                            execution_time,
-                            result.stderr.strip(),
-                        )
-                    elif (
                         result.returncode == 1
                         and result.stderr
                         and "Failed to connect to bus" in result.stderr
@@ -1149,6 +1132,7 @@ class QuadletManager:
 
             if not quiet:
                 console.print(f"[red]✗ Failed to stop {target}[/red]")
+                console.print()  # Add newline
             return False
 
     def restart_service(self, target: str) -> bool:
