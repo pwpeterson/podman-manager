@@ -773,14 +773,14 @@ class ValidationManager:
         prompt = self._build_analysis_prompt(errors, stack_name, container_files)
 
         verbose_print(
-            "[dim]DEBUG: Sending AI analysis request to http://localhost:8002/v1/completions[/dim]"
+            "[dim]DEBUG: Sending AI analysis request to http://localhost:8002/v1/chat/completions[/dim]"
         )
         try:
             response = requests.post(
-                "http://localhost:8002/v1/completions",
+                "http://localhost:8002/v1/chat/completions",
                 json={
-                    "model": "Qwen2.5-Coder-32B-Instruct-AWQ",
-                    "prompt": prompt,
+                    "model": "vllm-qwen25-coder-32b-instruct-awq",
+                    "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 1000,
                     "temperature": 0.1,
                     "stop": ["\n\n---", "\n\nUser:", "\n\nHuman:"],
@@ -801,7 +801,12 @@ class ValidationManager:
                     verbose_print(
                         "[dim]DEBUG: AI analysis successful, returning response[/dim]"
                     )
-                    return result["choices"][0]["text"].strip()
+                    # Handle both completions and chat completions response formats
+                    choice = result["choices"][0]
+                    if "message" in choice:
+                        return choice["message"]["content"].strip()
+                    elif "text" in choice:
+                        return choice["text"].strip()
                 else:
                     verbose_print(
                         "[dim]DEBUG: No choices in response or empty choices[/dim]"
