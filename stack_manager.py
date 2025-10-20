@@ -370,7 +370,7 @@ class StackManager:
 
         console.print()
         if service_file:
-            console.print(f"[green]Installing {resolved_stack} service...[/green]")
+            console.print(f"[green]Installing {stack} service...[/green]")
         else:
             console.print(f"[green]Installing {resolved_stack} stack...[/green]")
         console.print()
@@ -381,15 +381,18 @@ class StackManager:
                 "[yellow]Systemd health check failed. Installation may encounter issues.[/yellow]"
             )
 
-        # Install the stack or service - use resolved stack name to avoid double fuzzy matching
-        success = installer.install_stack(resolved_stack)
+        # Install the stack or service - use original service name for individual services
+        if service_file:
+            # For individual services, pass the original service name to avoid installing the whole stack
+            success = installer.install_stack(stack)
+        else:
+            # For stacks, use the resolved stack name
+            success = installer.install_stack(resolved_stack)
 
         if success:
             # Final success message - use appropriate term based on what was installed
             if service_file:
-                console.print(
-                    f"[green]Successfully installed {resolved_stack} service[/green]"
-                )
+                console.print(f"[green]Successfully installed {stack} service[/green]")
             else:
                 console.print(
                     f"[green]Successfully installed {resolved_stack} stack[/green]"
