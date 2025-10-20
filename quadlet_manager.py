@@ -537,27 +537,62 @@ class QuadletManager:
                         console.print("[dim]" + "─" * 60 + "[/dim]")
             else:
                 if not suppress_errors:
-                    logger.error(
-                        "Command failed with code {} in {:.2f}s",
-                        result.returncode,
-                        execution_time,
-                    )
-                    if result.stderr:
-                        logger.error("Error output: {}", result.stderr)
+                    # Handle specific error cases with user-friendly messages
+                    if (
+                        result.returncode == 5
+                        and result.stderr
+                        and (
+                            "not loaded" in result.stderr
+                            or "Unit" in result.stderr
+                            and "not loaded" in result.stderr
+                        )
+                    ):
+                        # Service not loaded - show friendly message
+                        console.print("[yellow]Service is not loaded[/yellow]")
+                        logger.debug(
+                            "Service not loaded (code {}) in {:.2f}s: {}",
+                            result.returncode,
+                            execution_time,
+                            result.stderr.strip(),
+                        )
+                    elif (
+                        result.returncode == 1
+                        and result.stderr
+                        and "Failed to connect to bus" in result.stderr
+                    ):
+                        # Bus connection issue - show friendly message
+                        console.print(
+                            "[yellow]Cannot connect to systemd user session[/yellow]"
+                        )
+                        console.print("[dim]Try: systemctl --user daemon-reload[/dim]")
+                        logger.debug(
+                            "Bus connection failed (code {}) in {:.2f}s: {}",
+                            result.returncode,
+                            execution_time,
+                            result.stderr.strip(),
+                        )
+                    else:
+                        logger.error(
+                            "Command failed with code {} in {:.2f}s",
+                            result.returncode,
+                            execution_time,
+                        )
+                        if result.stderr:
+                            logger.error("Error output: {}", result.stderr)
 
-                        # Show detailed error in verbose mode
-                        if _verbose_enabled:
-                            console.print("[red]❌ Complete command error:[/red]")
-                            console.print("[dim]" + "─" * 60 + "[/dim]")
-                            for line in result.stderr.strip().split("\n"):
-                                if line.strip():
-                                    console.print(f"[red]{line}[/red]")
-                            console.print("[dim]" + "─" * 60 + "[/dim]")
-                        else:
-                            # Show brief error in non-verbose mode
-                            console.print(
-                                f"[red]Command failed: {result.stderr.strip()}[/red]"
-                            )
+                            # Show detailed error in verbose mode
+                            if _verbose_enabled:
+                                console.print("[red]❌ Complete command error:[/red]")
+                                console.print("[dim]" + "─" * 60 + "[/dim]")
+                                for line in result.stderr.strip().split("\n"):
+                                    if line.strip():
+                                        console.print(f"[red]{line}[/red]")
+                                console.print("[dim]" + "─" * 60 + "[/dim]")
+                            else:
+                                # Show brief error in non-verbose mode
+                                console.print(
+                                    f"[red]Command failed: {result.stderr.strip()}[/red]"
+                                )
                 else:
                     logger.debug(
                         "Command failed with code {} in {:.2f}s (suppressed)",
