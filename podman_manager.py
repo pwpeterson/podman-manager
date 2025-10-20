@@ -186,6 +186,11 @@ def show_rich_help():
                     "Execute command in container",
                     "pm exec vllm-proxy bash",
                 ),
+                (
+                    "help-podman",
+                    "Show podman --help documentation",
+                    "pm help-podman",
+                ),
             ],
         ),
     ]
@@ -633,6 +638,16 @@ def main():
 
     help_parser = subparsers.add_parser("help", help="Show detailed help")
     help_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    help_podman_parser = subparsers.add_parser(
+        "help-podman", help="Show podman --help documentation"
+    )
+    help_podman_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -1088,6 +1103,33 @@ def main():
             display.show_ps()
         elif args.command == "help":
             show_rich_help()
+        elif args.command == "help-podman":
+            # Show podman --help documentation
+            try:
+                result = subprocess.run(
+                    ["podman", "--help"], capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    console.print("[bold blue]Podman Help Documentation[/bold blue]")
+                    console.print("=" * 50)
+                    # Print without markup parsing to avoid Rich markup conflicts
+                    console.print(result.stdout, markup=False)
+                else:
+                    console.print(
+                        f"[red]Error running podman --help: {result.stderr}[/red]"
+                    )
+                    sys.exit(1)
+            except subprocess.TimeoutExpired:
+                console.print("[red]Timeout running podman --help[/red]")
+                sys.exit(1)
+            except FileNotFoundError:
+                console.print(
+                    "[red]Podman command not found. Please install podman.[/red]"
+                )
+                sys.exit(1)
+            except Exception as e:
+                console.print(f"[red]Error running podman --help: {e}[/red]")
+                sys.exit(1)
         elif args.command == "images":
             display.show_images(show_all=args.all)
         elif args.command == "stats":
