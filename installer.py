@@ -773,11 +773,11 @@ class ValidationManager:
         prompt = self._build_analysis_prompt(errors, stack_name, container_files)
 
         verbose_print(
-            "[dim]DEBUG: Sending AI analysis request to http://localhost:8002/v1/completions[/dim]"
+            "[dim]DEBUG: Sending AI analysis request to http://localhost:8002/v1/models[/dim]"
         )
         try:
             response = requests.post(
-                "http://localhost:8002/v1/completions",
+                "http://localhost:8002/v1/models",
                 json={
                     "model": "Qwen2.5-Coder-32B-Instruct-AWQ",
                     "prompt": prompt,
