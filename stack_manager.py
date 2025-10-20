@@ -370,9 +370,9 @@ class StackManager:
 
         console.print()
         if service_file:
-            console.print(f"[green]Installing {stack} service...[/green]")
+            console.print(f"[green]Installing {resolved_stack} service...[/green]")
         else:
-            console.print(f"[green]Installing {stack} stack...[/green]")
+            console.print(f"[green]Installing {resolved_stack} stack...[/green]")
         console.print()
 
         # Check systemd health
@@ -387,9 +387,13 @@ class StackManager:
         if success:
             # Final success message - use appropriate term based on what was installed
             if service_file:
-                console.print(f"[green]Successfully installed {stack} service[/green]")
+                console.print(
+                    f"[green]Successfully installed {resolved_stack} service[/green]"
+                )
             else:
-                console.print(f"[green]Successfully installed {stack} stack[/green]")
+                console.print(
+                    f"[green]Successfully installed {resolved_stack} stack[/green]"
+                )
             console.print()
 
         return success

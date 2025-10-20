@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple
 
 from rich.table import Table
 
-from config import console, verbose_print
+from config import console, is_verbose, verbose_print
 from fuzzy_matcher import FuzzyMatcher
 
 
@@ -29,9 +29,11 @@ class EnvironmentManager:
             return False
 
         console.print()
-        self._print_success("Reloading and cleaning source .env file..")
+        self._print_success("Processing the .env file.")
+        if not is_verbose():
+            console.print()
         verbose_print(
-            f"  [cyan]exec: Cleaning and loading {self.env_file_path} to {self.system_env_target}[/cyan]"
+            "  [cyan]exec: Remove comments from master and copy .env file.[/cyan]"
         )
 
         cleaned_lines = self._clean_env_file()
@@ -62,11 +64,10 @@ class EnvironmentManager:
             Path(temp_file).unlink(missing_ok=True)
 
             verbose_print(
-                f"  [cyan]exec: Created {self.system_env_target} with {len(cleaned_lines)} variables[/cyan]"
+                f"  [cyan]exec: Update with {self.system_env_target} with {len(cleaned_lines)} variables[/cyan]"
             )
 
             if Path(self.system_env_target).exists():
-                self._print_success(f"Successfully created {self.system_env_target}")
                 return True
             else:
                 self._print_error(
@@ -249,6 +250,8 @@ class SystemdManager:
     def reload_daemon(self, use_sudo: bool = False) -> bool:
         """Reload systemd daemon."""
         console.print("[green]Reloading systemd daemon...[/green]")
+        if not is_verbose():
+            console.print()
 
         if use_sudo:
             return self._reload_system_daemon()
@@ -345,10 +348,10 @@ class ValidationManager:
         )
 
         if container_errors:
-            console.print("[red]✗ Validation errors found[/red]")
-            console.print("[yellow]Container validation errors:[/yellow]")
+            console.print()
+            console.print("[red]Validation errors found:[/red]")
             for error in container_errors:
-                console.print(f"  [dim]{error}[/dim]")
+                console.print(f"  {error}")
             return False
         else:
             console.print("[green]✓ No validation errors found[/green]")
@@ -357,54 +360,99 @@ class ValidationManager:
     def _run_quadlet_generator_and_check_errors(
         self, container_files: List[str], use_sudo: bool
     ) -> Tuple[bool, List[str]]:
-        """Run podman-quadlet generator and check for specific container errors."""
-        cmd = [self.quadlet_generator, "--user", "--dryrun"]
-        if use_sudo:
-            cmd = [self.quadlet_generator, "--dryrun"]
+        """Run podman-quadlet generator with grep filtering for specific container errors."""
+        container_errors = []
 
-        verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
+        for container_file in container_files:
 
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
+            # Build command with grep filtering
+            quadlet_cmd = [self.quadlet_generator, "--user", "--dryrun"]
+            if use_sudo:
+                quadlet_cmd = [self.quadlet_generator, "--dryrun"]
 
-            # Check both stdout and stderr for container-specific errors
-            all_output = (result.stdout + "\n" + result.stderr).strip()
-            container_errors = []
+            grep_cmd = ["grep", container_file]
+            full_cmd = " | ".join([" ".join(quadlet_cmd), " ".join(grep_cmd)])
 
-            if all_output:
-                container_errors = self._filter_quadlet_output_for_containers(
-                    all_output, container_files
+            verbose_print(f"  [cyan]exec: {full_cmd}[/cyan]")
+
+            try:
+                # Run podman-quadlet and pipe to grep
+                quadlet_process = subprocess.Popen(
+                    quadlet_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
                 )
 
-            if result.returncode == 0:
-                if container_errors:
-                    verbose_print(
-                        "  [yellow]Quadlet generator completed but found container issues[/yellow]"
+                grep_process = subprocess.Popen(
+                    grep_cmd,
+                    stdin=quadlet_process.stdout,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+
+                if quadlet_process.stdout:
+                    quadlet_process.stdout.close()
+                grep_output, grep_error = grep_process.communicate(timeout=30)
+                quadlet_process.wait()
+
+                if grep_output.strip():
+                    # Parse and format the errors
+                    formatted_errors = self._format_quadlet_errors(
+                        grep_output.strip(), container_file
+                    )
+                    container_errors.extend(formatted_errors)
+
+            except subprocess.TimeoutExpired:
+                console.print(
+                    "[yellow]Quadlet validation timed out, assuming validation passed[/yellow]"
+                )
+            except Exception as e:
+                console.print(
+                    f"[yellow]Quadlet validation error: {e}, assuming validation passed[/yellow]"
+                )
+
+        return True, container_errors
+
+    def _format_quadlet_errors(
+        self, grep_output: str, container_file: str
+    ) -> List[str]:
+        """Format quadlet error messages for clean display."""
+        formatted_errors = []
+        lines = grep_output.strip().split("\n")
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Parse typical quadlet error format:
+            # quadlet-generator[2696881]: converting "local-ai-caddy-dav.container": unsupported key 'Env' in group 'Container' in /path/file
+            if "unsupported key" in line.lower():
+                # Extract the key and format cleanly
+                import re
+
+                match = re.search(
+                    r"unsupported key '([^']+)' in group '([^']+)'", line, re.IGNORECASE
+                )
+                if match:
+                    key = match.group(1)
+                    group = match.group(2)
+                    formatted_errors.append(
+                        f"[red]Unsupported key '{key}' in group '{group}' in {container_file}[/red]"
                     )
                 else:
-                    verbose_print(
-                        "  [green]Quadlet generator completed successfully[/green]"
-                    )
-                return True, container_errors
-            else:
-                console.print("[yellow]Quadlet generator reported issues[/yellow]")
-                return True, container_errors  # Return errors found
+                    # Fallback to original line if parsing fails
+                    formatted_errors.append(f"[red]{line}[/red]")
+            elif any(
+                keyword in line.lower()
+                for keyword in ["error", "invalid", "failed", "cannot", "missing"]
+            ):
+                # Format other error types
+                formatted_errors.append(f"[red]{line}[/red]")
 
-        except subprocess.TimeoutExpired:
-            console.print(
-                "[yellow]Quadlet generator timed out, assuming validation passed[/yellow]"
-            )
-            return True, []
-        except Exception as e:
-            console.print(
-                f"[yellow]Quadlet generator error: {e}, assuming validation passed[/yellow]"
-            )
-            return True, []
+        return formatted_errors
 
     def _filter_quadlet_output_for_containers(
         self, quadlet_output: str, container_files: List[str]
@@ -588,10 +636,8 @@ class FileManager:
         """Create target directory with appropriate permissions."""
         if use_sudo:
             cmd = ["sudo", "mkdir", "-p", str(target_dir)]
-            verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
             subprocess.run(cmd, check=True)
         else:
-            verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
             target_dir.mkdir(parents=True, exist_ok=True)
 
     def copy_quadlet_files(
@@ -608,8 +654,14 @@ class FileManager:
                 console.print(
                     f"[green]Copying master {service_name} .container to systemd[/green]"
                 )
+                verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
+                if not is_verbose():
+                    console.print()
             else:
                 console.print(f"[green]Copying {file} to systemd[/green]")
+                verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
+                if not is_verbose():
+                    console.print()
 
             source_file = stack_dir / file
             target_file = target_dir / file
@@ -851,9 +903,6 @@ class QuadletInstaller:
         use_sudo: bool,
     ) -> bool:
         """Perform the actual installation process."""
-        console.print(
-            f"[green]Deploying {display_name} {install_type} to [cyan]{target_dir}[/cyan][/green]"
-        )
 
         try:
             # File operations
@@ -861,16 +910,17 @@ class QuadletInstaller:
             self.file_manager.copy_quadlet_files(files, stack_dir, target_dir, use_sudo)
             self.file_manager.set_file_permissions(files, target_dir, use_sudo)
 
-            # System operations
-            if not self.systemd_manager.reload_daemon(use_sudo):
-                return False
-
-            # Post-deployment validation
+            # Pre-deployment validation
             if not self.validation_manager.validate_after_deployment(
                 resolved_stack, files, use_sudo
             ):
-                console.print("[red]Deployment completed but validation failed[/red]")
-                console.print("[yellow]Services may not start correctly[/yellow]")
+                console.print()
+                console.print("[red]Installation failed[/red]")
+                console.print()
+                return False
+
+            # System operations
+            if not self.systemd_manager.reload_daemon(use_sudo):
                 return False
 
             self._refresh_pm_discovery(display_name)

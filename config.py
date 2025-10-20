@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-__all__ = ["console", "verbose_print", "set_verbose", "setup_logging"]
+__all__ = ["console", "verbose_print", "set_verbose", "is_verbose", "setup_logging"]
 
 try:
     from loguru import logger
@@ -24,6 +24,11 @@ def set_verbose(enabled: bool) -> None:
     """Set the global verbose flag."""
     global _verbose_enabled
     _verbose_enabled = enabled
+
+
+def is_verbose() -> bool:
+    """Check if verbose mode is enabled."""
+    return _verbose_enabled
 
 
 def verbose_print(message: str) -> None:
