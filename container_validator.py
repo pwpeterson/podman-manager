@@ -287,7 +287,7 @@ class ContainerValidator:
             }
         }
 
-        # Common restart policy values
+        # Common restart policy values (systemd format)
         self.valid_restart_policies = {
             "no",
             "always",
@@ -296,6 +296,12 @@ class ContainerValidator:
             "on-abnormal",
             "on-abort",
             "on-watchdog",
+        }
+
+        # Invalid Docker-style restart policies
+        self.invalid_restart_policies = {
+            "unless-stopped",  # Docker-style, not supported by systemd
+            "on-reboot",  # Docker-style, not supported by systemd
         }
 
     def validate_container_file(
@@ -434,9 +440,23 @@ class ContainerValidator:
 
                 # Validate specific parameter values
                 if param_name == "Restart" and section_name == "Service":
-                    if param_value not in self.valid_restart_policies:
+                    if param_value in self.invalid_restart_policies:
+                        errors.append(
+                            f"Invalid Restart value '{param_value}'. This is a Docker-style restart policy not supported by systemd. Use: {', '.join(self.valid_restart_policies)}"
+                        )
+                    elif param_value not in self.valid_restart_policies:
                         errors.append(
                             f"Invalid Restart value '{param_value}'. Valid values: {', '.join(self.valid_restart_policies)}"
+                        )
+
+                if param_name == "RestartPolicy" and section_name == "Container":
+                    if param_value in self.invalid_restart_policies:
+                        errors.append(
+                            f"Invalid RestartPolicy value '{param_value}'. This is a Docker-style restart policy not supported by systemd. Use: {', '.join(self.valid_restart_policies)}"
+                        )
+                    elif param_value not in self.valid_restart_policies:
+                        errors.append(
+                            f"Invalid RestartPolicy value '{param_value}'. Valid values: {', '.join(self.valid_restart_policies)}"
                         )
 
         return errors, warnings
