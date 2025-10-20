@@ -25,7 +25,9 @@ class ContainerValidator:
             "Volume",
             "Environment",
             "EnvironmentFile",
+            "EnvironmentHost",
             "Network",
+            "NetworkAlias",
             "User",
             "Group",
             "WorkingDir",
@@ -40,6 +42,7 @@ class ContainerValidator:
             "DropCapability",
             "NoNewPrivileges",
             "ReadOnly",
+            "ReadOnlyTmpfs",
             "Rootfs",
             "Tmpfs",
             "Mount",
@@ -59,6 +62,7 @@ class ContainerValidator:
             "DNSSearch",
             "DNSOption",
             "LogDriver",
+            "LogOpt",
             "SyslogIdentifier",
             "SyslogFacility",
             "SyslogLevel",
@@ -66,8 +70,11 @@ class ContainerValidator:
             "AutoUpdate",
             "GlobalArgs",
             "Pull",
+            "Pod",
             "PodName",
             "Ulimit",
+            "PidsLimit",
+            "Memory",
             "HealthCmd",
             "HealthInterval",
             "HealthOnFailure",
@@ -81,6 +88,7 @@ class ContainerValidator:
             "HealthTimeout",
             "StopSignal",
             "StopTimeout",
+            "Secret",
             "Secrets",
             "DecryptionKey",
             "Device",
@@ -100,8 +108,8 @@ class ContainerValidator:
             "CgroupConf",
             "OOMScoreAdj",
             "Privileged",
-            "ReadOnlyTmpfs",
             "SecurityOpt",
+            "SeccompProfile",
             "ShmSize",
             "SystemdDropin",
             "Userns",
@@ -112,6 +120,20 @@ class ContainerValidator:
             "NetworkMode",
             "RestartPolicy",
             "RestartSec",
+            # Additional Container section parameters from documentation
+            "Arch",
+            "OS",
+            "Variant",
+            "AuthFile",
+            "CertDir",
+            "Creds",
+            "Policy",
+            "Retry",
+            "RetryDelay",
+            "TLSVerify",
+            "ImageTag",
+            "ContainersConfModule",
+            "SetWorkingDirectory",
             # Unit section parameters (systemd)
             "Description",
             "Documentation",
@@ -242,13 +264,19 @@ class ContainerValidator:
 
         # Invalid/deprecated parameters that should be flagged
         self.invalid_parameters = {
-            "Expose",  # Should be PublishPort
+            "Expose",  # Should be ExposeHostPort or PublishPort
             "Port",  # Should be PublishPort
             "Ports",  # Should be PublishPort
             "Env",  # Should be Environment
             "EnvFile",  # Should be EnvironmentFile
             "Volumes",  # Should be Volume
             "Networks",  # Should be Network
+            # Docker-style parameters that don't exist in Podman quadlet
+            "Dockerfile",  # Not applicable to .container files
+            "Build",  # Should use .build files instead
+            "Command",  # Should be Exec
+            "Args",  # Should be Exec
+            "Cmd",  # Should be Exec
         }
 
         # Parameters that are only invalid in specific sections
