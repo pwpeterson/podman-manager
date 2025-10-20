@@ -6,10 +6,19 @@ Refactored installer for quadlet stacks with improved separation of concerns.
 import os
 import shutil
 import subprocess
+from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from rich.table import Table
+
+if TYPE_CHECKING:
+    import requests
+else:
+    try:
+        import requests
+    except ImportError:
+        requests = None
 
 from config import console, is_verbose, verbose_print
 from fuzzy_matcher import FuzzyMatcher
@@ -628,6 +637,202 @@ class ValidationManager:
         # Limit to most recent/relevant errors (max 10)
         return relevant_errors[-10:] if relevant_errors else []
 
+    def validate_with_ai_troubleshooting(
+        self, stack_name: str, files: List[str], use_sudo: bool = False
+    ) -> bool:
+        """Validate container files and automatically run AI analysis if errors are found.
+
+        Returns False and ends installation if validation errors occur.
+        """
+        # First run normal validation
+        validation_success = self.validate_after_deployment(stack_name, files, use_sudo)
+
+        # If validation failed, automatically run AI analysis and end installation
+        if not validation_success:
+            console.print()
+            console.print("[blue]🤖 Running AI analysis of validation errors...[/blue]")
+            self.ai_analyze_validation_errors(stack_name, files)
+            console.print()
+            console.print("[red]Installation stopped due to validation errors[/red]")
+            console.print("[dim]Please fix the issues above and try again[/dim]")
+            return False
+
+        return validation_success
+
+    def ai_analyze_validation_errors(
+        self, stack_name: str, files: List[str], use_sudo: bool = False
+    ) -> None:
+        """Analyze validation errors using AI and provide troubleshooting suggestions."""
+        if not requests:
+            console.print(
+                "[red]Error: requests library not available for AI analysis[/red]"
+            )
+            return
+
+        console.print("[blue]🤖 Analyzing validation errors with AI...[/blue]")
+        console.print()
+
+        # Collect validation errors
+        container_files = [f for f in files if f.endswith(".container")]
+        if not container_files:
+            console.print("[yellow]No container files to analyze[/yellow]")
+            return
+
+        # Get quadlet errors
+        quadlet_errors = self._collect_quadlet_errors(container_files, use_sudo)
+
+        if not quadlet_errors:
+            console.print("[green]No validation errors found to analyze[/green]")
+            return
+
+        # Analyze with AI
+        analysis = self._get_ai_analysis(quadlet_errors, stack_name, container_files)
+
+        if analysis:
+            self._display_ai_analysis(analysis)
+        else:
+            console.print(
+                "[yellow]AI analysis unavailable (vLLM service may be down)[/yellow]"
+            )
+
+    def _collect_quadlet_errors(
+        self, container_files: List[str], use_sudo: bool
+    ) -> str:
+        """Collect quadlet validation errors for AI analysis."""
+        all_errors = []
+
+        for container_file in container_files:
+            # Build command with grep filtering
+            quadlet_cmd = [self.quadlet_generator, "--user", "--dryrun"]
+            if use_sudo:
+                quadlet_cmd = [self.quadlet_generator, "--dryrun"]
+
+            grep_cmd = ["grep", container_file]
+
+            try:
+                # Run podman-quadlet and pipe to grep
+                quadlet_process = subprocess.Popen(
+                    quadlet_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+
+                grep_process = subprocess.Popen(
+                    grep_cmd,
+                    stdin=quadlet_process.stdout,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+
+                if quadlet_process.stdout:
+                    quadlet_process.stdout.close()
+                grep_output, _ = grep_process.communicate(timeout=30)
+                quadlet_process.wait()
+
+                if grep_output.strip():
+                    all_errors.append(f"=== {container_file} ===")
+                    all_errors.append(grep_output.strip())
+                    all_errors.append("")
+
+            except (subprocess.TimeoutExpired, Exception) as e:
+                all_errors.append(f"Error analyzing {container_file}: {e}")
+
+        return "\n".join(all_errors)
+
+    def _get_ai_analysis(
+        self, errors: str, stack_name: str, container_files: List[str]
+    ) -> Optional[str]:
+        """Get AI analysis of validation errors from local vLLM."""
+        if requests is None:
+            return None
+
+        try:
+            # Check if vLLM is available
+            health_response = requests.get("http://localhost:8000/health", timeout=5)
+            if health_response.status_code != 200:
+                return None
+
+        except requests.RequestException:
+            return None
+
+        # Prepare the analysis prompt
+        prompt = self._build_analysis_prompt(errors, stack_name, container_files)
+
+        try:
+            response = requests.post(
+                "http://localhost:8000/v1/completions",
+                json={
+                    "model": "Qwen2.5-Coder-32B-Instruct-AWQ",
+                    "prompt": prompt,
+                    "max_tokens": 1000,
+                    "temperature": 0.1,
+                    "stop": ["\n\n---", "\n\nUser:", "\n\nHuman:"],
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=30,
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if "choices" in result and len(result["choices"]) > 0:
+                    return result["choices"][0]["text"].strip()
+
+        except requests.RequestException as e:
+            verbose_print(f"[dim]AI analysis request failed: {e}[/dim]")
+
+        return None
+
+    def _build_analysis_prompt(
+        self, errors: str, stack_name: str, container_files: List[str]
+    ) -> str:
+        """Build the analysis prompt for the AI model."""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        return f"""You are a system administration expert specializing in Podman Quadlet troubleshooting.
+
+Analyze the following quadlet validation errors and provide a brief cause/resolution report:
+
+Stack: {stack_name}
+Container Files: {', '.join(container_files)}
+Timestamp: {timestamp}
+
+Validation Errors:
+{errors}
+
+Provide a concise analysis with:
+1. Root cause of each error
+2. Specific resolution steps
+3. Prevention recommendations
+
+Keep the response brief and actionable."""
+
+    def _display_ai_analysis(self, analysis: str) -> None:
+        """Display AI analysis results with rich formatting."""
+        from rich.markdown import Markdown
+        from rich.panel import Panel
+
+        # Create markdown content
+        markdown_content = f"""# 🤖 AI Troubleshooting Analysis
+
+{analysis}
+
+---
+*Analysis generated by local Qwen2.5-Coder model*"""
+
+        # Display with rich formatting
+        markdown = Markdown(markdown_content)
+        panel = Panel(
+            markdown,
+            title="[blue]AI Validation Analysis[/blue]",
+            border_style="blue",
+            padding=(1, 2),
+        )
+
+        console.print(panel)
+        console.print()
+
 
 class FileManager:
     """Handles file operations during installation."""
@@ -822,7 +1027,10 @@ class QuadletInstaller:
         return self.systemd_manager.check_user_session()
 
     def install_stack(
-        self, name: str, target_dir: Optional[Path] = None, use_sudo: bool = False
+        self,
+        name: str,
+        target_dir: Optional[Path] = None,
+        use_sudo: bool = False,
     ) -> bool:
         """Install stack or service to target directory."""
         if target_dir is None:
@@ -910,8 +1118,8 @@ class QuadletInstaller:
             self.file_manager.copy_quadlet_files(files, stack_dir, target_dir, use_sudo)
             self.file_manager.set_file_permissions(files, target_dir, use_sudo)
 
-            # Pre-deployment validation
-            if not self.validation_manager.validate_after_deployment(
+            # Pre-deployment validation with automatic AI analysis on errors
+            if not self.validation_manager.validate_with_ai_troubleshooting(
                 resolved_stack, files, use_sudo
             ):
                 console.print()
