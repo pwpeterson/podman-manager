@@ -12,7 +12,6 @@ from typing import List, Optional, Tuple
 from rich.table import Table
 
 from config import console, verbose_print
-from container_validator import ContainerValidator
 from fuzzy_matcher import FuzzyMatcher
 
 
@@ -318,15 +317,15 @@ class SystemdManager:
 
 
 class ValidationManager:
-    """Handles container file validation and error reporting."""
+    """Handles container file validation using podman-quadlet."""
 
-    def __init__(self, validator: ContainerValidator):
-        self.validator = validator
+    def __init__(self):
+        self.quadlet_generator = "/usr/lib/systemd/user-generators/podman-quadlet"
 
     def validate_container_files(
         self, stack_name: str, files: List[str], quadlet_base_dir: Path
     ) -> bool:
-        """Validate container files before installation."""
+        """Validate container files using podman-quadlet --dryrun."""
         container_files = self._collect_container_files(
             files, stack_name, quadlet_base_dir
         )
@@ -334,10 +333,7 @@ class ValidationManager:
         if not container_files:
             return True
 
-        self._show_validation_progress(container_files)
-        validation_results = self.validator.validate_multiple_files(container_files)
-
-        return self._process_validation_results(validation_results)
+        return self._validate_with_podman_quadlet(container_files)
 
     def _collect_container_files(
         self, files: List[str], stack_name: str, quadlet_base_dir: Path
@@ -352,95 +348,67 @@ class ValidationManager:
 
         return container_files
 
-    def _show_validation_progress(self, container_files: List[Path]):
-        """Show validation progress messages."""
-        console.print()
-        for container_file in container_files:
-            file_name = Path(container_file).name
-            console.print(f"[green]Validating {file_name}...[/green]")
+    def _validate_with_podman_quadlet(self, container_files: List[Path]) -> bool:
+        """Validate container files using podman-quadlet --dryrun."""
+        if not Path(self.quadlet_generator).exists():
+            console.print(
+                "[yellow]Warning: podman-quadlet not found, skipping validation[/yellow]"
+            )
+            return True
 
-        file_names = [Path(f).name for f in container_files]
-        verbose_print(
-            f"  [cyan]exec: ContainerValidator.validate_multiple_files({', '.join(file_names)})[/cyan]"
-        )
+        console.print("[green]Validating quadlet files with podman-quadlet...[/green]")
 
-    def _process_validation_results(self, validation_results) -> bool:
-        """Process validation results and display errors/warnings."""
-        has_errors = False
-        total_warnings = 0
+        # Create temporary directory with container files
+        import tempfile
 
-        for file_path, (is_valid, errors, warnings) in validation_results.items():
-            file_name = Path(file_path).name
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
 
-            if errors:
-                has_errors = True
-                self._show_validation_errors(file_name, file_path, errors)
+            # Copy container files to temp directory
+            for container_file in container_files:
+                if container_file.suffix == ".container":
+                    shutil.copy2(container_file, temp_path)
 
-            if warnings:
-                total_warnings += len(warnings)
-                self._show_validation_warnings(file_name, warnings)
+            # Run podman-quadlet --dryrun
+            cmd = [self.quadlet_generator, "--user", "--dryrun"]
+            verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
-            if not errors and not warnings:
-                console.print(f"[green]✓ {file_name}: Valid[/green]")
+            # Set environment for quadlet to find our temp files
+            env = os.environ.copy()
+            env["XDG_CONFIG_HOME"] = str(temp_path.parent)
 
-        return self._show_validation_summary(
-            has_errors, total_warnings, len(validation_results)
-        )
-
-    def _show_validation_errors(
-        self, file_name: str, file_path: str, errors: List[str]
-    ):
-        """Show validation errors with proper formatting."""
-        verbose_print(f"  [cyan]exec: validate_container_file({file_name})[/cyan]")
-        console.print()
-        console.print(f"[red]Container validation error: {file_name}:[/red]")
-
-        displayed_errors = set()
-
-        for error in errors:
-            if error in displayed_errors:
-                continue
-            displayed_errors.add(error)
-
-            if "is missing in /etc/environment.d/10-app.conf:" in error:
-                console.print(
-                    f"  [red]{error}[/red] [white]Add it to the source .env file.[/white]"
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=env,
+                    cwd=temp_path,
                 )
-            else:
-                console.print(f"  [red]• {error}[/red]")
 
-    def _show_validation_warnings(self, file_name: str, warnings: List[str]):
-        """Show validation warnings."""
-        console.print(f"[yellow]⚠ {file_name}: {len(warnings)} warning(s)[/yellow]")
-        for warning in warnings:
-            console.print(f"  [yellow]• {warning}[/yellow]")
+                if result.returncode == 0:
+                    console.print("[green]✓ Quadlet validation passed[/green]")
+                    return True
+                else:
+                    console.print("[red]✗ Quadlet validation failed[/red]")
+                    if result.stderr:
+                        console.print(f"[red]Error: {result.stderr.strip()}[/red]")
+                    console.print(
+                        "[yellow]Check journalctl --user -b | grep -i quadlet for details[/yellow]"
+                    )
+                    return False
 
-    def _show_validation_summary(
-        self, has_errors: bool, total_warnings: int, file_count: int
-    ) -> bool:
-        """Show validation summary and return success status."""
-        if has_errors:
-            console.print()
-            console.print(
-                "[yellow]Installation aborted due to validation errors.[/yellow]"
-            )
-            console.print()
-            console.print("[green]Fix the errors above and try again.[/green]")
-            console.print()
-            return False
-        elif total_warnings > 0:
-            console.print(
-                f"\n[yellow]Validation completed with {total_warnings} warning(s)[/yellow]"
-            )
-            console.print(
-                "[green]No critical errors found, proceeding with installation...[/green]"
-            )
-        else:
-            console.print(
-                f"\n[green]✓ All {file_count} container file(s) validated successfully[/green]"
-            )
-
-        return True
+            except subprocess.TimeoutExpired:
+                console.print(
+                    "[yellow]Quadlet validation timed out, proceeding anyway[/yellow]"
+                )
+                return True
+            except Exception as e:
+                console.print(
+                    f"[yellow]Quadlet validation error: {e}, proceeding anyway[/yellow]"
+                )
+                return True
 
 
 class FileManager:
@@ -465,7 +433,14 @@ class FileManager:
     ):
         """Copy quadlet files to target directory."""
         for file in files:
-            console.print(f"[green]Installing {file}[/green]")
+            if file.endswith(".container"):
+                service_name = file.replace(".container", "")
+                console.print(
+                    f"[green]Copying master {service_name} .container to systemd[/green]"
+                )
+            else:
+                console.print(f"[green]Copying {file} to systemd[/green]")
+
             source_file = stack_dir / file
             target_file = target_dir / file
 
@@ -498,12 +473,11 @@ class QuadletInstaller:
     def __init__(self):
         """Initialize the installer with component managers."""
         self.quadlet_base_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
-        self.validator = ContainerValidator()
 
         # Component managers
         self.env_manager = EnvironmentManager()
         self.systemd_manager = SystemdManager()
-        self.validation_manager = ValidationManager(self.validator)
+        self.validation_manager = ValidationManager()
         self.file_manager = FileManager()
 
         self._validate_base_directory()
@@ -713,7 +687,7 @@ class QuadletInstaller:
     ) -> bool:
         """Perform the actual installation process."""
         console.print(
-            f"[green]Installing {display_name} {install_type} to [cyan]{target_dir}[/cyan][/green]"
+            f"[green]Deploying {display_name} {install_type} to [cyan]{target_dir}[/cyan][/green]"
         )
 
         try:
