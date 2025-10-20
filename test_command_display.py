@@ -1,38 +1,61 @@
 #!/usr/bin/env python3
 """
-Test script to verify command display functionality in pm reinit
+Test script to verify the new command display functionality
 """
 
-
-from rich.console import Console
-
-console = Console()
+import subprocess
+import sys
 
 
 def test_command_display():
-    """Test that commands are displayed properly"""
+    """Test the new command display functionality"""
 
-    # Test the command display format
-    test_cmd = ["systemctl", "--user", "daemon-reload"]
-    console.print(f"[cyan]exec: {' '.join(test_cmd)}[/cyan]")
-
-    # Test with a longer command
-    test_cmd2 = [
-        "journalctl",
-        "--user",
-        "-u",
-        "systemd",
-        "--since",
-        "1 minute ago",
-        "-n",
-        "10",
+    # Test commands that should show different displays
+    test_cases = [
+        # Stack-only commands
+        ("down", "Should show only stacks"),
+        ("install", "Should show only stacks"),
+        ("uninstall", "Should show only stacks"),
+        # Service-only commands
+        ("logs", "Should show hierarchy with dimmed stacks"),
+        ("exec", "Should show hierarchy with dimmed stacks"),
+        ("diagnose", "Should show hierarchy with dimmed stacks"),
+        # Mixed commands
+        ("start", "Should show full hierarchy"),
+        ("stop", "Should show full hierarchy"),
+        ("restart", "Should show full hierarchy"),
     ]
-    console.print(f"[cyan]exec: {' '.join(test_cmd2)}[/cyan]")
 
-    console.print("[green]Command display format test completed![/green]")
-    console.print(
-        "[dim]The actual pm reinit command will now display all systemctl and other commands as they execute.[/dim]"
-    )
+    print("Testing command display functionality...")
+    print("=" * 50)
+
+    for command, description in test_cases:
+        print(f"\nTesting: pm {command}")
+        print(f"Expected: {description}")
+        print("-" * 30)
+
+        # Run the command without arguments to trigger the error display
+        try:
+            result = subprocess.run(
+                [sys.executable, "podman_manager.py", command],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            if result.returncode != 0:
+                print("STDOUT:")
+                print(result.stdout)
+                if result.stderr:
+                    print("STDERR:")
+                    print(result.stderr)
+            else:
+                print("Command succeeded unexpectedly")
+
+        except subprocess.TimeoutExpired:
+            print("Command timed out")
+        except Exception as e:
+            print(f"Error running command: {e}")
 
 
 if __name__ == "__main__":

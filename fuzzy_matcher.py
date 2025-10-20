@@ -203,7 +203,7 @@ class FuzzyMatcher:
         for i, item in enumerate(matches, 1):
             item_type = "stack" if item["type"] == "stack" else "service"
             console.print(
-                f"  [dim]{i}.[/dim] [cyan]pm {command} {item['name']}[/cyan] [dim]({item_type})[/dim]"
+                f"  {i}. [cyan]pm {command} {item['name']}[/cyan] [dim]({item_type})[/dim]"
             )
 
         # Interactive selection

@@ -67,7 +67,7 @@ def show_rich_help():
             "Status & Information",
             [
                 (
-                    "list <stack|service>",
+                    "list <[cyan]stack|service[/cyan]>",
                     "List quadlet services and compose stacks",
                     "pm list",
                 ),
@@ -225,6 +225,157 @@ def show_rich_help():
 class CustomArgumentParser(argparse.ArgumentParser):
     """Custom ArgumentParser with better error messages"""
 
+    def _show_required_target_list(self, message: str) -> None:
+        """Show hierarchical list of available targets based on command requirements"""
+        import sys
+
+        # Try to determine the command from sys.argv
+        command = None
+        if len(sys.argv) > 1:
+            # Find the command in argv (skip global options)
+            for arg in sys.argv[1:]:
+                if not arg.startswith("-"):
+                    command = arg
+                    break
+
+        # Determine if this is a stack-only or service command
+        stack_only_commands = ["down", "uninstall"]
+        service_commands = [
+            "logs",
+            "exec",
+            "diagnose",
+            "reset-failed",
+            "show-service-file",
+            "rebuild",
+        ]
+
+        console.print()
+
+        if command in stack_only_commands:
+            # Show only stacks for stack-only commands
+            self._show_stack_list()
+        elif command in service_commands:
+            # Show full hierarchy but dim stacks for service-only commands
+            self._show_service_hierarchy(dim_stacks=True)
+        else:
+            # Show full hierarchy for commands that accept both
+            self._show_service_hierarchy(dim_stacks=False)
+
+        console.print()
+
+    def _show_stack_list(self) -> None:
+        """Show list of available stacks only"""
+        from rich.tree import Tree
+
+        # Try to get stacks from both quadlet and compose managers
+        stacks = set()
+
+        # Try quadlet manager first
+        try:
+            from quadlet_manager import QuadletManager
+
+            quadlet_manager = QuadletManager()
+            stacks.update(quadlet_manager.stack_services.keys())
+        except Exception:
+            pass
+
+        # Try compose manager
+        try:
+            import os
+
+            from manager import PodmanManager
+
+            compose_dir = os.environ.get("PODMAN_COMPOSE_DIR")
+            if compose_dir and Path(compose_dir).exists():
+                compose_manager = PodmanManager(compose_dir)
+                projects = compose_manager._parse_compose_files()
+                stacks.update(projects.keys())
+        except Exception:
+            pass
+
+        if stacks:
+            tree = Tree("Stacks available:", style="cyan")
+            for stack_name in sorted(stacks):
+                tree.add(f"[green]{stack_name}[/green]")
+            console.print(tree)
+        else:
+            console.print("[red]No stacks found[/red]")
+
+    def _show_service_hierarchy(self, dim_stacks: bool = False) -> None:
+        """Show full service hierarchy, optionally dimming stacks"""
+        from rich.tree import Tree
+
+        # Try to get the full hierarchy from display managers
+        try:
+            # Try quadlet display first
+            from quadlet_display import QuadletDisplayManager
+            from quadlet_manager import QuadletManager
+
+            quadlet_manager = QuadletManager()
+            display = QuadletDisplayManager(quadlet_manager)
+            all_items = display._get_all_projects_and_services()
+
+            if all_items:
+                if dim_stacks:
+                    tree = Tree("Services available:", style="cyan")
+                else:
+                    tree = Tree("Stacks & Services available:", style="cyan")
+
+                # Sort projects alphabetically
+                for project_name in sorted(all_items.keys()):
+                    project_info = all_items[project_name]
+
+                    # Use display_name if available, otherwise use project_name
+                    display_name = project_info.get("display_name", project_name)
+
+                    # Dim stacks if requested
+                    if dim_stacks:
+                        project_node = tree.add(f"[dim cyan]{display_name}[/dim cyan]")
+                    else:
+                        project_node = tree.add(f"[cyan]{display_name}[/cyan]")
+
+                    services = project_info.get("services", {})
+                    if services:
+                        # Sort services alphabetically
+                        for service_name in sorted(services.keys()):
+                            # Clean up the service name display - remove color codes if stacks are dimmed
+                            if dim_stacks:
+                                # Extract just the service name without color formatting
+                                clean_name = service_name
+                                # Remove rich color tags
+                                import re
+
+                                clean_name = re.sub(r"\[/?[^\]]*\]", "", clean_name)
+                                project_node.add(f"[green]{clean_name}[/green]")
+                            else:
+                                project_node.add(f"[yellow]{service_name}[/yellow]")
+                    else:
+                        project_node.add("[dim](no services found)[/dim]")
+
+                console.print(tree)
+                return
+        except Exception:
+            pass
+
+        # Fallback to compose display
+        try:
+            import os
+
+            from display import DisplayManager
+            from manager import PodmanManager
+
+            compose_dir = os.environ.get("PODMAN_COMPOSE_DIR")
+            if compose_dir and Path(compose_dir).exists():
+                compose_manager = PodmanManager(compose_dir)
+                display = DisplayManager(compose_manager)
+                display.show_status()
+                return
+        except Exception:
+            pass
+
+        # Final fallback
+        console.print("[red]No services or stacks found[/red]")
+
     def error(self, message) -> NoReturn:
         """Override error method to show helpful messages"""
         if "invalid choice" in message:
@@ -252,11 +403,8 @@ class CustomArgumentParser(argparse.ArgumentParser):
             console.print("[dim]Run 'pm --help' to see command usage[/dim]")
             sys.exit(1)
         elif "the following arguments are required:" in message and "target" in message:
-            console.print()
-            console.print(
-                "[green]A stack or service is required, use [white]pm list[/white] for names.[/green]"
-            )
-            console.print()
+            # Determine what type of target is required based on the command
+            self._show_required_target_list(message)
             sys.exit(1)
         else:
             console.print(f"[red]Error: {message}[/red]")

@@ -40,6 +40,7 @@ htmlcov/
 .hypothesis/
 
 # Virtual environments
+.env
 venv/
 env/
 ENV/
@@ -66,4 +67,4 @@ yarn.lock
 # Build outputs
 *.log
 
-.ruff_cache/
+.

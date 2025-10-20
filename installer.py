@@ -317,98 +317,146 @@ class SystemdManager:
 
 
 class ValidationManager:
-    """Handles container file validation using podman-quadlet."""
+    """Handles container file validation using podman-quadlet after deployment."""
 
     def __init__(self):
         self.quadlet_generator = "/usr/lib/systemd/user-generators/podman-quadlet"
 
-    def validate_container_files(
-        self, stack_name: str, files: List[str], quadlet_base_dir: Path
+    def validate_after_deployment(
+        self, stack_name: str, files: List[str], use_sudo: bool = False
     ) -> bool:
-        """Validate container files using podman-quadlet --dryrun."""
-        container_files = self._collect_container_files(
-            files, stack_name, quadlet_base_dir
-        )
+        """Validate container files by running podman-quadlet and checking journalctl."""
+        container_files = [f for f in files if f.endswith(".container")]
 
         if not container_files:
             return True
 
-        return self._validate_with_podman_quadlet(container_files)
-
-    def _collect_container_files(
-        self, files: List[str], stack_name: str, quadlet_base_dir: Path
-    ) -> List[Path]:
-        """Collect .container files for validation."""
-        stack_dir = quadlet_base_dir / stack_name
-        container_files = []
-
-        for file in files:
-            if file.endswith(".container"):
-                container_files.append(stack_dir / file)
-
-        return container_files
-
-    def _validate_with_podman_quadlet(self, container_files: List[Path]) -> bool:
-        """Validate container files using podman-quadlet --dryrun."""
         if not Path(self.quadlet_generator).exists():
             console.print(
                 "[yellow]Warning: podman-quadlet not found, skipping validation[/yellow]"
             )
             return True
 
-        console.print("[green]Validating quadlet files with podman-quadlet...[/green]")
+        console.print("[green]Validating deployed quadlet files...[/green]")
 
-        # Create temporary directory with container files
-        import tempfile
+        # Run podman-quadlet to trigger generation and validation
+        success = self._run_quadlet_generator(use_sudo)
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
+        if success:
+            # Check journalctl for any quadlet errors
+            return self._check_journalctl_for_errors(container_files, use_sudo)
 
-            # Copy container files to temp directory
-            for container_file in container_files:
-                if container_file.suffix == ".container":
-                    shutil.copy2(container_file, temp_path)
+        return success
 
-            # Run podman-quadlet --dryrun
-            cmd = [self.quadlet_generator, "--user", "--dryrun"]
-            verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
+    def _run_quadlet_generator(self, use_sudo: bool) -> bool:
+        """Run podman-quadlet generator to validate and generate service files."""
+        cmd = [self.quadlet_generator, "--user", "--dryrun"]
+        if use_sudo:
+            cmd = [self.quadlet_generator, "--dryrun"]
 
-            # Set environment for quadlet to find our temp files
-            env = os.environ.copy()
-            env["XDG_CONFIG_HOME"] = str(temp_path.parent)
+        verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
-            try:
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    env=env,
-                    cwd=temp_path,
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if result.returncode == 0:
+                verbose_print(
+                    "  [green]Quadlet generator completed successfully[/green]"
                 )
+                return True
+            else:
+                console.print("[yellow]Quadlet generator reported issues[/yellow]")
+                if result.stderr:
+                    verbose_print(
+                        f"  [yellow]Generator stderr: {result.stderr.strip()}[/yellow]"
+                    )
+                return True  # Continue to check journalctl for specific errors
 
-                if result.returncode == 0:
-                    console.print("[green]✓ Quadlet validation passed[/green]")
-                    return True
-                else:
-                    console.print("[red]✗ Quadlet validation failed[/red]")
-                    if result.stderr:
-                        console.print(f"[red]Error: {result.stderr.strip()}[/red]")
+        except subprocess.TimeoutExpired:
+            console.print(
+                "[yellow]Quadlet generator timed out, checking journalctl anyway[/yellow]"
+            )
+            return True
+        except Exception as e:
+            console.print(
+                f"[yellow]Quadlet generator error: {e}, checking journalctl anyway[/yellow]"
+            )
+            return True
+
+    def _check_journalctl_for_errors(
+        self, container_files: List[str], use_sudo: bool
+    ) -> bool:
+        """Check journalctl for quadlet-related errors."""
+        journal_cmd = ["journalctl", "-b", "--grep=quadlet", "-o", "cat"]
+        if not use_sudo:
+            journal_cmd.insert(1, "--user")
+
+        verbose_print(f"  [cyan]exec: {' '.join(journal_cmd)}[/cyan]")
+
+        try:
+            result = subprocess.run(
+                journal_cmd,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+
+            if result.returncode == 0 and result.stdout.strip():
+                # Check if any errors are related to our container files
+                journal_output = result.stdout.lower()
+                errors_found = []
+
+                for container_file in container_files:
+                    container_name = container_file.replace(".container", "")
+                    if any(
+                        keyword in journal_output
+                        for keyword in [
+                            f"error.*{container_name}",
+                            f"failed.*{container_name}",
+                            f"invalid.*{container_name}",
+                            "error" if container_name in journal_output else None,
+                        ]
+                        if keyword
+                    ):
+                        errors_found.append(container_name)
+
+                if errors_found:
                     console.print(
-                        "[yellow]Check journalctl --user -b | grep -i quadlet for details[/yellow]"
+                        f"[red]✗ Validation errors found for: {', '.join(errors_found)}[/red]"
+                    )
+                    console.print("[yellow]Recent quadlet journal entries:[/yellow]")
+                    # Show last few lines of journal output
+                    lines = result.stdout.strip().split("\n")
+                    for line in lines[-5:]:
+                        console.print(f"  [dim]{line}[/dim]")
+                    console.print(
+                        "[yellow]Run 'journalctl --user -b | grep -i quadlet' for full details[/yellow]"
                     )
                     return False
+                else:
+                    console.print(
+                        "[green]✓ No validation errors found in journal[/green]"
+                    )
+                    return True
+            else:
+                console.print("[green]✓ No quadlet errors in journal[/green]")
+                return True
 
-            except subprocess.TimeoutExpired:
-                console.print(
-                    "[yellow]Quadlet validation timed out, proceeding anyway[/yellow]"
-                )
-                return True
-            except Exception as e:
-                console.print(
-                    f"[yellow]Quadlet validation error: {e}, proceeding anyway[/yellow]"
-                )
-                return True
+        except subprocess.TimeoutExpired:
+            console.print(
+                "[yellow]Journal check timed out, assuming validation passed[/yellow]"
+            )
+            return True
+        except Exception as e:
+            console.print(
+                f"[yellow]Journal check error: {e}, assuming validation passed[/yellow]"
+            )
+            return True
 
 
 class FileManager:
@@ -616,13 +664,8 @@ class QuadletInstaller:
             service_file, name, resolved_stack
         )
 
-        # Load environment and validate
+        # Load environment
         if not self.env_manager.load_and_clean_env_file():
-            return False
-
-        if not self.validation_manager.validate_container_files(
-            resolved_stack, files, self.quadlet_base_dir
-        ):
             return False
 
         # Perform installation
@@ -698,6 +741,14 @@ class QuadletInstaller:
 
             # System operations
             if not self.systemd_manager.reload_daemon(use_sudo):
+                return False
+
+            # Post-deployment validation
+            if not self.validation_manager.validate_after_deployment(
+                resolved_stack, files, use_sudo
+            ):
+                console.print("[red]Deployment completed but validation failed[/red]")
+                console.print("[yellow]Services may not start correctly[/yellow]")
                 return False
 
             self._refresh_pm_discovery(display_name)

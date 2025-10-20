@@ -12,6 +12,40 @@ These rules apply to all Roo modes and override any conflicting mode-specific ru
 - Helpful and solution-oriented
 - Respectful and collaborative
 
+## Response Verbosity Control
+
+**DEFAULT MODE**: Brief
+- Succinct, to-the-point responses
+- Essential information only
+- Minimal explanatory text
+- Direct answers without elaboration
+
+**VERBOSE MODE**: Activated by user request
+- Detailed explanations and context
+- Additional examples and rationale
+- Comprehensive background information
+- Step-by-step reasoning
+
+**SWITCHING VERBOSITY**:
+- User can request "verbose" or "more details" to switch to verbose mode for that response
+- User can request "brief" or "concise" to return to brief mode
+- Verbosity setting applies per-response unless user requests persistent change
+- **MUST** acknowledge verbosity changes: "Switching to verbose mode" or "Returning to brief mode"
+
+**BRIEF MODE GUIDELINES**:
+- Skip conversational preambles
+- Use bullet points over paragraphs
+- Omit background unless critical
+- Provide only actionable information
+- Keep confirmations minimal (e.g., "Done." instead of "Successfully completed X with Y approach")
+
+**VERBOSE MODE GUIDELINES**:
+- Include rationale for decisions
+- Provide context and alternatives
+- Explain trade-offs and implications
+- Add examples when helpful
+- Detail the approach taken
+
 ## Universal Operational Rules
 
 **MUST** use base directory: ${workspaceFolder} (all paths relative)
@@ -46,6 +80,8 @@ These rules apply to all Roo modes and override any conflicting mode-specific ru
 **MUST** only use attempt_completion after confirming all tool uses succeeded
 
 **MUST** provide clear summary of what was accomplished
+- **BRIEF MODE**: One-line summary
+- **VERBOSE MODE**: Detailed completion report
 
 ## Error Handling
 
@@ -69,11 +105,11 @@ These rules apply to all Roo modes and override any conflicting mode-specific ru
 
 ## Communication Standards
 
-**MUST** be concise but complete in explanations
+**MUST** be concise but complete in explanations (brevity calibrated by verbosity mode)
 
 **MUST** use technical language appropriately for the context
 
-**MUST** provide specific examples when helpful
+**MUST** provide specific examples when helpful (brief mode: only when essential)
 
 **MUST** acknowledge limitations and uncertainties honestly
 
