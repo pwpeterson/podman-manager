@@ -392,7 +392,7 @@ class ValidationManager:
         self, container_files: List[str], use_sudo: bool
     ) -> bool:
         """Check journalctl for quadlet-related errors."""
-        journal_cmd = ["journalctl", "-b", "--grep=quadlet", "-o", "cat"]
+        journal_cmd = ["journalctl", "-b", "--grep=quadlet", "-o", "cat", "--no-pager"]
         if not use_sudo:
             journal_cmd.insert(1, "--user")
 
@@ -407,33 +407,16 @@ class ValidationManager:
             )
 
             if result.returncode == 0 and result.stdout.strip():
-                # Check if any errors are related to our container files
-                journal_output = result.stdout.lower()
-                errors_found = []
+                # Filter and analyze journal output for relevant errors
+                relevant_errors = self._filter_relevant_quadlet_errors(
+                    result.stdout, container_files
+                )
 
-                for container_file in container_files:
-                    container_name = container_file.replace(".container", "")
-                    if any(
-                        keyword in journal_output
-                        for keyword in [
-                            f"error.*{container_name}",
-                            f"failed.*{container_name}",
-                            f"invalid.*{container_name}",
-                            "error" if container_name in journal_output else None,
-                        ]
-                        if keyword
-                    ):
-                        errors_found.append(container_name)
-
-                if errors_found:
-                    console.print(
-                        f"[red]✗ Validation errors found for: {', '.join(errors_found)}[/red]"
-                    )
-                    console.print("[yellow]Recent quadlet journal entries:[/yellow]")
-                    # Show last few lines of journal output
-                    lines = result.stdout.strip().split("\n")
-                    for line in lines[-5:]:
-                        console.print(f"  [dim]{line}[/dim]")
+                if relevant_errors:
+                    console.print("[red]✗ Validation errors found[/red]")
+                    console.print("[yellow]Relevant quadlet errors:[/yellow]")
+                    for error in relevant_errors:
+                        console.print(f"  [dim]{error}[/dim]")
                     console.print(
                         "[yellow]Run 'journalctl --user -b | grep -i quadlet' for full details[/yellow]"
                     )
@@ -457,6 +440,74 @@ class ValidationManager:
                 f"[yellow]Journal check error: {e}, assuming validation passed[/yellow]"
             )
             return True
+
+    def _filter_relevant_quadlet_errors(
+        self, journal_output: str, container_files: List[str]
+    ) -> List[str]:
+        """Filter journal output to show only relevant quadlet errors for our container files."""
+        lines = journal_output.strip().split("\n")
+        relevant_errors = []
+        container_names = [f.replace(".container", "") for f in container_files]
+
+        # Keywords that indicate actual errors (not just info/debug messages)
+        error_keywords = [
+            "error",
+            "failed",
+            "invalid",
+            "cannot",
+            "unable",
+            "missing",
+            "bad",
+            "wrong",
+            "illegal",
+            "unsupported",
+            "denied",
+        ]
+
+        # Keywords to filter out (informational/debug messages)
+        ignore_keywords = [
+            "debug",
+            "info",
+            "starting",
+            "stopping",
+            "created",
+            "removed",
+            "pulled",
+            "tagged",
+            "loaded successfully",
+        ]
+
+        for line in lines:
+            line_lower = line.lower()
+
+            # Skip empty lines
+            if not line.strip():
+                continue
+
+            # Skip lines that are just informational
+            if any(ignore_word in line_lower for ignore_word in ignore_keywords):
+                continue
+
+            # Check if line contains error keywords
+            has_error_keyword = any(
+                error_word in line_lower for error_word in error_keywords
+            )
+
+            # Check if line mentions our container files
+            mentions_our_containers = any(
+                container_name in line_lower for container_name in container_names
+            )
+
+            # Include line if it has error keywords and either:
+            # 1. Mentions our containers specifically, or
+            # 2. Is a general quadlet error that could affect our containers
+            if has_error_keyword and (
+                mentions_our_containers or "quadlet" in line_lower
+            ):
+                relevant_errors.append(line.strip())
+
+        # Limit to most recent/relevant errors (max 10)
+        return relevant_errors[-10:] if relevant_errors else []
 
 
 class FileManager:
