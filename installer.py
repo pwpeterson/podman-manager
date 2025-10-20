@@ -650,7 +650,8 @@ class ValidationManager:
         # If validation failed, automatically run AI analysis and end installation
         if not validation_success:
             console.print()
-            console.print("[blue]🤖 Running AI analysis of validation errors...[/blue]")
+            console.print("[green]Running AI analysis of validation errors...[/green]")
+            verbose_print("  [cyan]exec: ai_analyze_validation_errors()[/cyan]")
             self.ai_analyze_validation_errors(stack_name, files)
             console.print()
             console.print("[red]Installation stopped due to validation errors[/red]")
@@ -669,7 +670,6 @@ class ValidationManager:
             )
             return
 
-        console.print("[blue]🤖 Analyzing validation errors with AI...[/blue]")
         console.print()
 
         # Collect validation errors
@@ -980,18 +980,24 @@ class QuadletInstaller:
 
     def validate_stack_or_service(self, name: str) -> Tuple[bool, str, Optional[str]]:
         """Validate that a stack or service exists with fuzzy matching support."""
-        # Try exact match as a stack
+        # Try exact match as a service within stacks FIRST (prioritize individual services)
+        service_result = self.find_service_in_stacks(name)
+        verbose_print(
+            f"[dim]DEBUG: find_service_in_stacks('{name}') returned: {service_result}[/dim]"
+        )
+        if service_result:
+            stack_name, container_file = service_result
+            verbose_print(
+                f"[dim]DEBUG: Found service '{name}' in stack '{stack_name}' with container file '{container_file}'[/dim]"
+            )
+            return (True, stack_name, container_file)
+
+        # Try exact match as a stack only if no service found
         stack_dir = self.quadlet_base_dir / name
         if stack_dir.exists():
             files = self.get_stack_files(name)
             if files:
                 return (True, name, None)
-
-        # Try exact match as a service within stacks
-        service_result = self.find_service_in_stacks(name)
-        if service_result:
-            stack_name, container_file = service_result
-            return (True, stack_name, container_file)
 
         # Use fuzzy matcher
         fuzzy_matcher = FuzzyMatcher(quadlet_installer=self)
@@ -1005,6 +1011,12 @@ class QuadletInstaller:
                     stack_name, container_file = service_result
                     return (True, stack_name, container_file)
             else:
+                # Check if fuzzy result is a service name first
+                service_result = self.find_service_in_stacks(fuzzy_result)
+                if service_result:
+                    stack_name, container_file = service_result
+                    return (True, stack_name, container_file)
+                # Otherwise treat as stack
                 return (True, fuzzy_result, None)
         elif fuzzy_result == "CANCELLED":
             return (False, name, None)
@@ -1038,6 +1050,9 @@ class QuadletInstaller:
 
         # Validate and determine if it's a stack or service
         is_valid, resolved_stack, service_file = self.validate_stack_or_service(name)
+        verbose_print(
+            f"[dim]DEBUG: validate_stack_or_service returned: is_valid={is_valid}, resolved_stack={resolved_stack}, service_file={service_file}[/dim]"
+        )
         if not is_valid or resolved_stack in ["CANCELLED", None]:
             return False
 
@@ -1067,15 +1082,24 @@ class QuadletInstaller:
         self, service_file: Optional[str], name: str, resolved_stack: str
     ) -> Tuple[List[str], str, str]:
         """Determine what files to install and installation type."""
+        # Debug output to understand what's happening
+        verbose_print(
+            f"[dim]DEBUG: service_file={service_file}, name={name}, resolved_stack={resolved_stack}[/dim]"
+        )
+
         if service_file:
             files = [service_file]
             install_type = "service"
             display_name = name
+            verbose_print(
+                f"[dim]DEBUG: Installing single service - files={files}[/dim]"
+            )
             self._show_dependency_warning(name, resolved_stack)
         else:
             files = self.get_stack_files(resolved_stack)
             install_type = "stack"
             display_name = resolved_stack
+            verbose_print(f"[dim]DEBUG: Installing full stack - files={files}[/dim]")
 
         return files, install_type, display_name
 
