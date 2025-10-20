@@ -187,9 +187,9 @@ def show_rich_help():
                     "pm exec vllm-proxy bash",
                 ),
                 (
-                    "help-podman",
+                    "help-podman [-hpm|--help-podman]",
                     "Show podman --help documentation",
-                    "pm help-podman",
+                    "pm help-podman -hpm",
                 ),
             ],
         ),
@@ -652,6 +652,12 @@ def main():
         "--verbose",
         action="store_true",
         help="Show detailed command execution (exec lines)",
+    )
+    help_podman_parser.add_argument(
+        "-hpm",
+        "--help-podman",
+        action="store_true",
+        help="Show podman --help documentation (alias)",
     )
 
     # Additional status commands
