@@ -339,17 +339,25 @@ class ValidationManager:
 
         console.print("[green]Validating deployed quadlet files...[/green]")
 
-        # Run podman-quadlet to trigger generation and validation
-        success = self._run_quadlet_generator(use_sudo)
+        # Run podman-quadlet and check for container-specific errors
+        success, container_errors = self._run_quadlet_generator_and_check_errors(
+            container_files, use_sudo
+        )
 
-        if success:
-            # Check journalctl for any quadlet errors
-            return self._check_journalctl_for_errors(container_files, use_sudo)
+        if container_errors:
+            console.print("[red]✗ Validation errors found[/red]")
+            console.print("[yellow]Container validation errors:[/yellow]")
+            for error in container_errors:
+                console.print(f"  [dim]{error}[/dim]")
+            return False
+        else:
+            console.print("[green]✓ No validation errors found[/green]")
+            return True
 
-        return success
-
-    def _run_quadlet_generator(self, use_sudo: bool) -> bool:
-        """Run podman-quadlet generator to validate and generate service files."""
+    def _run_quadlet_generator_and_check_errors(
+        self, container_files: List[str], use_sudo: bool
+    ) -> Tuple[bool, List[str]]:
+        """Run podman-quadlet generator and check for specific container errors."""
         cmd = [self.quadlet_generator, "--user", "--dryrun"]
         if use_sudo:
             cmd = [self.quadlet_generator, "--dryrun"]
@@ -364,29 +372,92 @@ class ValidationManager:
                 timeout=30,
             )
 
-            if result.returncode == 0:
-                verbose_print(
-                    "  [green]Quadlet generator completed successfully[/green]"
+            # Check both stdout and stderr for container-specific errors
+            all_output = (result.stdout + "\n" + result.stderr).strip()
+            container_errors = []
+
+            if all_output:
+                container_errors = self._filter_quadlet_output_for_containers(
+                    all_output, container_files
                 )
-                return True
+
+            if result.returncode == 0:
+                if container_errors:
+                    verbose_print(
+                        "  [yellow]Quadlet generator completed but found container issues[/yellow]"
+                    )
+                else:
+                    verbose_print(
+                        "  [green]Quadlet generator completed successfully[/green]"
+                    )
+                return True, container_errors
             else:
                 console.print("[yellow]Quadlet generator reported issues[/yellow]")
-                if result.stderr:
-                    verbose_print(
-                        f"  [yellow]Generator stderr: {result.stderr.strip()}[/yellow]"
-                    )
-                return True  # Continue to check journalctl for specific errors
+                return True, container_errors  # Return errors found
 
         except subprocess.TimeoutExpired:
             console.print(
-                "[yellow]Quadlet generator timed out, checking journalctl anyway[/yellow]"
+                "[yellow]Quadlet generator timed out, assuming validation passed[/yellow]"
             )
-            return True
+            return True, []
         except Exception as e:
             console.print(
-                f"[yellow]Quadlet generator error: {e}, checking journalctl anyway[/yellow]"
+                f"[yellow]Quadlet generator error: {e}, assuming validation passed[/yellow]"
             )
-            return True
+            return True, []
+
+    def _filter_quadlet_output_for_containers(
+        self, quadlet_output: str, container_files: List[str]
+    ) -> List[str]:
+        """Filter podman-quadlet output for errors related to specific container files."""
+        lines = quadlet_output.strip().split("\n")
+        container_errors = []
+
+        # Create patterns to match our container files
+        container_patterns = []
+        for container_file in container_files:
+            # Match both the full filename and the service name
+            container_name = container_file.replace(".container", "")
+            container_patterns.extend([container_file, container_name])
+
+        # Keywords that indicate validation errors
+        error_keywords = [
+            "error",
+            "failed",
+            "invalid",
+            "unsupported",
+            "cannot",
+            "unable",
+            "missing",
+            "bad",
+            "wrong",
+            "illegal",
+            "denied",
+            "unknown",
+        ]
+
+        for line in lines:
+            line_stripped = line.strip()
+            if not line_stripped:
+                continue
+
+            line_lower = line_stripped.lower()
+
+            # Check if line contains error keywords
+            has_error_keyword = any(
+                error_word in line_lower for error_word in error_keywords
+            )
+
+            # Check if line mentions our container files
+            mentions_our_containers = any(
+                pattern.lower() in line_lower for pattern in container_patterns
+            )
+
+            # Include line if it has error keywords and mentions our containers
+            if has_error_keyword and mentions_our_containers:
+                container_errors.append(line_stripped)
+
+        return container_errors
 
     def _check_journalctl_for_errors(
         self, container_files: List[str], use_sudo: bool
