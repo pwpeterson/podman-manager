@@ -298,11 +298,16 @@ class ContainerValidator:
             "on-watchdog",
         }
 
-        # Invalid Docker-style restart policies
-        self.invalid_restart_policies = {
-            "unless-stopped",  # Docker-style, not supported by systemd
-            "on-reboot",  # Docker-style, not supported by systemd
+        # Docker-style to systemd restart policy mapping
+        self.docker_to_systemd_restart_policies = {
+            "unless-stopped": "always",  # Docker unless-stopped -> systemd always
+            "on-reboot": "always",  # Docker on-reboot -> systemd always
         }
+
+        # Invalid Docker-style restart policies (for reference)
+        self.invalid_restart_policies = set(
+            self.docker_to_systemd_restart_policies.keys()
+        )
 
     def validate_container_file(
         self, file_path: Path
@@ -440,9 +445,12 @@ class ContainerValidator:
 
                 # Validate specific parameter values
                 if param_name == "Restart" and section_name == "Service":
-                    if param_value in self.invalid_restart_policies:
+                    if param_value in self.docker_to_systemd_restart_policies:
+                        suggested_value = self.docker_to_systemd_restart_policies[
+                            param_value
+                        ]
                         errors.append(
-                            f"Invalid Restart value '{param_value}'. This is a Docker-style restart policy not supported by systemd. Use: {', '.join(self.valid_restart_policies)}"
+                            f"Docker-style Restart value '{param_value}' not supported by systemd. Use 'Restart={suggested_value}' instead."
                         )
                     elif param_value not in self.valid_restart_policies:
                         errors.append(
@@ -450,9 +458,12 @@ class ContainerValidator:
                         )
 
                 if param_name == "RestartPolicy" and section_name == "Container":
-                    if param_value in self.invalid_restart_policies:
+                    if param_value in self.docker_to_systemd_restart_policies:
+                        suggested_value = self.docker_to_systemd_restart_policies[
+                            param_value
+                        ]
                         errors.append(
-                            f"Invalid RestartPolicy value '{param_value}'. This is a Docker-style restart policy not supported by systemd. Use: {', '.join(self.valid_restart_policies)}"
+                            f"Docker-style RestartPolicy value '{param_value}' not supported by systemd. Use 'RestartPolicy={suggested_value}' instead."
                         )
                     elif param_value not in self.valid_restart_policies:
                         errors.append(
