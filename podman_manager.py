@@ -72,9 +72,9 @@ def show_rich_help():
                     "pm list",
                 ),
                 (
-                    "status [cyan]<stack|service>[/cyan]",
-                    "Show service status tree with running status",
-                    "pm status vllm-qwen25",
+                    "status [cyan]<stack|service>[/cyan] [-v]",
+                    "Show service status tree with running status (-v: verbose with container details)",
+                    "pm status vllm-qwen25 -v",
                 ),
                 ("ps", "Container status table", "pm ps"),
                 ("targets", "Show available targets by type", "pm targets"),
@@ -591,7 +591,7 @@ def main():
         "-v",
         "--verbose",
         action="store_true",
-        help="Show detailed command execution (exec lines)",
+        help="Show verbose status information with additional details",
     )
     ps_parser = subparsers.add_parser("ps", help="Show container status")
     ps_parser.add_argument(
@@ -1066,14 +1066,15 @@ def main():
             else:
                 display.show_status()
         elif args.command == "status":
+            verbose = getattr(args, "verbose", False)
             if args.target:
                 if selected_mode == "quadlet":
-                    container_ops.show_service_status(args.target)
+                    display.show_status(args.target, verbose=verbose)
                 else:
-                    display.show_status(args.target)
+                    display.show_status(args.target, verbose=verbose)
             else:
                 # Show full status tree when no target specified
-                display.show_status()
+                display.show_status(verbose=verbose)
         elif args.command == "ps":
             # Run podman ps with specific format and display in borderless table
             try:

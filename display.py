@@ -15,7 +15,7 @@ class DisplayManager:
     def __init__(self, manager):
         self.manager = manager
 
-    def show_status(self, target=None):
+    def show_status(self, target=None, verbose=False):
         """Show status of all projects and services with running status"""
 
         # Show spinner while retrieving status
@@ -98,6 +98,15 @@ class DisplayManager:
                         )
 
                     service_with_status = f"{service_display} {status_info}"
+
+                    # Add verbose information if requested
+                    if verbose:
+                        verbose_info = self._get_verbose_service_info(
+                            service_name, all_container_statuses
+                        )
+                        if verbose_info:
+                            service_with_status += f" {verbose_info}"
+
                     project_node.add(service_with_status)
             else:
                 project_node.add("[dim](no services found)[/dim]")
@@ -585,3 +594,80 @@ class DisplayManager:
             return f"[yellow]{status}[/yellow]"
         else:
             return f"[dim]{status}[/dim]"
+
+    def _get_verbose_service_info(self, service_name, all_container_statuses):
+        """Get additional verbose information about a service"""
+        try:
+            # Find the container for this service
+            container_name = None
+
+            # Check exact match first
+            if service_name in all_container_statuses:
+                container_name = service_name
+            else:
+                # Check for partial matches and variations
+                variations = [
+                    service_name.replace("-", "_"),
+                    service_name.replace("_", "-"),
+                    f"local-ai-{service_name}",
+                    f"supabase-{service_name}",
+                    service_name.replace("local-ai-", ""),
+                    service_name.replace("supabase-", ""),
+                ]
+
+                for variation in variations:
+                    if variation in all_container_statuses:
+                        container_name = variation
+                        break
+
+                # Check partial matches
+                if not container_name:
+                    for name, status in all_container_statuses.items():
+                        if service_name in name:
+                            container_name = name
+                            break
+
+            if not container_name:
+                return "[dim](container not found)[/dim]"
+
+            # Get additional container information
+            verbose_parts = []
+
+            # Add container name if different from service name
+            if container_name != service_name:
+                verbose_parts.append(f"[dim]container: {container_name}[/dim]")
+
+            # Get container ID and image info
+            try:
+                cmd = [
+                    "podman",
+                    "ps",
+                    "-a",
+                    "--filter",
+                    f"name=^{container_name}$",
+                    "--format",
+                    "{{.ID}} {{.Image}}",
+                ]
+
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+
+                if result.returncode == 0 and result.stdout.strip():
+                    parts = result.stdout.strip().split()
+                    if len(parts) >= 2:
+                        container_id = parts[0][:12]  # Short ID
+                        image = parts[1]
+
+                        verbose_parts.append(f"[dim]id: {container_id}[/dim]")
+
+                        # Shorten image name for display
+                        if len(image) > 40:
+                            image = "..." + image[-37:]
+                        verbose_parts.append(f"[dim]image: {image}[/dim]")
+
+            except Exception:
+                pass
+
+            return " ".join(verbose_parts) if verbose_parts else ""
+
+        except Exception:
+            return "[dim](verbose info unavailable)[/dim]"
