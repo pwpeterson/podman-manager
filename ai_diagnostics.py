@@ -175,9 +175,7 @@ class AIDiagnostics:
         return f"""You are an expert system administrator and DevOps engineer. Analyze the following systemd service logs and provide:
 
 1. **Root Cause Analysis**: Identify the primary issues causing errors or warnings
-2. **Impact Assessment**: Severity and potential consequences of identified issues
-3. **Recommended Solutions**: Specific, actionable steps to resolve the problems
-4. **Prevention Strategies**: How to prevent these issues in the future
+2. **Recommended Solutions**: Specific, actionable steps to resolve the problems
 
 Service: {service_name}
 Timestamp: {datetime.now().isoformat()}
