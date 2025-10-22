@@ -3,8 +3,17 @@
 import re
 import subprocess
 import time
+from typing import TYPE_CHECKING, Optional
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
+
+if TYPE_CHECKING:
+    import requests
+else:
+    try:
+        import requests
+    except ImportError:
+        requests = None
 
 from config import console, verbose_print
 
@@ -228,11 +237,18 @@ class ReinitManager:
                 clean_service_name = display_name.replace(".service", "").replace(
                     ".target", ""
                 )
+                # Suggest service-specific journalctl command
                 console.print(
-                    f"    [red]{clean_service_name} failed -[/red] [red]See[/red] journalctl -xe | grep {clean_service_name}"
+                    f"    [red]{clean_service_name} failed -[/red] [red]See[/red] journalctl --user -u {service_name} -e"
                 )
-                # Show the detailed error logs and recommendations after the failure message
-                self._show_startup_failure_logs(display_name, service_name)
+
+                # Add a small delay to ensure any Rich displays are properly closed
+                time.sleep(0.1)
+
+                # Automatically run AI troubleshooting analysis
+                verbose_print("  [cyan]exec: ai_analyze_reinit_failure()[/cyan]")
+                self._ai_analyze_reinit_failure(target, service_name)
+
                 return False
         else:
             console.print(f"[red]Failed to start {display_name} after reinit[/red]")
@@ -241,6 +257,17 @@ class ReinitManager:
 
             if _verbose_enabled and start_result.stderr:
                 self._handle_start_failure(target, start_result)
+
+            # Add a small delay to ensure any Rich displays are properly closed
+            time.sleep(0.1)
+
+            # Automatically run AI troubleshooting analysis with start failure error
+            verbose_print("  [cyan]exec: ai_analyze_reinit_failure_with_error()[/cyan]")
+            error_message = start_result.stderr.strip() if start_result.stderr else ""
+            self._ai_analyze_reinit_failure(
+                target, service_name, start_error=error_message
+            )
+
             return False
 
     def _handle_start_failure(self, target: str, start_result) -> None:
@@ -362,10 +389,104 @@ class ReinitManager:
 
     def _show_startup_failure_logs(self, target: str, service_name: str) -> None:
         """Show recent logs when service fails to start properly"""
-        from log_analyzer import LogAnalyzer
+        # Get recent logs to show context for the failure
+        logs_cmd = [
+            "journalctl",
+            "--user",
+            "-u",
+            service_name,
+            "--since",
+            "-30s",
+            "-n",
+            "10",
+            "--no-pager",
+        ]
 
-        analyzer = LogAnalyzer(self.manager)
-        analyzer.show_startup_failure_logs(target, service_name)
+        verbose_print(f"  [cyan]exec: {' '.join(logs_cmd)}[/cyan]")
+
+        try:
+            result = subprocess.run(
+                logs_cmd, capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                console.print(
+                    "[yellow]Journal extract for:[/yellow] [white]"
+                    + target
+                    + "[/white]"
+                )
+                for line in result.stdout.strip().split("\n"):
+                    if line.strip():
+                        console.print(line)
+            else:
+                verbose_print(
+                    f"  [cyan]exec: No recent logs found for {service_name}[/cyan]"
+                )
+        except subprocess.TimeoutExpired:
+            verbose_print(
+                f"  [cyan]exec: Timeout getting logs for {service_name}[/cyan]"
+            )
+        except Exception as e:
+            verbose_print(
+                f"  [cyan]exec: Error getting logs for {service_name}: {e}[/cyan]"
+            )
+
+    def _extract_core_service_name(self, service_name: str) -> str:
+        """Extract the core service name for broader journalctl grep patterns.
+
+        Examples:
+        - 'local-ai-postgres' -> 'postgres'
+        - 'vllm-api-server' -> 'vllm'
+        - 'taskflow-redis' -> 'redis'
+        - 'simple-service' -> 'simple-service'
+        """
+        # Common service types that should be extracted
+        known_services = [
+            "postgres",
+            "postgresql",
+            "redis",
+            "mysql",
+            "mariadb",
+            "mongodb",
+            "mongo",
+            "nginx",
+            "apache",
+            "httpd",
+            "caddy",
+            "traefik",
+            "elasticsearch",
+            "kibana",
+            "logstash",
+            "rabbitmq",
+            "kafka",
+            "zookeeper",
+            "memcached",
+            "influxdb",
+            "grafana",
+            "prometheus",
+            "docker",
+            "podman",
+            "containerd",
+            "vllm",
+            "ollama",
+            "jupyter",
+            "notebook",
+        ]
+
+        service_lower = service_name.lower()
+
+        # Check if any known service is contained in the name
+        for known in known_services:
+            if known in service_lower:
+                return known
+
+        # If no known service found, try to extract the last part after the last dash
+        # This handles cases like 'my-custom-app' -> 'app'
+        parts = service_name.split("-")
+        if len(parts) > 1:
+            return parts[-1]
+
+        # Fallback: return the original name
+        return service_name
 
     def _show_next_steps(self, target: str) -> None:
         """Show optional next steps after successful reinit"""
@@ -381,5 +502,666 @@ class ReinitManager:
         )
         console.print(
             f"  [green] Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
+        )
+        console.print()
+
+    def _ai_analyze_reinit_failure(
+        self,
+        target: str,
+        service_name: str,
+        vllm_url: str = "http://localhost:8002",
+        start_error: str = "",
+    ) -> None:
+        """Automatically analyze reinit failure using AI and provide troubleshooting suggestions."""
+        if not requests:
+            console.print(
+                "[red]Error: requests library not available for AI analysis[/red]"
+            )
+            return
+
+        # Check if vLLM is available
+        if not self._check_vllm_availability(vllm_url):
+            return
+
+        # Collect comprehensive diagnostic information
+        diagnostic_info = self._collect_diagnostic_information(
+            service_name, start_error
+        )
+
+        # Strip Rich markup from diagnostic info before sending to AI
+        diagnostic_info = self._strip_rich_markup(diagnostic_info)
+
+        # Show spinner while analyzing - use try/except to handle display conflicts
+        analysis = None
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[green]Running AI analysis of reinit failure...[/green]"),
+                console=console,
+                transient=False,  # Keep visible after completion
+            ) as progress:
+                task = progress.add_task("analyzing", total=None)
+
+                # Analyze with AI
+                analysis = self._get_ai_reinit_analysis(
+                    diagnostic_info, target, service_name
+                )
+
+                progress.remove_task(task)
+        except Exception as e:
+            # If Rich display fails, continue without spinner
+            verbose_print(
+                f"  [cyan]exec: Display conflict detected, running AI analysis without spinner: {e}[/cyan]"
+            )
+            console.print("[green]Running AI analysis of reinit failure...[/green]")
+            analysis = self._get_ai_reinit_analysis(
+                diagnostic_info, target, service_name
+            )
+
+        console.print()
+
+        if analysis:
+            self._display_ai_reinit_analysis(analysis, target, service_name)
+        else:
+            console.print(
+                "[yellow]AI analysis unavailable (vLLM service may be down)[/yellow]"
+            )
+
+    def _check_vllm_availability(self, vllm_url: str) -> bool:
+        """Check if vLLM service is available for AI analysis."""
+        if requests is None:
+            verbose_print("  [cyan]exec: requests library not available[/cyan]")
+            return False
+
+        verbose_print(
+            f"  [cyan]exec: Checking vLLM health at curl -X GET {vllm_url}/health[/cyan]"
+        )
+        try:
+            # Check if vLLM is available
+            health_response = requests.get(f"{vllm_url}/health", timeout=5)
+            verbose_print(
+                f"  [cyan]exec: Health check response: status={health_response.status_code}[/cyan]"
+            )
+            if health_response.status_code != 200:
+                verbose_print(
+                    f"  [cyan]exec: Health check failed with status {health_response.status_code}[/cyan]"
+                )
+                return False
+            verbose_print("  [cyan]exec: vLLM health check passed[/cyan]")
+            return True
+
+        except requests.RequestException as e:
+            verbose_print(f"  [cyan]exec: Health check request failed: {e}[/cyan]")
+            return False
+
+    def _collect_diagnostic_information(
+        self, service_name: str, start_error: str = ""
+    ) -> str:
+        """Collect diagnostic information and filter for error/warning lines only."""
+        diagnostic_sections = []
+
+        # Add start error if provided
+        if start_error:
+            diagnostic_sections.append("=== START COMMAND ERROR ===")
+            diagnostic_sections.append(start_error)
+            diagnostic_sections.append("")
+
+        # Collect service-specific logs using the same pattern as suggested command
+        # Use journalctl --user -u service -e for targeted service logs
+        journalctl_cmd = [
+            "journalctl",
+            "--user",
+            "-u",
+            service_name,
+            "-e",
+            "--no-pager",
+            "-n",
+            "50",
+        ]
+        verbose_print(f"  [cyan]exec: {' '.join(journalctl_cmd)}[/cyan]")
+
+        try:
+            # Run service-specific journalctl command
+            result = subprocess.run(
+                journalctl_cmd, capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                diagnostic_sections.append(
+                    f"=== JOURNALCTL --USER -U {service_name.upper()} -E ==="
+                )
+                diagnostic_sections.append(result.stdout.strip())
+                diagnostic_sections.append("")
+            else:
+                verbose_print(
+                    f"  [cyan]exec: No recent logs found for {service_name}[/cyan]"
+                )
+
+        except subprocess.TimeoutExpired:
+            diagnostic_sections.append(
+                f"=== JOURNALCTL --USER -U {service_name.upper()} -E ==="
+            )
+            diagnostic_sections.append("Command timed out")
+            diagnostic_sections.append("")
+        except Exception as e:
+            diagnostic_sections.append(
+                f"=== JOURNALCTL --USER -U {service_name.upper()} -E ==="
+            )
+            diagnostic_sections.append(f"Command failed: {e}")
+            diagnostic_sections.append("")
+
+        # Also get specific service status for additional context
+        status_cmd = ["systemctl", "--user", "status", service_name, "--no-pager", "-l"]
+        verbose_print(f"  [cyan]exec: {' '.join(status_cmd)}[/cyan]")
+
+        try:
+            result = subprocess.run(
+                status_cmd, capture_output=True, text=True, timeout=15
+            )
+            # Include both stdout and stderr, as systemctl status shows useful info in both
+            status_output = ""
+            if result.stdout:
+                status_output += result.stdout
+            if result.stderr:
+                status_output += "\nSTDERR:\n" + result.stderr
+
+            if status_output.strip():
+                diagnostic_sections.append(
+                    f"=== SYSTEMCTL STATUS {service_name.upper()} ==="
+                )
+                diagnostic_sections.append(status_output.strip())
+                diagnostic_sections.append("")
+
+        except subprocess.TimeoutExpired:
+            diagnostic_sections.append(
+                f"=== SYSTEMCTL STATUS {service_name.upper()} ==="
+            )
+            diagnostic_sections.append("Command timed out")
+            diagnostic_sections.append("")
+        except Exception as e:
+            diagnostic_sections.append(
+                f"=== SYSTEMCTL STATUS {service_name.upper()} ==="
+            )
+            diagnostic_sections.append(f"Command failed: {e}")
+            diagnostic_sections.append("")
+
+        return "\n".join(diagnostic_sections)
+
+    def _filter_error_warning_lines(self, stdout: str, stderr: str) -> str:
+        """Filter output to extract only lines containing errors or warnings."""
+        filtered_lines = []
+
+        # Error and warning keywords to look for
+        error_keywords = [
+            "error",
+            "err:",
+            "failed",
+            "failure",
+            "exception",
+            "traceback",
+            "fatal",
+            "critical",
+            "cannot",
+            "unable",
+            "denied",
+            "refused",
+            "timeout",
+            "timed out",
+            "not found",
+            "no such",
+            "invalid",
+            "bad",
+            "wrong",
+            "illegal",
+            "forbidden",
+            "unauthorized",
+            "missing",
+            "absent",
+            "unavailable",
+            "unreachable",
+        ]
+
+        warning_keywords = [
+            "warning",
+            "warn:",
+            "deprecated",
+            "obsolete",
+            "caution",
+            "notice",
+            "attention",
+            "alert",
+            "suspicious",
+            "unusual",
+        ]
+
+        # Combine all keywords
+        all_keywords = error_keywords + warning_keywords
+
+        # Process stdout
+        if stdout:
+            for line in stdout.split("\n"):
+                line_lower = line.lower().strip()
+                if line_lower and any(
+                    keyword in line_lower for keyword in all_keywords
+                ):
+                    filtered_lines.append(line.strip())
+
+        # Process stderr (usually contains errors)
+        if stderr:
+            for line in stderr.split("\n"):
+                line_stripped = line.strip()
+                if line_stripped:
+                    filtered_lines.append(f"STDERR: {line_stripped}")
+
+        return "\n".join(filtered_lines) if filtered_lines else ""
+
+    def _format_long_command_lines(self, content: str) -> str:
+        """Format long command lines for better readability."""
+        lines = content.split("\n")
+        formatted_lines = []
+
+        for line in lines:
+            # Check if line contains a very long command (Process: ... ExecStart=...)
+            if "ExecStart=" in line and len(line) > 120:
+                # Find the ExecStart part
+                if "Process:" in line and "ExecStart=" in line:
+                    # Split at ExecStart=
+                    parts = line.split("ExecStart=", 1)
+                    if len(parts) == 2:
+                        prefix = parts[0] + "ExecStart="
+                        command_part = parts[1]
+
+                        # Format the command part by breaking at common separators
+                        formatted_command = self._format_podman_command(command_part)
+                        formatted_lines.append(prefix)
+                        formatted_lines.extend(formatted_command)
+                        continue
+
+            # For other lines, just add as-is
+            formatted_lines.append(line)
+
+        return "\n".join(formatted_lines)
+
+    def _format_podman_command(self, command: str) -> list:
+        """Format a long podman command for better readability."""
+        # Split the command into parts, preserving quoted arguments
+        import shlex
+
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            # If shlex fails, fall back to simple split
+            parts = command.split()
+
+        formatted_lines = []
+        current_line = "  "  # Start with indentation
+
+        for i, part in enumerate(parts):
+            # Add line breaks before certain flags for readability
+            if part.startswith("--") and i > 0:
+                if len(current_line) > 80:  # If line is getting long
+                    formatted_lines.append(current_line.rstrip())
+                    current_line = "    "  # More indentation for continuation
+
+            current_line += part + " "
+
+            # Special handling for certain flags that take values
+            if part in [
+                "--name",
+                "--cidfile",
+                "--network",
+                "--publish",
+                "--env",
+                "--label",
+                "--health-cmd",
+            ]:
+                # Keep the next argument on the same line
+                continue
+
+        # Add the final line
+        if current_line.strip():
+            formatted_lines.append(current_line.rstrip())
+
+        return formatted_lines
+
+    def _parse_diagnostic_commands(self, error_message: str, service_name: str) -> list:
+        """Parse error message for suggested diagnostic commands and return them."""
+        import re
+
+        commands = []
+
+        # Look for systemctl status commands
+        status_pattern = r'systemctl\s+--user\s+status\s+([^\s"]+)'
+        status_matches = re.findall(status_pattern, error_message)
+        for match in status_matches:
+            commands.append(
+                ("systemctl status", ["systemctl", "--user", "status", match])
+            )
+
+        # Look for journalctl commands
+        journal_pattern = r'journalctl\s+--user\s+([^"]+)'
+        journal_matches = re.findall(journal_pattern, error_message)
+        for match in journal_matches:
+            # Parse the journalctl command arguments and add time/line limits
+            args = ["journalctl", "--user"] + match.strip().split()
+            # Add time constraint to focus on recent failure only
+            if "--since" not in args:
+                args.extend(["--since", "-30s"])
+            # Add line limit to prevent overwhelming AI with too much data
+            if "-n" not in args and "--lines" not in args:
+                args.extend(["-n", "50"])
+            commands.append(("journalctl", args))
+
+        # If no specific commands found but we have a service name, add default diagnostics
+        if not commands:
+            commands.append(
+                ("systemctl status", ["systemctl", "--user", "status", service_name])
+            )
+            commands.append(
+                (
+                    "journalctl extended",
+                    [
+                        "journalctl",
+                        "--user",
+                        "-xeu",
+                        service_name,
+                        "--since",
+                        "-30s",
+                        "-n",
+                        "50",
+                    ],
+                )
+            )
+
+        return commands
+
+    def _strip_rich_markup(self, text: str) -> str:
+        """Strip Rich markup from text before sending to AI."""
+        import re
+
+        # Remove Rich markup patterns like [cyan], [/cyan], [bold], [/bold], etc.
+        # This regex matches [tag] and [/tag] patterns, including colors and styles
+        text = re.sub(r"\[/?[a-zA-Z0-9_\s#.]+\]", "", text)
+
+        # Also remove any remaining isolated [/cyan] type patterns that might be missed
+        text = re.sub(r"\[/[a-zA-Z0-9_]+\]", "", text)
+
+        # Clean up any double spaces that might result from markup removal, but preserve line breaks
+        text = re.sub(
+            r"[ \t]+", " ", text
+        )  # Only collapse spaces and tabs, not newlines
+
+        return text.strip()
+
+    def _get_ai_reinit_analysis(
+        self, diagnostic_info: str, target: str, service_name: str
+    ) -> Optional[str]:
+        """Get AI analysis of reinit failure from local vLLM."""
+        if requests is None:
+            verbose_print("  [cyan]exec: requests library not available[/cyan]")
+            return None
+
+        # Prepare the analysis prompt
+        prompt = self._build_reinit_analysis_prompt(
+            diagnostic_info, target, service_name
+        )
+
+        # Display the full AI prompt in verbose mode
+        from config import _verbose_enabled
+
+        if _verbose_enabled:
+            verbose_print("  [cyan]exec: AI Analysis Prompt:[/cyan]")
+            verbose_print("  [cyan]" + "─" * 80 + "[/cyan]")
+            for line in prompt.split("\n"):
+                verbose_print(f"  [cyan]{line}[/cyan]")
+            verbose_print("  [cyan]" + "─" * 80 + "[/cyan]")
+            verbose_print("")
+
+        verbose_print(
+            "  [cyan]exec: Sending AI analysis request to curl -X POST http://localhost:8002/v1/chat/completions[/cyan]"
+        )
+
+        try:
+            response = requests.post(
+                "http://localhost:8002/v1/chat/completions",
+                json={
+                    "model": "vllm-qwen25-coder-32b-instruct-awq",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 1000,
+                    "temperature": 0.1,
+                    "stop": ["\n\n---", "\n\nUser:", "\n\nHuman:"],
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=30,
+            )
+
+            verbose_print(
+                f"  [cyan]exec: AI analysis response: status={response.status_code}[/cyan]"
+            )
+            if response.status_code == 200:
+                result = response.json()
+                verbose_print(
+                    f"  [cyan]exec: Response JSON keys: {list(result.keys()) if result else 'None'}[/cyan]"
+                )
+                if "choices" in result and len(result["choices"]) > 0:
+                    verbose_print(
+                        "  [cyan]exec: AI analysis successful, returning response[/cyan]"
+                    )
+                    # Handle both completions and chat completions response formats
+                    choice = result["choices"][0]
+                    if "message" in choice:
+                        return choice["message"]["content"].strip()
+                    elif "text" in choice:
+                        return choice["text"].strip()
+                else:
+                    verbose_print(
+                        "  [cyan]exec: No choices in response or empty choices[/cyan]"
+                    )
+            else:
+                verbose_print(
+                    f"  [cyan]exec: AI analysis request failed with status {response.status_code}[/cyan]"
+                )
+                verbose_print(
+                    f"  [cyan]exec: Response text: {response.text[:200]}...[/cyan]"
+                )
+
+        except requests.RequestException as e:
+            verbose_print(f"  [cyan]exec: AI analysis request failed: {e}[/cyan]")
+
+        return None
+
+    def _build_reinit_analysis_prompt(
+        self, diagnostic_info: str, target: str, service_name: str
+    ) -> str:
+        """Build the analysis prompt for the AI model."""
+        from datetime import datetime
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        return f"""You are a system administration expert specializing in systemd service troubleshooting and reinit operations.
+
+Analyze the following service reinit failure and provide a brief cause/resolution report:
+
+Service: {target}.container
+Target: {target}
+Operation: reinit (stop -> daemon-reload -> start)
+Timestamp: {timestamp}
+
+Error and Warning Messages:
+{diagnostic_info}
+
+Note: The diagnostic information above contains only filtered error and warning messages from systemctl status, journalctl, and recent service logs. This focused data should help identify the root cause quickly.
+
+Provide a concise analysis with:
+1. **Root Cause**: Primary reason for the reinit failure based on the error/warning messages
+2. **Immediate Fix**: Specific steps to resolve the issue right now
+3. **Configuration Changes**: Any config file modifications needed
+4. **Prevention**: How to avoid this issue in future reinits
+
+Keep the response brief and actionable. Focus on the most critical issues first."""
+
+    def _display_ai_reinit_analysis(
+        self, analysis: str, target: str, service_name: str
+    ) -> None:
+        """Display AI analysis results with rich formatting."""
+        # Use the same formatting as ai_diagnostics.py for consistency
+        console.print("[bold green]AI Reinit Failure Analysis[/bold green]")
+        console.print()  # Add newline after header
+        # Manual markdown parsing and Rich formatting
+        self._render_markdown_manually(analysis)
+
+        # Show follow-up commands with interactive menu
+        self._show_ai_reinit_analysis_menu(target, service_name)
+
+    def _render_markdown_manually(self, content: str) -> None:
+        """Manually render markdown content using Rich formatting with 120 character width"""
+        import re
+        import textwrap
+
+        lines = content.split("\n")
+        previous_was_header = False
+        in_code_block = False
+
+        for i, line in enumerate(lines):
+            line = line.strip()
+
+            # Skip multiple consecutive empty lines
+            if not line:
+                if not previous_was_header and i > 0 and lines[i - 1].strip():
+                    console.print()
+                continue
+
+            # Handle headers (### Header)
+            if line.startswith("### "):
+                header_text = line[4:].strip()
+                # Don't add blank lines before headers
+                console.print(f"[bold cyan]{header_text}[/bold cyan]")
+                previous_was_header = True
+                continue
+            else:
+                previous_was_header = False
+
+            # Handle bold text (**text**)
+            line = re.sub(r"\*\*([^*]+)\*\*", r"[bold]\1[/bold]", line)
+
+            # Handle inline code (`code`) - but only for short, single-line code
+            # Don't apply cyan markup to very long code blocks that might span multiple lines
+            def replace_code(match):
+                code_content = match.group(1)
+                # Only apply cyan markup to short code snippets (less than 100 chars)
+                if len(code_content) < 100 and "\n" not in code_content:
+                    return f"[cyan]{code_content}[/cyan]"
+                else:
+                    # For long code blocks, just return the content without markup
+                    return code_content
+
+            line = re.sub(r"`([^`]+)`", replace_code, line)
+
+            # Handle code blocks (```)
+            if line.startswith("```"):
+                if line == "```text" or (line == "```" and not in_code_block):
+                    # Skip these markdown code block markers
+                    continue
+                elif line == "```" and in_code_block:
+                    # End of code block - skip the closing marker
+                    in_code_block = False
+                    continue
+                elif (
+                    "bash" in line
+                    or "ini" in line
+                    or any(lang in line for lang in ["python", "json", "yaml", "sh"])
+                ):
+                    # Start of code block - skip the opening marker
+                    in_code_block = True
+                    continue
+                else:
+                    # Unknown code block type - skip
+                    continue
+
+            # Handle content inside code blocks
+            if in_code_block:
+                # Indent code blocks and make them cyan
+                console.print(f"    [cyan]{line}[/cyan]")
+                continue
+
+            # Handle numbered lists (1. item)
+            if re.match(r"^\d+\.\s", line):
+                # Wrap list items at 120 characters with proper indentation
+                wrapped_lines = textwrap.fill(
+                    line, width=116, initial_indent="    ", subsequent_indent="       "
+                )
+                console.print(f"[white]{wrapped_lines}[/white]")
+                continue
+
+            # Handle bullet points (- item)
+            if line.startswith("- "):
+                # Wrap bullet points at 120 characters with proper indentation
+                wrapped_lines = textwrap.fill(
+                    line,
+                    width=112,
+                    initial_indent="        ",
+                    subsequent_indent="          ",
+                )
+                console.print(f"[white]{wrapped_lines}[/white]")
+                continue
+
+            # Handle code section markers like [Service]
+            if line.startswith("[") and line.endswith("]") and len(line) < 20:
+                # Indent code section markers
+                console.print(f"        [dim cyan]{line}[/dim cyan]")
+                continue
+
+            # Handle environment variable assignments
+            if line.startswith("Environment=") or "=" in line and "NEO4J_AUTH" in line:
+                # Double indent environment variable lines
+                console.print(f"            [cyan]{line}[/cyan]")
+                continue
+
+            # Handle command lines (sudo systemctl, etc.)
+            if line.startswith("sudo ") or line.startswith("systemctl "):
+                # Indent command lines as code
+                console.print(f"            [cyan]{line}[/cyan]")
+                continue
+
+            # Regular text - wrap at 120 characters with indentation
+            # Check if this looks like a log line (contains timestamp pattern)
+            if re.match(r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}", line):
+                # Double indent log lines
+                if len(line) > 112:  # Account for 8-space indent
+                    wrapped_lines = textwrap.fill(
+                        line,
+                        width=112,
+                        initial_indent="        ",
+                        subsequent_indent="        ",
+                    )
+                    console.print(wrapped_lines)
+                else:
+                    console.print(f"        {line}")
+            else:
+                # Single indent regular text paragraphs
+                if len(line) > 116:  # Account for 4-space indent
+                    wrapped_lines = textwrap.fill(
+                        line, width=116, initial_indent="    ", subsequent_indent="    "
+                    )
+                    console.print(wrapped_lines)
+                else:
+                    console.print(f"    {line}")
+
+    def _show_ai_reinit_analysis_menu(self, target: str, service_name: str) -> None:
+        """Show recommended actions after AI analysis"""
+        console.print("\n      [bold green]Recommended actions:[/bold green]")
+        console.print(
+            "[green]    Fix configuration:[/green] [white]Edit the service configuration files[/white]"
+        )
+        console.print(
+            f"[green]       Retry reinit:[/green] [white]pm reinit {target} -v[/white]"
+        )
+        console.print(
+            f"[green]     Check service logs:[/green] [white]pm logs {target}[/white]"
+        )
+        console.print(
+            f"[green]    Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
+        )
+        console.print(
+            f"[green]   Manual service start:[/green] [white]systemctl --user start {service_name}[/white]"
         )
         console.print()

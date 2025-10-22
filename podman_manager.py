@@ -92,9 +92,9 @@ def show_rich_help():
                     "pm reinit vllm-delegator -v -b",
                 ),
                 (
-                    "rebuild [cyan]<service>[/cyan]",
-                    "Rebuild container image and restart service",
-                    "pm rebuild vllm-delegator",
+                    "build [cyan]<service>[/cyan]",
+                    "Build container image and restart service",
+                    "pm build vllm-delegator",
                 ),
                 (
                     "start [cyan]<stack|service>[/cyan] [-b]",
@@ -251,7 +251,7 @@ class CustomArgumentParser(argparse.ArgumentParser):
             "diagnose",
             "reset-failed",
             "show-service-file",
-            "rebuild",
+            "build",
         ]
 
         console.print()
@@ -823,14 +823,14 @@ def main():
         help="Use quadlet rebuild process",
     )
 
-    rebuild_parser = subparsers.add_parser(
-        "rebuild", help="Rebuild container image and restart service"
+    build_parser = subparsers.add_parser(
+        "build", help="Build container image and restart service"
     )
-    rebuild_parser.add_argument(
+    build_parser.add_argument(
         "target",
         help="Service name (vllm-delegator, etc.)",
     )
-    rebuild_parser.add_argument(
+    build_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -1245,7 +1245,7 @@ def main():
                 container_ops.reinit, args.target, build_type=build_type
             )
             sys.exit(0 if success else 1)
-        elif args.command == "rebuild":
+        elif args.command == "build":
             handle_command_verbose(args)
             success = try_with_fallback(container_ops.rebuild, args.target)
             sys.exit(0 if success else 1)

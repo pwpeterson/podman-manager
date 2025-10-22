@@ -102,7 +102,9 @@ class QuadletOperations:
     # Container Building Operations
     def rebuild(self, target: str) -> bool:
         """Rebuild container image and restart service"""
-        console.print(f"[yellow]Rebuilding {target}...[/yellow]")
+        console.print()
+        console.print(f"[green]Building {target}...[/green]")
+        console.print()
 
         service_name = self.manager._find_service_name(target)
 

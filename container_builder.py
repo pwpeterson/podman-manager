@@ -3,11 +3,11 @@
 import os
 import subprocess
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from config import console
+from config import console, verbose_print
 
 
 class ContainerBuilder:
@@ -23,14 +23,197 @@ class ContainerBuilder:
         console.print(output)
 
     def build_service(self, target: str) -> bool:
-        """Build images for a single service using quadlet build process"""
+        """Build images for a single service by looking for Dockerfile.<service_name>"""
         try:
-            # Use the quadlet installation script for building
-            return self._build_service_quadlet(target)
+            # Look for Dockerfile with service name suffix in source directory
+            dockerfile_name = f"Dockerfile.{target}"
+
+            # Search in quadlets directory
+            quadlets_dir = "/home/pwp/srv/local-ai-packaged/quadlets"
+
+            dockerfile_path: Union[Path, None] = None
+            build_dir: Union[Path, None] = None
+
+            # Search for the Dockerfile in quadlets directory
+            console.print(f"[green]Checking for {dockerfile_name}[/green]")
+            verbose_print(f"[cyan]exec: Checking directory {quadlets_dir}[/cyan]")
+
+            source_path = Path(quadlets_dir)
+            if source_path.exists():
+                # Search recursively for the Dockerfile
+                for dockerfile in source_path.rglob(dockerfile_name):
+                    dockerfile_path = dockerfile
+                    build_dir = dockerfile.parent
+                    verbose_print(
+                        f"[cyan]exec: Found {dockerfile_name} at {dockerfile_path}[/cyan]"
+                    )
+                    break
+            else:
+                verbose_print(
+                    f"[cyan]exec: Directory {quadlets_dir} does not exist[/cyan]"
+                )
+
+            if not dockerfile_path or not dockerfile_path.exists():
+                console.print()
+                console.print(
+                    f"[yellow]Build stopped: Missing Dockerfile.{target}[/yellow]"
+                )
+                console.print()
+                return False
+
+            # Ensure build_dir is not None before passing to _build_with_dockerfile
+            if build_dir is None:
+                console.print(f"[red]Build directory not found for {target}[/red]")
+                return False
+
+            # Build the container image
+            return self._build_with_dockerfile(target, build_dir, dockerfile_name)  # type: ignore
 
         except Exception as e:
             console.print(f"[red]Error building {target}: {e}[/red]")
             return False
+
+    def _build_with_dockerfile(
+        self, target: str, build_dir: Path, dockerfile_name: str
+    ) -> bool:
+        """Build container image using the specified Dockerfile"""
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(build_dir)
+
+            # Determine image name
+            image_name = f"localhost/{target}:latest"
+
+            # Remove old image to force rebuild (quietly)
+            verbose_print(f"[cyan]exec: podman rmi {image_name}[/cyan]")
+            subprocess.run(
+                ["podman", "rmi", image_name], capture_output=True, text=True
+            )
+
+            # Build new image first
+            build_cmd = [
+                "podman",
+                "build",
+                "--no-cache",
+                "-f",
+                dockerfile_name,
+                "-t",
+                image_name,
+                ".",
+            ]
+            verbose_print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
+
+            from config import _verbose_enabled
+
+            if _verbose_enabled:
+                # In verbose mode, show build output with indentation
+                console.print(f"[green]Building image: {image_name}[/green]")
+
+                process = subprocess.Popen(
+                    build_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True,
+                )
+                if process.stdout:
+                    for line in iter(process.stdout.readline, ""):  # type: ignore
+                        if line.strip():
+                            console.print(f"  {line.rstrip()}")
+                process.wait()
+                build_result = process
+            else:
+                # In non-verbose mode, use spinner and capture output
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn(f"[yellow]Building image: {image_name}[/yellow]"),
+                    console=console,
+                    transient=True,
+                ) as progress:
+                    task = progress.add_task("building", total=None)
+                    build_result = subprocess.run(
+                        build_cmd, capture_output=True, text=True
+                    )
+                    progress.remove_task(task)
+
+            if build_result.returncode != 0:
+                console.print("[red]❌ Build failed![/red]")
+                # Handle both Popen and CompletedProcess objects
+                if hasattr(build_result, "stderr") and build_result.stderr:
+                    if isinstance(build_result.stderr, str):
+                        console.print(f"[red]{build_result.stderr.strip()}[/red]")  # type: ignore
+                return False
+
+            # Show build output in verbose mode (only if captured)
+            if (
+                not _verbose_enabled
+                and hasattr(build_result, "stdout")
+                and build_result.stdout
+            ):
+                console.print("Build output:")
+                if isinstance(build_result.stdout, str):
+                    for line in build_result.stdout.strip().split("\n"):  # type: ignore
+                        if line.strip():
+                            console.print(f"  {line}")
+
+            console.print(f"[green]Image {target} built successfully[/green]")
+            # Now stop and remove existing container if it exists with spinner
+            with Progress(
+                SpinnerColumn(),
+                TextColumn(f"[bold white]Stopping {target}...[/bold white]"),
+                console=console,
+                transient=True,
+            ) as progress:
+                task = progress.add_task("stopping", total=None)
+
+                verbose_print(f"[cyan]exec: podman container exists {target}[/cyan]")
+                subprocess.run(
+                    ["podman", "container", "exists", target],
+                    capture_output=True,
+                    text=True,
+                )
+                if (
+                    subprocess.run(
+                        ["podman", "container", "exists", target], capture_output=True
+                    ).returncode
+                    == 0
+                ):
+                    # Check if container is running
+                    verbose_print(
+                        f"[cyan]exec: podman container inspect {target} --format {{{{.State.Running}}}}[/cyan]"
+                    )
+                    result = subprocess.run(
+                        [
+                            "podman",
+                            "container",
+                            "inspect",
+                            target,
+                            "--format",
+                            "{{.State.Running}}",
+                        ],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if result.returncode == 0 and result.stdout.strip() == "true":
+                        verbose_print(f"[cyan]exec: podman stop {target}[/cyan]")
+                        subprocess.run(
+                            ["podman", "stop", target], capture_output=True, text=True
+                        )
+                    verbose_print(f"[cyan]exec: podman rm {target}[/cyan]")
+                    subprocess.run(
+                        ["podman", "rm", target], capture_output=True, text=True
+                    )
+
+                progress.remove_task(task)
+
+            return True
+
+        except Exception as e:
+            console.print(f"[red]Error during container build: {e}[/red]")
+            return False
+        finally:
+            os.chdir(original_cwd)
 
     def _build_service_quadlet(self, target: str) -> bool:
         """Build service using quadlet installation script"""
@@ -177,9 +360,9 @@ class ContainerBuilder:
                     os.chdir(original_cwd)
             else:
                 console.print(
-                    f"[yellow]No podman build configuration for {target}, skipping[/yellow]"
+                    f"[yellow]No podman build configuration for {target}[/yellow]"
                 )
-                return True  # Not an error, just no build needed
+                return False  # Return False so caller can try alternative approach
 
         except Exception as e:
             console.print(f"[red]Error in podman build for {target}: {e}[/red]")
@@ -187,51 +370,58 @@ class ContainerBuilder:
 
     def rebuild_service(self, target: str) -> bool:
         """Rebuild a single service"""
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold white]{task.description}"),
-            console=console,
-            transient=True,
-        ) as progress:
-            # Step 1: Stop the service
-            task1 = progress.add_task("Step 1: Stopping service...", total=None)
-            stop_success = self.manager.stop_service(target)
-            progress.remove_task(task1)
+        # Step 1: Build the service (this now handles build-first-then-stop internally)
+        build_success = self.build_service(target)
 
-            if not stop_success:
-                console.print(
-                    "[yellow]Service was not running or failed to stop[/yellow]"
-                )
+        if not build_success:
+            console.print(f"[red]Failed to build {target} image.[/red]")
+            console.print()
+            return False
 
-            # Step 2: Build the service (this will call our specialized rebuild methods)
-            task2 = progress.add_task("Step 2: Rebuilding image...", total=None)
-            build_success = self.build_service(target)
-            progress.remove_task(task2)
+        # Step 2: Reload systemd daemon
+        from config import _verbose_enabled
 
-            if not build_success:
-                console.print("[red]Failed to rebuild image[/red]")
-                return False
-
-            # Step 3: Reload systemd daemon
-            task3 = progress.add_task("Step 3: Reloading systemd daemon...", total=None)
+        if _verbose_enabled:
+            console.print("[green]Reloading systemd user daemon[/green]")
             reload_success = self.manager.reload_daemon()
-            progress.remove_task(task3)
+        else:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold white]Reloading systemd daemon...[/bold white]"),
+                console=console,
+                transient=True,
+            ) as progress:
+                task = progress.add_task("reloading", total=None)
+                reload_success = self.manager.reload_daemon()
+                progress.remove_task(task)
 
-            if not reload_success:
-                console.print("[red]Failed to reload systemd daemon[/red]")
-                return False
+        if not reload_success:
+            console.print("[red]Failed to reload systemd daemon[/red]")
+            return False
 
-            # Step 4: Start the service
-            task4 = progress.add_task("Step 4: Starting service...", total=None)
+        # Step 3: Start the service
+        if _verbose_enabled:
+            console.print()
+            console.print(f"[green]Starting {target}.service[/green]")
             start_success = self.manager.start_service(target)
-            progress.remove_task(task4)
+        else:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn(f"[bold white]Starting {target}...[/bold white]"),
+                console=console,
+                transient=True,
+            ) as progress:
+                task = progress.add_task("starting", total=None)
+                start_success = self.manager.start_service(target)
+                progress.remove_task(task)
 
-            if start_success:
-                console.print(f"[green]Successfully rebuilt {target}[/green]")
-                return True
-            else:
-                console.print(f"[red]Failed to start {target} after rebuild[/red]")
-                return False
+        if start_success:
+            console.print(f"[green]Successfully built {target}[/green]")
+            console.print()
+            return True
+        else:
+            console.print(f"[red]Failed to start {target} after build[/red]")
+            return False
 
     def rebuild_stack(self, project: str) -> bool:
         """Rebuild an entire project stack"""

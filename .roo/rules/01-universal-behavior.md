@@ -134,3 +134,33 @@ These rules apply to all Roo modes and override any conflicting mode-specific ru
 **MUST** explain why a mode switch is beneficial
 
 **NOTE**: These universal rules form the foundation for all Roo interactions. Mode-specific rules build upon these fundamentals.
+
+## Task Completion Reporting
+
+**MUST** provide brief completion confirmations by default:
+- One-line summary of what was accomplished
+- No detailed feature lists or technical explanations
+- No step-by-step breakdowns unless requested
+- Format: "Completed: [brief action description]"
+
+**DETAILED SUMMARIES**: Only when user explicitly requests with phrases like:
+- "Give me a summary"
+- "What did you accomplish?"
+- "Provide details"
+- "Show me what was done"
+
+**BRIEF COMPLETION EXAMPLES**:
+- "Completed: Enhanced AI troubleshooting for reinit command with automatic diagnostic parsing"
+- "Completed: Updated configuration file with new database settings"
+- "Completed: Fixed memory leak in user authentication module"
+```
+
+## Alternative Approach
+
+If you want even more control, add this verbosity toggle:
+```
+## Completion Verbosity Control
+
+**DEFAULT**: Brief completions ("Done." or single sentence)
+**VERBOSE**: Detailed completion reports
+**TOGGLE**: User can say "verbose completions" or "brief completions" to change default

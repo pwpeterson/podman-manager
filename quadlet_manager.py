@@ -478,11 +478,9 @@ class QuadletManager:
 
     def _show_install_suggestion(self, target: str) -> None:
         """Show suggestion to install the missing container file"""
-        console.print()
         console.print(
             f"[yellow]Required container file is missing, run pm install {target}[/yellow]"
         )
-        console.print()
 
     def _command_exists(self, command: str) -> bool:
         """Check if a command exists in PATH"""
@@ -1225,7 +1223,8 @@ class QuadletManager:
         result = self._run_systemctl_command(cmd, "daemon_reload")
 
         if result.returncode == 0:
-            console.print("\n[green]Reloaded systemd user daemon[/green]\n")
+            console.print("[green]Reloaded systemd user daemon[/green]")
+            console.print()
             return True
         else:
             console.print("[red]Failed to reload systemd user daemon[/red]")
