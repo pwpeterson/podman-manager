@@ -314,8 +314,6 @@ class ServiceLifecycle:
             console.print(f"[red]No services found for {project} stack[/red]")
             return False
 
-        console.print(f"[yellow]Stopping {project} stack...[/yellow]")
-
         success = True
         stopped_services = []
         failed_services = []

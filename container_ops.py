@@ -1143,7 +1143,7 @@ class ContainerOperations:
 
                     # Show clean output
                     for service in stopped_services:
-                        console.print(f"[green]✓ {service}[/green]")
+                        console.print(f"[green]{service} stopped[/green]")
 
                 console.print("[green]✓ All services stopped[/green]")
                 return True

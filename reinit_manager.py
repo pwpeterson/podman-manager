@@ -225,8 +225,11 @@ class ReinitManager:
                 self._show_next_steps(target)
                 return True
             else:
+                clean_service_name = display_name.replace(".service", "").replace(
+                    ".target", ""
+                )
                 console.print(
-                    f"[red]Failed to reinitialize {display_name} - service did not start properly[/red]\n"
+                    f"    [red]{clean_service_name} failed -[/red] [red]See[/red] journalctl -xe | grep {clean_service_name}"
                 )
                 # Show the detailed error logs and recommendations after the failure message
                 self._show_startup_failure_logs(display_name, service_name)
@@ -265,37 +268,12 @@ class ReinitManager:
                 service_match.group(1) if service_match else target
             )
 
+            # Remove .service suffix from service name for display
+            clean_service_name = service_name_from_error.replace(
+                ".service", ""
+            ).replace(".target", "")
             console.print(
-                f"[red]❌ Service startup failed: {service_name_from_error}[/red]"
-            )
-            console.print("[yellow]💡 Recommended actions:[/yellow]")
-
-            # Extract systemd-recommended commands from error message
-            systemd_commands = []
-            if 'See "' in error_msg:
-                # Find all commands between quotes after "See"
-                see_pattern = r'See "([^"]+)"'
-                matches = re.findall(see_pattern, error_msg)
-                systemd_commands = matches
-
-            # Add systemd-recommended commands first
-            for cmd in systemd_commands:
-                console.print(
-                    f"[green] Run systemd command:[/green] [white]{cmd}[/white]"
-                )
-
-            # Add our standard troubleshooting commands
-            console.print(
-                f"[green] Check service status:[/green] [white]pm status {target}[/white]"
-            )
-            console.print(
-                f"[green]   View detailed logs:[/green] [white]pm logs {target}[/white]"
-            )
-            console.print(
-                f"[green]   Diagnose the issue:[/green] [white]pm diagnose {target}[/white]"
-            )
-            console.print(
-                f"[green]   Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
+                f"    [red]{clean_service_name} failed -[/red] [white]pm logs {target} -ai[/white]"
             )
         else:
             console.print(f"[red]Start failed: {error_msg}[/red]")

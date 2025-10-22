@@ -1021,7 +1021,7 @@ class QuadletManager:
                 display_name = (
                     target if target in self.quadlet_services else service_name
                 )
-                console.print(f"[green]✓ {display_name}[/green]")
+                console.print(f"[green]{display_name} stopped[/green]")
             return True
         else:
             # If normal stop fails or service is still running, try aggressive stopping
@@ -1040,7 +1040,7 @@ class QuadletManager:
 
                 if is_service_stopped():
                     if not quiet:
-                        console.print(f"[green]✓ {target}[/green]")
+                        console.print(f"[green]{target} stopped[/green]")
                     return True
 
                 # If still running, try SIGKILL
@@ -1054,7 +1054,7 @@ class QuadletManager:
 
                 if is_service_stopped():
                     if not quiet:
-                        console.print(f"[green]✓ {target} (force killed)[/green]")
+                        console.print(f"[green]{target} stopped (force killed)[/green]")
                     return True
 
                 # Last resort: try to kill the container directly
@@ -1122,7 +1122,7 @@ class QuadletManager:
                 if is_service_stopped():
                     if not quiet:
                         console.print(
-                            f"[green]✓ {target} (containers eliminated)[/green]"
+                            f"[green]{target} stopped (containers eliminated)[/green]"
                         )
                     return True
                 elif containers_found and not quiet:
@@ -1225,7 +1225,7 @@ class QuadletManager:
         result = self._run_systemctl_command(cmd, "daemon_reload")
 
         if result.returncode == 0:
-            console.print("\n[green]Reloaded systemd user daemon[/green]")
+            console.print("\n[green]Reloaded systemd user daemon[/green]\n")
             return True
         else:
             console.print("[red]Failed to reload systemd user daemon[/red]")

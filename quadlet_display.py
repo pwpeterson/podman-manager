@@ -105,9 +105,9 @@ class QuadletDisplayManager:
             potential_stack_name = f"{project_name}-stack"
             if potential_stack_name not in self.manager.stack_services:
                 all_items[project_name] = {"type": "mixed", "services": {}}
-                # Add compose services with (compose) suffix
+                # Add compose services
                 for service_name, service_info in project_info["services"].items():
-                    display_name = f"{service_name} [dim white](compose)[/dim white]"
+                    display_name = service_name
                     all_items[project_name]["services"][display_name] = service_info
             else:
                 compose_stack_names.add(project_name)
@@ -140,7 +140,11 @@ class QuadletDisplayManager:
                         # Default: unknown status
                         color = "yellow"
 
-                    display_name = f"[{color}]{full_name}[/{color}] [dim white](quadlet)[/dim white]"
+                    # Remove .service suffix from display name
+                    clean_name = full_name.replace(".service", "").replace(
+                        ".target", ""
+                    )
+                    display_name = f"[{color}]{clean_name}[/{color}]"
                     all_items[stack_name]["services"][display_name] = {
                         "full_name": full_name
                     }
@@ -151,9 +155,7 @@ class QuadletDisplayManager:
                 for service_name, service_info in compose_projects[
                     compose_project_name
                 ]["services"].items():
-                    compose_display_name = (
-                        f"{service_name} [dim white](compose)[/dim white]"
-                    )
+                    compose_display_name = service_name
                     all_items[stack_name]["services"][
                         compose_display_name
                     ] = service_info
@@ -165,9 +167,9 @@ class QuadletDisplayManager:
                 self.manager.quadlets_dir / f"{self.manager.stack_target}"
             )
             if stack_target_path.exists():
-                stack_display_name = (
-                    f"{self.manager.stack_target} [dim white](quadlet)[/dim white]"
-                )
+                # Remove .target suffix from stack display name
+                clean_stack_name = self.manager.stack_target.replace(".target", "")
+                stack_display_name = f"{clean_stack_name}"
                 all_items["vllm-stack"]["services"][stack_display_name] = {
                     "full_name": self.manager.stack_target
                 }
@@ -328,10 +330,12 @@ class QuadletDisplayManager:
         # Add individual services
         services_node = tree.add("[cyan]Individual Services[/cyan]")
         for short_name, full_name in sorted(self.manager.quadlet_services.items()):
+            # Remove .service suffix from display name
+            clean_full_name = full_name.replace(".service", "").replace(".target", "")
             service_node = services_node.add(
-                f"[yellow]{short_name}[/yellow] ({full_name})"
+                f"[yellow]{short_name}[/yellow] ({clean_full_name})"
             )
-            service_node.add(f"[dim]Short alias for {full_name}[/dim]")
+            service_node.add(f"[dim]Short alias for {clean_full_name}[/dim]")
 
         console.print(tree)
 

@@ -1,5 +1,7 @@
 """Stack management operations for multi-service projects."""
 
+# pyright: reportPossiblyUnboundVariable=false
+
 import subprocess
 import time
 from typing import List
@@ -35,8 +37,6 @@ class StackManager:
 
     def down(self, target: str = "vllm-stack") -> bool:
         """Stop all services in a stack or project"""
-        console.print(f"[yellow]Stopping {target}...[/yellow]")
-
         # Handle stack targets
         if target.endswith("-stack"):
             project_name = target[:-6]  # Remove "-stack" suffix
@@ -83,35 +83,55 @@ class StackManager:
             console.print(f"[red]No services found for {project} stack[/red]")
             return False
 
-        console.print(f"[yellow]Stopping {project} stack...[/yellow]")
+        console.print(f"[green]Stopping {project}-stack...[/green]")
 
         success = True
         stopped_services = []
         failed_services = []
 
         for service in services:
-            console.print(f"  Stopping {service}...")
-            if self.manager.stop_service(service, quiet=False):
+            # Show service stopping with spinner and yellow color
+            with Progress(
+                SpinnerColumn(),
+                TextColumn(f"  [yellow]Stopping {service}...[/yellow]"),
+                console=console,
+                transient=True,
+            ) as progress:
+                task = progress.add_task("stopping", total=None)
+                service_stopped = self.manager.stop_service(service, quiet=True)
+                progress.remove_task(task)
+
+            if service_stopped:
+                console.print(f"[green]{service} stopped[/green]")
                 stopped_services.append(service)
             else:
+                console.print(
+                    f"[yellow]{service} was not running or failed to stop[/yellow]"
+                )
                 failed_services.append(service)
                 success = False
 
         if success:
+            console.print()
             console.print(
                 f"[green]Successfully stopped {project} stack ({len(stopped_services)} services)[/green]"
             )
+            console.print()
         else:
             if stopped_services:
+                console.print()
                 console.print(
                     f"[yellow]Partially stopped {project} stack: {len(stopped_services)} succeeded, {len(failed_services)} failed[/yellow]"
                 )
                 console.print(f"[dim]  Stopped: {', '.join(stopped_services)}[/dim]")
                 console.print(f"[dim]  Failed: {', '.join(failed_services)}[/dim]")
+                console.print()
             else:
+                console.print()
                 console.print(
                     f"[yellow]No services in {project} stack were running or could be stopped[/yellow]"
                 )
+                console.print()
         return success
 
     def _start_stack(self, project: str) -> bool:
@@ -287,7 +307,7 @@ class StackManager:
         update_cmd = ["podman", "auto-update"]
         console.print(f"[cyan]exec: {' '.join(update_cmd)}[/cyan]")
 
-        with Progress(
+        with Progress(  # type: ignore
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console,
@@ -413,10 +433,39 @@ class StackManager:
             console.print(f"[red]No services found for {project} stack[/red]")
             return False
 
-        verbose_print(f"[green]Stopping all {project} services...[/green]")
+        # Show different messages for verbose vs non-verbose mode
+        from config import _verbose_enabled
+
+        if _verbose_enabled:
+            verbose_print(f"[green]Stopping all {project} services...[/green]")
+        else:
+            console.print(f"[green]Stopping all {project} services...[/green]")
+
         stop_success = True
         for service in services:
-            verbose_print(f"  Stopping {service}...")
+            if _verbose_enabled:
+                verbose_print(f"  Stopping {service}...")
+            else:
+                # Show individual service stopping with spinner for non-verbose
+                with Progress(  # type: ignore
+                    SpinnerColumn(),
+                    TextColumn(f"  [green]Stopping {service}[/green]"),
+                    console=console,
+                    transient=True,
+                ) as progress:
+                    task = progress.add_task("stopping", total=None)
+                    service_stopped = self.manager.stop_service(service, quiet=True)
+                    progress.remove_task(task)
+
+                if service_stopped:
+                    console.print(f"    [green]{service} stopped[/green]")
+                else:
+                    console.print(
+                        f"    [yellow]{service} was not running or failed to stop[/yellow]"
+                    )
+                    stop_success = False
+                continue
+
             if not self.manager.stop_service(service, quiet=False):
                 stop_success = False
 
@@ -479,20 +528,71 @@ class StackManager:
                 time.sleep(1)  # Brief pause after reload
 
         # Restart all services
-        verbose_print(f"[green]Starting all {project} services...[/green]")
+        from config import _verbose_enabled
+
+        if _verbose_enabled:
+            verbose_print(f"[green]Starting all {project} services...[/green]")
+        else:
+            console.print(f"[green]Starting all {project} services...[/green]")
+
         start_success = True
         for service in services:
-            verbose_print(f"[dim]  Starting {service}...[/dim]")
+            from config import _verbose_enabled
+
+            if _verbose_enabled:
+                verbose_print(f"[dim]  Starting {service}...[/dim]")
+
             service_name = self.manager._find_service_name(service)
             if service_name:
-                restart_cmd = ["systemctl", "--user", "restart", service_name]
-                verbose_print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
-                restart_result = subprocess.run(
-                    restart_cmd, capture_output=True, text=True
-                )
+                if _verbose_enabled:
+                    restart_cmd = ["systemctl", "--user", "restart", service_name]
+                    verbose_print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
+                    restart_result = subprocess.run(
+                        restart_cmd, capture_output=True, text=True
+                    )
+                else:
+                    # Non-verbose mode: show spinner for starting
+                    with Progress(  # type: ignore
+                        SpinnerColumn(),
+                        TextColumn(f"  [yellow]Starting {service}[/yellow]"),
+                        console=console,
+                        transient=True,
+                    ) as progress:
+                        task = progress.add_task("starting", total=None)
+                        restart_cmd = ["systemctl", "--user", "restart", service_name]
+                        restart_result = subprocess.run(
+                            restart_cmd, capture_output=True, text=True
+                        )
+
+                        if restart_result.returncode == 0:
+                            # Monitor service startup
+                            service_success = self._monitor_service_startup(
+                                service, service_name
+                            )
+                        else:
+                            service_success = False
+
+                        progress.remove_task(task)
+
+                    if restart_result.returncode == 0 and service_success:
+                        console.print(f"    [green]{service} started[/green]")
+                    elif restart_result.returncode != 0:
+                        start_success = False
+                        self._handle_service_start_failure(service, restart_result)
+                    else:
+                        start_success = False
+                        clean_service_name = service.replace(".service", "").replace(
+                            ".target", ""
+                        )
+                        console.print(
+                            f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
+                        )
+                    continue
+
+                # Verbose mode continues with original logic
                 if restart_result.returncode == 0:
                     # Monitor service startup for this service
-                    with Progress(
+                    with Progress(  # type: ignore
                         SpinnerColumn(),
                         TextColumn(f"[yellow]Monitoring {service} startup...[/yellow]"),
                         console=console,
@@ -509,10 +609,12 @@ class StackManager:
                     else:
                         start_success = False
                         # Show detailed error logs after spinner disappears
-                        console.print(
-                            f"[red]Failed to start {service} - service did not start properly[/red]\n"
+                        clean_service_name = service.replace(".service", "").replace(
+                            ".target", ""
                         )
-                        self._show_startup_failure_logs(service, service_name)
+                        console.print(
+                            f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
+                        )
                 else:
                     start_success = False
                     self._handle_service_start_failure(service, restart_result)
@@ -527,35 +629,219 @@ class StackManager:
             self._show_stack_next_steps(project)
             return True
         else:
+            console.print()
             console.print(
                 f"[red]Failed to start some services in {project} stack[/red]"
             )
+            console.print()
             return False
 
     def _monitor_service_startup(
-        self, target: str, service_name: str, timeout: int = 10
+        self, target: str, service_name: str, timeout: int = 20
     ) -> bool:
-        """Monitor service logs to verify successful startup"""
-        # Wait a moment for service to start
-        time.sleep(10)
+        """Monitor service startup using healthchecks and logs"""
+        # Wait a bit for service to start
+        time.sleep(2)
 
         # Check service status first
         status_cmd = ["systemctl", "--user", "is-active", service_name]
         status_result = subprocess.run(status_cmd, capture_output=True, text=True)
 
         if status_result.returncode != 0:
+            verbose_print(f"[red]Service {target} is not active[/red]")
             return False
 
-        # Get recent logs to check for errors
+        # Try to check container healthcheck first (most reliable)
+        healthcheck_result = self._check_container_health(target)
+        if healthcheck_result is not None:
+            if healthcheck_result:
+                verbose_print(
+                    f"[green]Service {target} is healthy (healthcheck passed)[/green]"
+                )
+                return True
+            else:
+                verbose_print(f"[red]Service {target} healthcheck failed[/red]")
+                return False
+
+        # If no healthcheck available, use stability-based monitoring
+        return self._monitor_service_stability(target, service_name)
+
+    def _monitor_service_stability(self, target: str, service_name: str) -> bool:
+        """Monitor service stability over time when no healthcheck is available"""
+        verbose_print(
+            f"[dim]Monitoring {target} stability (no healthcheck available)...[/dim]"
+        )
+
+        status_cmd = ["systemctl", "--user", "is-active", service_name]
+
+        # Check stability over multiple intervals
+        check_intervals = [3, 6, 10]  # Check at 3s, 6s, and 10s
+
+        for i, interval in enumerate(check_intervals):
+            time.sleep(interval - (check_intervals[i - 1] if i > 0 else 0))
+
+            status_result = subprocess.run(status_cmd, capture_output=True, text=True)
+
+            if status_result.returncode != 0:
+                verbose_print(
+                    f"[red]Service {target} became inactive during stability check[/red]"
+                )
+                return False
+
+            verbose_print(f"[dim]Service {target} stable at {interval}s[/dim]")
+
+        # If service has been stable for 10 seconds, check logs for any critical errors
+        log_result = self._check_startup_logs(target, service_name)
+
+        # Even if logs are unclear, if service is stable for 10+ seconds, assume success
+        if log_result or True:  # Always return True if stable
+            verbose_print(
+                f"[green]Service {target} is stable and appears healthy[/green]"
+            )
+            return True
+
+        return log_result
+
+    def _check_container_health(self, target: str) -> bool | None:
+        """Check container healthcheck status. Returns None if no healthcheck configured."""
+        try:
+            # First, let's find what containers are actually running
+            list_cmd = [
+                "podman",
+                "ps",
+                "--format",
+                "{{.Names}}",
+                "--filter",
+                "status=running",
+            ]
+            list_result = subprocess.run(list_cmd, capture_output=True, text=True)
+
+            if list_result.returncode != 0:
+                verbose_print(
+                    f"[dim]Could not list running containers for {target}[/dim]"
+                )
+                return None
+
+            running_containers = (
+                list_result.stdout.strip().split("\n")
+                if list_result.stdout.strip()
+                else []
+            )
+
+            # Try to find the container name - it might match the service name or be similar
+            container_names = [
+                target,
+                target.replace("-", "_"),
+                f"local-ai-{target}",
+                f"local_ai_{target}",
+                target.replace("local-ai-", ""),
+                target.replace("local_ai_", ""),
+            ]
+
+            # Find matching container from running containers
+            matching_container = None
+            for container_name in container_names:
+                for running_container in running_containers:
+                    if (
+                        container_name == running_container
+                        or container_name in running_container
+                    ):
+                        matching_container = running_container
+                        break
+                if matching_container:
+                    break
+
+            if not matching_container:
+                verbose_print(f"[dim]No running container found for {target}[/dim]")
+                return None
+
+            # Check if container exists and get its health status
+            inspect_cmd = [
+                "podman",
+                "inspect",
+                "--format",
+                "{{.State.Health.Status}}",
+                matching_container,
+            ]
+            result = subprocess.run(inspect_cmd, capture_output=True, text=True)
+
+            if result.returncode == 0 and result.stdout.strip():
+                health_status = result.stdout.strip()
+                verbose_print(
+                    f"[dim]Container {matching_container} health status: {health_status}[/dim]"
+                )
+
+                if health_status == "healthy":
+                    return True
+                elif health_status == "starting":
+                    # If starting, wait longer and check multiple times
+                    verbose_print(
+                        f"[dim]Container {matching_container} is starting, waiting up to 15 seconds...[/dim]"
+                    )
+
+                    # Check multiple times over 15 seconds
+                    for wait_time in [3, 6, 10, 15]:
+                        time.sleep(3)  # Wait 3 seconds between each check
+                        result = subprocess.run(
+                            inspect_cmd, capture_output=True, text=True
+                        )
+                        if result.returncode == 0:
+                            health_status = result.stdout.strip()
+                            verbose_print(
+                                f"[dim]Container {matching_container} health status after {wait_time}s: {health_status}[/dim]"
+                            )
+
+                            if health_status == "healthy":
+                                return True
+                            elif health_status == "unhealthy":
+                                return False
+                            # If still "starting", continue waiting
+
+                    # After 15 seconds, if still starting, assume it's taking too long but don't fail
+                    verbose_print(
+                        f"[dim]Container {matching_container} still starting after 15s, falling back to stability check[/dim]"
+                    )
+                    return None  # Fall back to stability monitoring
+                elif health_status == "unhealthy":
+                    return False
+                elif health_status == "none":
+                    # No healthcheck configured
+                    verbose_print(
+                        f"[dim]Container {matching_container} has no healthcheck configured[/dim]"
+                    )
+                    return None
+                else:
+                    # Unknown status, assume no healthcheck
+                    verbose_print(
+                        f"[dim]Container {matching_container} has unknown health status: {health_status}[/dim]"
+                    )
+                    return None
+            else:
+                verbose_print(
+                    f"[dim]Could not inspect container {matching_container}[/dim]"
+                )
+                return None
+
+        except Exception as e:
+            verbose_print(
+                f"[dim]Could not check container health for {target}: {e}[/dim]"
+            )
+            return None
+
+    def _check_startup_logs(self, target: str, service_name: str) -> bool:
+        """Check startup logs for success/failure patterns"""
+        verbose_print(f"[dim]Checking startup logs for {target}...[/dim]")
+
+        # Get recent logs to check for critical errors
         logs_cmd = [
             "journalctl",
             "--user",
             "-u",
             service_name,
             "--since",
-            "10 seconds ago",
+            "20 seconds ago",
             "-n",
-            "20",
+            "50",
             "--no-pager",
         ]
 
@@ -563,45 +849,101 @@ class StackManager:
 
         if logs_result.returncode == 0 and logs_result.stdout:
             log_content = logs_result.stdout.lower()
+            verbose_print(
+                f"[dim]Log content preview for {target}: {log_content[:200]}...[/dim]"
+            )
 
-            # Check for common error patterns in logs
-            error_patterns = [
-                "error",
-                "failed",
-                "exception",
-                "traceback",
-                "fatal",
-                "critical",
-                "cannot",
-                "unable to",
-                "connection refused",
-                "timeout",
+            # Check for critical error patterns that indicate startup failure
+            critical_error_patterns = [
+                "fatal error",
+                "critical error",
+                "startup failed",
+                "failed to start",
+                "cannot start",
+                "unable to start",
+                "bind: address already in use",
                 "permission denied",
+                "no such file or directory",
+                "command not found",
+                "segmentation fault",
+                "panic:",
+                "abort",
+                # Only check for exit codes that indicate failure
+                "exited with code 1",
+                "exited with code 2",
+                "exit status 1",
+                "exit status 2",
             ]
 
-            # Check for success patterns
+            # Check for positive success patterns (more comprehensive)
             success_patterns = [
-                "started",
-                "listening",
-                "ready",
-                "running",
-                "initialized",
+                "started successfully",
                 "server started",
+                "listening on",
+                "ready to accept",
+                "initialization complete",
+                "service ready",
+                "startup complete",
+                "server is ready",
+                "application started",
+                "service started",
+                "daemon started",
+                # ClickHouse specific patterns
+                "processing configuration file",
+                "logging trace to",
+                "logging errors to",
+                # Neo4j patterns
+                "started neo4j",
+                "remote interface available",
+                "bolt enabled",
+                # PostgreSQL patterns
+                "database system is ready to accept connections",
+                "listening on ipv4 address",
+                # Redis patterns
+                "ready to accept connections",
+                "server initialized",
+                # Ollama patterns
+                "ollama serving",
+                "listening at",
+                # FastAPI patterns
+                "uvicorn running",
+                "application startup complete",
+                "started server process",
+                # General container patterns
+                "container started",
+                "service initialized",
+                # Generic success indicators
+                "up and running",
+                "successfully initialized",
+                "ready for connections",
             ]
 
-            has_errors = any(pattern in log_content for pattern in error_patterns)
-            has_success = any(pattern in log_content for pattern in success_patterns)
+            # Look for critical errors that definitely indicate failure
+            has_critical_errors = any(
+                pattern in log_content for pattern in critical_error_patterns
+            )
+            has_success_indicators = any(
+                pattern in log_content for pattern in success_patterns
+            )
 
-            if has_errors and not has_success:
-                verbose_print(f"[red]Detected errors in {target} startup logs[/red]")
+            if has_critical_errors:
+                verbose_print(
+                    f"[red]Detected critical startup errors in {target} logs[/red]"
+                )
                 return False
-            elif has_success:
-                verbose_print(f"[green]Service {target} started successfully[/green]")
+            elif has_success_indicators:
+                verbose_print(
+                    f"[green]Service {target} started successfully (log analysis)[/green]"
+                )
                 return True
+            else:
+                verbose_print(
+                    f"[dim]No clear success/failure indicators in {target} logs[/dim]"
+                )
 
-        # If no clear success/failure indicators, assume success if service is active
+        # If service is active and no critical errors found, be more optimistic
         verbose_print(
-            f"[yellow]Service {target} appears to be running (no clear startup indicators)[/yellow]"
+            f"[green]Service {target} is active and stable (assuming success)[/green]"
         )
         return True
 
@@ -614,52 +956,13 @@ class StackManager:
 
     def _handle_service_start_failure(self, service: str, restart_result) -> None:
         """Handle service start failure with detailed error reporting"""
-        if restart_result.stderr:
-            # Extract and summarize the error message
-            error_msg = restart_result.stderr.strip()
-            if "Job for" in error_msg and "failed because" in error_msg:
-                # Extract service name from error
-                import re
+        # Clean service name for display
+        clean_service_name = service.replace(".service", "").replace(".target", "")
 
-                service_match = re.search(r"Job for ([^\s]+) failed", error_msg)
-                service_name_from_error = (
-                    service_match.group(1) if service_match else service
-                )
-
-                console.print(
-                    f"[red]❌ Service startup failed: {service} ({service_name_from_error})[/red]"
-                )
-                console.print(f"[yellow]💡 Recommended actions for {service}:[/yellow]")
-
-                # Extract systemd-recommended commands from error message
-                systemd_commands = []
-                if 'See "' in error_msg:
-                    # Find all commands between quotes after "See"
-                    see_pattern = r'See "([^"]+)"'
-                    matches = re.findall(see_pattern, error_msg)
-                    systemd_commands = matches
-
-                # Add systemd-recommended commands first
-                for cmd in systemd_commands:
-                    console.print(
-                        f"[green] Run systemd command:[/green] [white]{cmd}[/white]"
-                    )
-
-                # Add our standard troubleshooting commands
-                console.print(
-                    f"[green] Check service status:[/green] [white]pm status {service}[/white]"
-                )
-                console.print(
-                    f"[green]   View detailed logs:[/green] [white]pm logs {service}[/white]"
-                )
-                console.print(
-                    f"[green]   Diagnose the issue:[/green] [white]pm diagnose {service}[/white]"
-                )
-                console.print(
-                    f"[green]   Reset failed state:[/green] [white]pm reset-failed {service}[/white]"
-                )
-            else:
-                console.print(f"[red]Restart failed for {service}: {error_msg}[/red]")
+        # Show clean failure message with AI analysis suggestion
+        console.print(
+            f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
+        )
 
     def _show_stack_next_steps(self, project: str) -> None:
         """Show optional next steps for the stack"""

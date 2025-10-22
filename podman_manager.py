@@ -1106,7 +1106,61 @@ def main():
             else:
                 display.show_status(args.target)
         elif args.command == "ps":
-            display.show_ps()
+            # Run podman ps with specific format and display in borderless table
+            try:
+                result = subprocess.run(
+                    [
+                        "podman",
+                        "ps",
+                        "-a",
+                        "--format",
+                        "{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if result.returncode == 0:
+                    from rich.table import Table
+
+                    # Create table without borders
+                    table = Table(show_header=True, box=None, padding=(0, 1))
+                    table.add_column("ID", style="cyan", no_wrap=True)
+                    table.add_column("Names", style="green")
+                    table.add_column("Status", style="yellow")
+                    table.add_column("Ports", style="blue")
+
+                    # Parse the output and add rows
+                    lines = result.stdout.strip().split("\n")
+                    for line in lines:
+                        if line.strip():  # Skip empty lines
+                            parts = line.split("\t")
+                            if len(parts) >= 4:
+                                table.add_row(parts[0], parts[1], parts[2], parts[3])
+                            elif len(parts) == 3:
+                                table.add_row(parts[0], parts[1], parts[2], "")
+                            elif len(parts) == 2:
+                                table.add_row(parts[0], parts[1], "", "")
+                            elif len(parts) == 1:
+                                table.add_row(parts[0], "", "", "")
+
+                    console.print(table)
+                else:
+                    console.print(
+                        f"[red]Error running podman ps: {result.stderr}[/red]"
+                    )
+                    sys.exit(1)
+            except subprocess.TimeoutExpired:
+                console.print("[red]Timeout running podman ps[/red]")
+                sys.exit(1)
+            except FileNotFoundError:
+                console.print(
+                    "[red]Podman command not found. Please install podman.[/red]"
+                )
+                sys.exit(1)
+            except Exception as e:
+                console.print(f"[red]Error running podman ps: {e}[/red]")
+                sys.exit(1)
         elif args.command == "help":
             show_rich_help()
         elif args.command == "help-podman":

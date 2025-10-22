@@ -349,7 +349,8 @@ class ValidationManager:
             )
             return True
 
-        console.print("[green]Validating deployed quadlet files...[/green]")
+        console.print("[green]Validating installed quadlet containers...[/green]")
+        console.print()
 
         # Run podman-quadlet and check for container-specific errors
         success, container_errors = self._run_quadlet_generator_and_check_errors(
@@ -363,7 +364,6 @@ class ValidationManager:
                 console.print(f"  {error}")
             return False
         else:
-            console.print("[green]✓ No validation errors found[/green]")
             return True
 
     def _run_quadlet_generator_and_check_errors(
@@ -649,13 +649,10 @@ class ValidationManager:
 
         # If validation failed, automatically run AI analysis and end installation
         if not validation_success:
-            console.print()
-            console.print("[green]Running AI analysis of validation errors...[/green]")
             verbose_print("  [cyan]exec: ai_analyze_validation_errors()[/cyan]")
             self.ai_analyze_validation_errors(stack_name, files)
-            console.print()
             console.print("[red]Installation stopped due to validation errors[/red]")
-            console.print("[dim]Please fix the issues above and try again[/dim]")
+            console.print()
             return False
 
         return validation_success
@@ -670,7 +667,7 @@ class ValidationManager:
             )
             return
 
-        console.print()
+        from rich.progress import Progress, SpinnerColumn, TextColumn
 
         # Collect validation errors
         container_files = [f for f in files if f.endswith(".container")]
@@ -685,11 +682,26 @@ class ValidationManager:
             console.print("[green]No validation errors found to analyze[/green]")
             return
 
-        # Analyze with AI
-        analysis = self._get_ai_analysis(quadlet_errors, stack_name, container_files)
+        # Show spinner while analyzing
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[green]Running AI analysis of validation errors...[/green]"),
+            console=console,
+            transient=False,  # Keep visible after completion
+        ) as progress:
+            task = progress.add_task("analyzing", total=None)
+
+            # Analyze with AI
+            analysis = self._get_ai_analysis(
+                quadlet_errors, stack_name, container_files
+            )
+
+            progress.remove_task(task)
+
+        console.print()
 
         if analysis:
-            self._display_ai_analysis(analysis)
+            self._display_ai_analysis(analysis, stack_name, container_files)
         else:
             console.print(
                 "[yellow]AI analysis unavailable (vLLM service may be down)[/yellow]"
@@ -746,35 +758,57 @@ class ValidationManager:
     ) -> Optional[str]:
         """Get AI analysis of validation errors from local vLLM."""
         if requests is None:
-            verbose_print("[dim]DEBUG: requests library not available[/dim]")
+            verbose_print("  [cyan]exec: requests library not available[/cyan]")
             return None
 
         verbose_print(
-            "[dim]DEBUG: Checking vLLM health at http://localhost:8002/v1/models[/dim]"
+            "  [cyan]exec: Checking vLLM health at curl -X GET http://localhost:8002/health[/cyan]"
         )
         try:
             # Check if vLLM is available
-            health_response = requests.get("http://localhost:8002/v1/models", timeout=5)
+            health_response = requests.get("http://localhost:8002/health", timeout=5)
             verbose_print(
-                f"[dim]DEBUG: Health check response: status={health_response.status_code}[/dim]"
+                f"  [cyan]exec: Health check response: status={health_response.status_code}[/cyan]"
             )
             if health_response.status_code != 200:
                 verbose_print(
-                    f"[dim]DEBUG: Health check failed with status {health_response.status_code}[/dim]"
+                    f"  [cyan]exec: Health check failed with status {health_response.status_code}[/cyan]"
                 )
                 return None
-            verbose_print("[dim]DEBUG: vLLM health check passed[/dim]")
+            verbose_print("  [cyan]exec: vLLM health check passed[/cyan]")
 
         except requests.RequestException as e:
-            verbose_print(f"[dim]DEBUG: Health check request failed: {e}[/dim]")
+            verbose_print(f"  [cyan]exec: Health check request failed: {e}[/cyan]")
             return None
 
         # Prepare the analysis prompt
         prompt = self._build_analysis_prompt(errors, stack_name, container_files)
 
         verbose_print(
-            "[dim]DEBUG: Sending AI analysis request to http://localhost:8002/v1/chat/completions[/dim]"
+            "  [cyan]exec: Sending AI analysis request to curl -X POST http://localhost:8002/v1/chat/completions \\[/cyan]"
         )
+        verbose_print("  [cyan]    -H 'Content-Type: application/json' \\[/cyan]")
+        verbose_print("  [cyan]    -d '{[/cyan]")
+        verbose_print(
+            '  [cyan]      "model": "vllm-qwen25-coder-32b-instruct-awq",[/cyan]'
+        )
+        verbose_print('  [cyan]      "messages": [{{[/cyan]')
+        verbose_print('  [cyan]        "role": "user",[/cyan]')
+        verbose_print('  [cyan]        "content": "[/cyan]')
+
+        # Display content with proper line breaks
+        content_lines = prompt.replace("\\n\\n", "\n").split("\n")
+        for line in content_lines:
+            if line.strip():
+                verbose_print(f"  [cyan]          {line.strip()}[/cyan]")
+            else:
+                verbose_print("  [cyan][/cyan]")
+
+        verbose_print('  [cyan]        "[/cyan]')
+        verbose_print("  [cyan]      }}],[/cyan]")
+        verbose_print('  [cyan]      "max_tokens": 1000,[/cyan]')
+        verbose_print('  [cyan]      "temperature": 0.1[/cyan]')
+        verbose_print("  [cyan]    }'[/cyan]")
         try:
             response = requests.post(
                 "http://localhost:8002/v1/chat/completions",
@@ -790,16 +824,16 @@ class ValidationManager:
             )
 
             verbose_print(
-                f"[dim]DEBUG: AI analysis response: status={response.status_code}[/dim]"
+                f"  [cyan]exec: AI analysis response: status={response.status_code}[/cyan]"
             )
             if response.status_code == 200:
                 result = response.json()
                 verbose_print(
-                    f"[dim]DEBUG: Response JSON keys: {list(result.keys()) if result else 'None'}[/dim]"
+                    f"  [cyan]exec: Response JSON keys: {list(result.keys()) if result else 'None'}[/cyan]"
                 )
                 if "choices" in result and len(result["choices"]) > 0:
                     verbose_print(
-                        "[dim]DEBUG: AI analysis successful, returning response[/dim]"
+                        "  [cyan]exec: AI analysis successful, returning response[/cyan]"
                     )
                     # Handle both completions and chat completions response formats
                     choice = result["choices"][0]
@@ -809,18 +843,18 @@ class ValidationManager:
                         return choice["text"].strip()
                 else:
                     verbose_print(
-                        "[dim]DEBUG: No choices in response or empty choices[/dim]"
+                        "  [cyan]exec: No choices in response or empty choices[/cyan]"
                     )
             else:
                 verbose_print(
-                    f"[dim]DEBUG: AI analysis request failed with status {response.status_code}[/dim]"
+                    f"  [cyan]exec: AI analysis request failed with status {response.status_code}[/cyan]"
                 )
                 verbose_print(
-                    f"[dim]DEBUG: Response text: {response.text[:200]}...[/dim]"
+                    f"  [cyan]exec: Response text: {response.text[:200]}...[/cyan]"
                 )
 
         except requests.RequestException as e:
-            verbose_print(f"[dim]DEBUG: AI analysis request failed: {e}[/dim]")
+            verbose_print(f"  [cyan]exec: AI analysis request failed: {e}[/cyan]")
 
         return None
 
@@ -844,33 +878,170 @@ Validation Errors:
 Provide a concise analysis with:
 1. Root cause of each error
 2. Specific resolution steps
-3. Prevention recommendations
+3. Provide a list of valid optional values for the correct parameter. Indicate which optional value is recommended.
+4. Prevention recommendations
 
 Keep the response brief and actionable."""
 
-    def _display_ai_analysis(self, analysis: str) -> None:
+    def _display_ai_analysis(
+        self, analysis: str, stack_name: str, container_files: List[str]
+    ) -> None:
         """Display AI analysis results with rich formatting."""
-        from rich.markdown import Markdown
-        from rich.panel import Panel
+        # Use the same formatting as ai_diagnostics.py for consistency
+        console.print("[bold green]AI Validation Analysis[/bold green]")
+        console.print()  # Add newline after header
+        # Manual markdown parsing and Rich formatting
+        self._render_markdown_manually(analysis)
 
-        # Create markdown content
-        markdown_content = f"""# 🤖 AI Troubleshooting Analysis
+        # Show follow-up commands with interactive menu
+        self._show_ai_analysis_menu(stack_name, container_files)
 
-{analysis}
+    def _render_markdown_manually(self, content: str) -> None:
+        """Manually render markdown content using Rich formatting with 120 character width"""
+        import re
+        import textwrap
 
----
-*Analysis generated by local Qwen2.5-Coder model*"""
+        lines = content.split("\n")
+        previous_was_header = False
+        in_code_block = False
 
-        # Display with rich formatting
-        markdown = Markdown(markdown_content)
-        panel = Panel(
-            markdown,
-            title="[blue]AI Validation Analysis[/blue]",
-            border_style="blue",
-            padding=(1, 2),
+        for i, line in enumerate(lines):
+            line = line.strip()
+
+            # Skip multiple consecutive empty lines
+            if not line:
+                if not previous_was_header and i > 0 and lines[i - 1].strip():
+                    console.print()
+                continue
+
+            # Handle headers (### Header)
+            if line.startswith("### "):
+                header_text = line[4:].strip()
+                # Don't add blank lines before headers
+                console.print(f"[bold cyan]{header_text}[/bold cyan]")
+                previous_was_header = True
+                continue
+            else:
+                previous_was_header = False
+
+            # Handle bold text (**text**)
+            line = re.sub(r"\*\*([^*]+)\*\*", r"[bold]\1[/bold]", line)
+
+            # Handle inline code (`code`)
+            line = re.sub(r"`([^`]+)`", r"[cyan]\1[/cyan]", line)
+
+            # Handle code blocks (```)
+            if line.startswith("```"):
+                if line == "```text" or (line == "```" and not in_code_block):
+                    # Skip these markdown code block markers
+                    continue
+                elif line == "```" and in_code_block:
+                    # End of code block - skip the closing marker
+                    in_code_block = False
+                    continue
+                elif (
+                    "bash" in line
+                    or "ini" in line
+                    or any(lang in line for lang in ["python", "json", "yaml", "sh"])
+                ):
+                    # Start of code block - skip the opening marker
+                    in_code_block = True
+                    continue
+                else:
+                    # Unknown code block type - skip
+                    continue
+
+            # Handle content inside code blocks
+            if in_code_block:
+                # Indent code blocks and make them cyan
+                console.print(f"    [cyan]{line}[/cyan]")
+                continue
+
+            # Handle numbered lists (1. item)
+            if re.match(r"^\d+\.\s", line):
+                # Wrap list items at 120 characters with proper indentation
+                wrapped_lines = textwrap.fill(
+                    line, width=116, initial_indent="    ", subsequent_indent="       "
+                )
+                console.print(f"[white]{wrapped_lines}[/white]")
+                continue
+
+            # Handle bullet points (- item)
+            if line.startswith("- "):
+                # Wrap bullet points at 120 characters with proper indentation
+                wrapped_lines = textwrap.fill(
+                    line,
+                    width=112,
+                    initial_indent="        ",
+                    subsequent_indent="          ",
+                )
+                console.print(f"[white]{wrapped_lines}[/white]")
+                continue
+
+            # Handle code section markers like [Service]
+            if line.startswith("[") and line.endswith("]") and len(line) < 20:
+                # Indent code section markers
+                console.print(f"        [dim cyan]{line}[/dim cyan]")
+                continue
+
+            # Handle environment variable assignments
+            if line.startswith("Environment=") or "=" in line and "NEO4J_AUTH" in line:
+                # Double indent environment variable lines
+                console.print(f"            [cyan]{line}[/cyan]")
+                continue
+
+            # Handle command lines (sudo systemctl, etc.)
+            if line.startswith("sudo ") or line.startswith("systemctl "):
+                # Indent command lines as code
+                console.print(f"            [cyan]{line}[/cyan]")
+                continue
+
+            # Regular text - wrap at 120 characters with indentation
+            # Check if this looks like a log line (contains timestamp pattern)
+            if re.match(r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}", line):
+                # Double indent log lines
+                if len(line) > 112:  # Account for 8-space indent
+                    wrapped_lines = textwrap.fill(
+                        line,
+                        width=112,
+                        initial_indent="        ",
+                        subsequent_indent="        ",
+                    )
+                    console.print(wrapped_lines)
+                else:
+                    console.print(f"        {line}")
+            else:
+                # Single indent regular text paragraphs
+                if len(line) > 116:  # Account for 4-space indent
+                    wrapped_lines = textwrap.fill(
+                        line, width=116, initial_indent="    ", subsequent_indent="    "
+                    )
+                    console.print(wrapped_lines)
+                else:
+                    console.print(f"    {line}")
+
+    def _show_ai_analysis_menu(
+        self, stack_name: str, container_files: List[str]
+    ) -> None:
+        """Show recommended actions after AI analysis"""
+        # Use the first container file or fallback to stack name
+        container_file = (
+            container_files[0] if container_files else f"{stack_name}.container"
         )
 
-        console.print(panel)
+        console.print("\n      [bold green]Recommended actions:[/bold green]")
+        console.print(
+            f"[green]    Fix validation errors:[/green] [white]Edit the source {container_file}[/white]"
+        )
+        console.print(
+            f"[green]       Retry installation:[/green] [white]pm install {container_file} -v[/white]"
+        )
+        console.print(
+            f"[green]     Check quadlet syntax:[/green] [white]podman-quadlet --user --dryrun | grep {container_file}[/white]"
+        )
+        console.print(
+            "[green]View installed containers:[/green] [white]ls ~/.config/containers/systemd/[/white]"
+        )
         console.print()
 
 
@@ -893,24 +1064,43 @@ class FileManager:
         use_sudo: bool = False,
     ):
         """Copy quadlet files to target directory."""
+        # Show mkdir command once at the beginning
+        console.print("[green]Creating the required system directory[/green]")
+        verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
+        if not is_verbose():
+            console.print()
+
         for file in files:
             if file.endswith(".container"):
                 service_name = file.replace(".container", "")
                 console.print(
-                    f"[green]Copying master {service_name} .container to systemd[/green]"
+                    f"[green]Copying & validating master {service_name} .container to systemd[/green]"
                 )
-                verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
+                if not is_verbose():
+                    console.print()
+            elif file.endswith(".network"):
+                service_name = self._extract_service_name_from_file(file)
+                console.print(
+                    f"[green]Copying {service_name} networks to systemd[/green]"
+                )
+                if not is_verbose():
+                    console.print()
+            elif file.endswith(".volume"):
+                service_name = self._extract_service_name_from_file(file)
+                console.print(
+                    f"[green]Copying {service_name} volumes to systemd[/green]"
+                )
                 if not is_verbose():
                     console.print()
             else:
                 console.print(f"[green]Copying {file} to systemd[/green]")
-                verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
                 if not is_verbose():
                     console.print()
 
             source_file = stack_dir / file
             target_file = target_dir / file
 
+            # Copy the file
             if use_sudo:
                 cmd = ["sudo", "cp", str(source_file), str(target_file)]
                 verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
@@ -918,6 +1108,101 @@ class FileManager:
             else:
                 verbose_print(f"  [cyan]exec: cp .../{file} .../systemd/{file}[/cyan]")
                 shutil.copy2(source_file, target_file)
+
+            # Set permissions immediately after copying
+            if use_sudo:
+                chmod_cmd = ["sudo", "chmod", "644", str(target_file)]
+                verbose_print(f"  [cyan]exec: chmod 644 .../systemd/{file}[/cyan]")
+                subprocess.run(chmod_cmd, check=True)
+            else:
+                verbose_print(f"  [cyan]exec: chmod 644 .../systemd/{file}[/cyan]")
+                target_file.chmod(0o644)
+
+            # Run validation immediately after each container file
+            if file.endswith(".container"):
+                self._validate_single_container_file(file, use_sudo)
+
+    def _validate_single_container_file(
+        self, container_file: str, use_sudo: bool = False
+    ):
+        """Validate a single container file immediately after copying."""
+        quadlet_generator = "/usr/lib/systemd/user-generators/podman-quadlet"
+
+        if not Path(quadlet_generator).exists():
+            return
+
+        # Build command with grep filtering
+        quadlet_cmd = [quadlet_generator, "--user", "--dryrun"]
+        if use_sudo:
+            quadlet_cmd = [quadlet_generator, "--dryrun"]
+
+        grep_cmd = ["grep", container_file]
+        full_cmd = " | ".join([" ".join(quadlet_cmd), " ".join(grep_cmd)])
+
+        verbose_print(f"  [cyan]exec: {full_cmd}[/cyan]")
+
+        try:
+            # Run podman-quadlet and pipe to grep
+            quadlet_process = subprocess.Popen(
+                quadlet_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+
+            grep_process = subprocess.Popen(
+                grep_cmd,
+                stdin=quadlet_process.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            if quadlet_process.stdout:
+                quadlet_process.stdout.close()
+            grep_output, _ = grep_process.communicate(timeout=30)
+            quadlet_process.wait()
+
+            # Only show errors if there are any
+            if grep_output.strip():
+                # Check if it's actually an error or just informational
+                if any(
+                    keyword in grep_output.lower()
+                    for keyword in [
+                        "error",
+                        "invalid",
+                        "failed",
+                        "cannot",
+                        "missing",
+                        "unsupported",
+                    ]
+                ):
+                    console.print(
+                        f"[yellow]Validation warning for {container_file}:[/yellow]"
+                    )
+                    for line in grep_output.strip().split("\n"):
+                        console.print(f"  [dim]{line.strip()}[/dim]")
+
+        except (subprocess.TimeoutExpired, Exception):
+            # Silently ignore validation errors during individual file processing
+            pass
+
+    def _extract_service_name_from_file(self, file: str) -> str:
+        """Extract service name from network/volume file for display."""
+        # Remove extension and try to find service name pattern
+        base_name = file.replace(".network", "").replace(".volume", "")
+
+        # For files like "local-ai-postgres.network", extract "local-ai"
+        # For files like "postgres.network", just use "postgres"
+        if base_name.startswith("local-ai"):
+            return "local-ai"
+        elif "-" in base_name:
+            parts = base_name.split("-")
+            if len(parts) >= 2:
+                # Return first two parts for names like "service-name"
+                return "-".join(parts[:2])
+
+        return base_name
 
     def set_file_permissions(
         self, files: List[str], target_dir: Path, use_sudo: bool = False
@@ -1023,12 +1308,12 @@ class QuadletInstaller:
         # Try exact match as a service within stacks FIRST (prioritize individual services)
         service_result = self.find_service_in_stacks(name)
         verbose_print(
-            f"[dim]DEBUG: find_service_in_stacks('{name}') returned: {service_result}[/dim]"
+            f"  [cyan]exec: find_service_in_stacks('{name}') returned: {service_result}[/cyan]"
         )
         if service_result:
             stack_name, container_file = service_result
             verbose_print(
-                f"[dim]DEBUG: Found service '{name}' in stack '{stack_name}' with container file '{container_file}'[/dim]"
+                f"  [cyan]exec: Found service '{name}' in stack '{stack_name}' with container file '{container_file}'[/cyan]"
             )
             return (True, stack_name, container_file)
 
@@ -1091,7 +1376,7 @@ class QuadletInstaller:
         # Validate and determine if it's a stack or service
         is_valid, resolved_stack, service_file = self.validate_stack_or_service(name)
         verbose_print(
-            f"[dim]DEBUG: validate_stack_or_service returned: is_valid={is_valid}, resolved_stack={resolved_stack}, service_file={service_file}[/dim]"
+            f"  [cyan]exec: validate_stack_or_service returned: is_valid={is_valid}, resolved_stack={resolved_stack}, service_file={service_file}[/cyan]"
         )
         if not is_valid or resolved_stack in ["CANCELLED", None]:
             return False
@@ -1124,7 +1409,7 @@ class QuadletInstaller:
         """Determine what files to install and installation type."""
         # Debug output to understand what's happening
         verbose_print(
-            f"[dim]DEBUG: service_file={service_file}, name={name}, resolved_stack={resolved_stack}[/dim]"
+            f"  [cyan]exec: service_file={service_file}, name={name}, resolved_stack={resolved_stack}[/cyan]"
         )
 
         if service_file:
@@ -1132,14 +1417,14 @@ class QuadletInstaller:
             install_type = "service"
             display_name = name
             verbose_print(
-                f"[dim]DEBUG: Installing single service - files={files}[/dim]"
+                f"  [cyan]exec: Installing single service - files={files}[/cyan]"
             )
             self._show_dependency_warning(name, resolved_stack)
         else:
             files = self.get_stack_files(resolved_stack)
             install_type = "stack"
             display_name = resolved_stack
-            verbose_print(f"[dim]DEBUG: Installing full stack - files={files}[/dim]")
+            verbose_print(f"  [cyan]exec: Installing full stack - files={files}[/cyan]")
 
         return files, install_type, display_name
 
@@ -1180,16 +1465,9 @@ class QuadletInstaller:
             # File operations
             self.file_manager.create_target_directory(target_dir, use_sudo)
             self.file_manager.copy_quadlet_files(files, stack_dir, target_dir, use_sudo)
-            self.file_manager.set_file_permissions(files, target_dir, use_sudo)
+            # Note: file permissions are now set during copy_quadlet_files
 
-            # Pre-deployment validation with automatic AI analysis on errors
-            if not self.validation_manager.validate_with_ai_troubleshooting(
-                resolved_stack, files, use_sudo
-            ):
-                console.print()
-                console.print("[red]Installation failed[/red]")
-                console.print()
-                return False
+            # Note: Validation is now done per-file during copy_quadlet_files
 
             # System operations
             if not self.systemd_manager.reload_daemon(use_sudo):
@@ -1224,6 +1502,8 @@ class QuadletInstaller:
 
         if pm_script:
             console.print("[green]Refreshing PM service discovery...[/green]")
+            if not is_verbose():
+                console.print()
             try:
                 cmd = [str(pm_script), "refresh"]
                 verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
@@ -1283,7 +1563,7 @@ class QuadletInstaller:
             f"          [green]View logs:[/green]{journal_cmd} -u {service_name} -f"
         )
         console.print(
-            f"  [green]Show service file:[/green]{systemctl_cmd} cat {service_name}"
+            f" [green]Show service file:[/green]{systemctl_cmd} cat {service_name}"
         )
         console.print(
             f"  [green]Enable auto-start:[/green]{systemctl_cmd} enable {service_name}"
@@ -1313,7 +1593,7 @@ class QuadletInstaller:
                 f"          [green]View logs:[/green]{journal_cmd} -u {example_service} -f"
             )
             console.print(
-                f"   [green]Show service file:[/green]{systemctl_cmd} cat {example_service}"
+                f"  [green]Show service file:[/green]{systemctl_cmd} cat {example_service}"
             )
             console.print(
                 f"  [green]Enable auto-start:[/green]{systemctl_cmd} enable {example_service}"
@@ -1322,14 +1602,6 @@ class QuadletInstaller:
                 f" [green]Disable auto-start:[/green]{systemctl_cmd} disable {example_service}"
             )
             console.print()
-
-        # Show stack-specific information if README exists
-        readme_path = self.quadlet_base_dir / stack_name / "README.md"
-        if readme_path.exists():
-            console.print()
-            console.print(
-                f"[blue]For detailed information about this stack, see: [cyan]{readme_path}[/cyan][/blue]"
-            )
 
     def list_stacks(self) -> None:
         """List all available stacks."""
