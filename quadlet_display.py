@@ -23,7 +23,7 @@ class QuadletDisplayManager:
             # Get all available projects and services
             all_items = self._get_all_projects_and_services()
             # Get all container statuses at once
-            all_container_statuses = self._get_all_container_statuses()
+            all_container_statuses = self._get_all_container_statuses(verbose=verbose)
             import time
 
             time.sleep(0.5)  # Brief pause to show spinner
@@ -748,10 +748,13 @@ class QuadletDisplayManager:
         except Exception:
             return None
 
-    def _get_all_container_statuses(self):
+    def _get_all_container_statuses(self, verbose=False):
         """Get all container statuses at once using a single podman ps command"""
         try:
             cmd = ["podman", "ps", "-a", "--format", "{{.Names}};{{.Status}}"]
+
+            if verbose:
+                console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
