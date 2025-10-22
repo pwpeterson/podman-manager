@@ -18,15 +18,12 @@ class QuadletDisplayManager:
     def show_status(self, target=None, verbose=False):
         """Show projects and services in alphabetical tree format with running status"""
 
-        # Show spinner while retrieving status
-        with console.status("[green]Retrieving status...[/green]", spinner="dots"):
-            # Get all available projects and services
-            all_items = self._get_all_projects_and_services()
-            # Get all container statuses at once
-            all_container_statuses = self._get_all_container_statuses(verbose=verbose)
-            import time
-
-            time.sleep(0.5)  # Brief pause to show spinner
+        # Show status while retrieving
+        console.print("[green]Retrieving status...[/green]")
+        # Get all available projects and services
+        all_items = self._get_all_projects_and_services()
+        # Get all container statuses at once
+        all_container_statuses = self._get_all_container_statuses(verbose=verbose)
 
         if not all_items:
             console.print("[red]No projects or services found![/red]")

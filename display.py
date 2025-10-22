@@ -18,14 +18,11 @@ class DisplayManager:
     def show_status(self, target=None, verbose=False):
         """Show status of all projects and services with running status"""
 
-        # Show spinner while retrieving status
-        with console.status("[green]Retrieving status...[/green]", spinner="dots"):
-            projects = self.manager._parse_compose_files()
-            # Get all container statuses at once
-            all_container_statuses = self._get_all_container_statuses(verbose=verbose)
-            import time
-
-            time.sleep(0.5)  # Brief pause to show spinner
+        # Show status while retrieving
+        console.print("[green]Retrieving status...[/green]")
+        projects = self.manager._parse_compose_files()
+        # Get all container statuses at once
+        all_container_statuses = self._get_all_container_statuses(verbose=verbose)
 
         if not projects:
             console.print("[red]No compose files found![/red]")
