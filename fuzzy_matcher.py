@@ -27,7 +27,23 @@ class FuzzyMatcher:
         # First, try to resolve using directory structure and file names
         resolved_name = self._resolve_from_directory_structure(partial_name)
         if resolved_name:
-            partial_name = resolved_name
+            # Handle STACK: prefix from directory resolution
+            if resolved_name.startswith("STACK:"):
+                stack_name = resolved_name[6:]  # Remove "STACK:" prefix
+                # Look for this specific stack in our items
+                all_items = self._get_all_available_items()
+                stack_matches = [
+                    item
+                    for item in all_items
+                    if item["name"] == stack_name and item["type"] == "stack"
+                ]
+                if len(stack_matches) == 1:
+                    return self._resolve_match(stack_matches[0])
+                # If not found as stack, continue with normal flow using the stack name
+                partial_name = stack_name
+            else:
+                # For service names, use as-is
+                partial_name = resolved_name
 
         # Get all available services and stacks
         all_items = self._get_all_available_items()
