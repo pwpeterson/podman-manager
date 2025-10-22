@@ -42,7 +42,7 @@ repos:
           - "--extend-ignore=E203,E501,E221,E231"  # Ignore specific rules that conflict with Black
 
 # Static type checking - catches type-related errors before runtime
-# Helps find attribute errors, wrong argument types, etc.
+  # Helps find attribute errors, wrong argument types, etc.
   - repo: https://github.com/RobertCraigie/pyright-python
     rev: v1.1.406
     hooks:
@@ -56,4 +56,3 @@ repos:
           - rich
           - sqlalchemy
           - alembic
-          - requests

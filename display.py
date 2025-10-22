@@ -16,8 +16,16 @@ class DisplayManager:
         self.manager = manager
 
     def show_status(self, target=None):
-        """Show status of all projects and services"""
-        projects = self.manager._parse_compose_files()
+        """Show status of all projects and services with running status"""
+
+        # Show spinner while retrieving status
+        with console.status("[green]Retrieving status...[/green]", spinner="dots"):
+            projects = self.manager._parse_compose_files()
+            # Get all container statuses at once
+            all_container_statuses = self._get_all_container_statuses()
+            import time
+
+            time.sleep(0.5)  # Brief pause to show spinner
 
         if not projects:
             console.print("[red]No compose files found![/red]")
@@ -42,7 +50,7 @@ class DisplayManager:
                 )
                 return
 
-        tree = Tree("Projects & Services", style="cyan")
+        tree = Tree("Stacks & Services", style="cyan")
 
         # Sort projects alphabetically
         for project_name in sorted(projects.keys()):
@@ -58,8 +66,39 @@ class DisplayManager:
                     profile_str = (
                         f" [dim]({', '.join(profiles)})[/dim]" if profiles else ""
                     )
-                    # Make service names yellow
-                    project_node.add(f"[yellow]{service_name}{profile_str}[/yellow]")
+
+                    # Get service running status from cached data
+                    status_info = self._get_service_status_from_cache(
+                        service_name, all_container_statuses
+                    )
+
+                    # Format service with status (30 character field for alignment)
+                    # Calculate visual length without color codes for profile_str
+                    import re
+
+                    profile_visual_length = len(re.sub(r"\[.*?\]", "", profile_str))
+                    service_with_profile_length = (
+                        len(service_name) + profile_visual_length
+                    )
+
+                    # Ensure all service names are exactly 30 characters for alignment
+                    if service_with_profile_length > 30:
+                        # Truncate service name to fit within 30 characters including profile
+                        available_for_name = 30 - profile_visual_length
+                        truncated_name = service_name[:available_for_name]
+                        service_display = (
+                            f"[yellow]{truncated_name}[/yellow]{profile_str}"
+                            + (" " * (30 - len(truncated_name) - profile_visual_length))
+                        )
+                    else:
+                        # Pad to exactly 30 characters with spaces
+                        service_display = (
+                            f"[yellow]{service_name}[/yellow]{profile_str}"
+                            + (" " * (30 - service_with_profile_length))
+                        )
+
+                    service_with_status = f"{service_display} {status_info}"
+                    project_node.add(service_with_status)
             else:
                 project_node.add("[dim](no services found)[/dim]")
 
@@ -332,3 +371,217 @@ class DisplayManager:
     def clear_cache(self) -> None:
         """Clear display cache - only available in quadlet mode"""
         console.print("[red]Clear cache only available in quadlet mode[/red]")
+
+    def _get_service_running_status(self, service_name: str) -> str:
+        """Get the running status of a compose service using only podman ps -a"""
+        try:
+            import subprocess
+
+            # Check if container exists and get its status
+            cmd = [
+                "podman",
+                "ps",
+                "-a",
+                "--filter",
+                f"name=^{service_name}$",
+                "--format",
+                "{{.Status}}",
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+
+            if result.returncode == 0 and result.stdout.strip():
+                status = result.stdout.strip()
+                status_lower = status.lower()
+
+                if "unhealthy" in status_lower or "starting" in status_lower:
+                    return f"[yellow]{status}[/yellow]"
+                elif "up" in status_lower or "running" in status_lower:
+                    # If status only has 'Up n <time period>' without health status, add (running)
+                    if "up" in status_lower and "(" not in status:
+                        return f"[green]{status} (running)[/green]"
+                    else:
+                        return f"[green]{status}[/green]"
+                elif "exited" in status_lower:
+                    # Check exit code
+                    if "exited (0)" in status_lower:
+                        return f"[orange1]{status}[/orange1]"
+                    else:
+                        return f"[red]{status}[/red]"
+                elif "created" in status_lower:
+                    return f"[dim]{status}[/dim]"
+                elif "restarting" in status_lower:
+                    return f"[yellow]{status}[/yellow]"
+                else:
+                    return f"[dim]{status}[/dim]"
+
+            # Try partial name match if exact match fails
+            cmd_partial = [
+                "podman",
+                "ps",
+                "-a",
+                "--filter",
+                f"name={service_name}",
+                "--format",
+                "{{.Names}} {{.Status}}",
+            ]
+
+            result = subprocess.run(
+                cmd_partial, capture_output=True, text=True, timeout=5
+            )
+
+            if result.returncode == 0 and result.stdout.strip():
+                lines = result.stdout.strip().split("\n")
+                for line in lines:
+                    if service_name in line:
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            status = " ".join(parts[1:])
+                            status_lower = status.lower()
+                            if "up" in status_lower or "running" in status_lower:
+                                return f"[green]{status}[/green]"
+                            elif "exited" in status_lower:
+                                if "exited (0)" in status_lower:
+                                    return f"[orange1]{status}[/orange1]"
+                                else:
+                                    return f"[red]{status}[/red]"
+                            elif "created" in status_lower:
+                                return f"[dim]{status}[/dim]"
+                            elif "restarting" in status_lower:
+                                return f"[yellow]{status}[/yellow]"
+                            else:
+                                return f"[dim]{status}[/dim]"
+
+            # Check for common service variations
+            variations = [
+                service_name.replace("-", "_"),
+                service_name.replace("_", "-"),
+                f"local-ai-{service_name}",
+                f"supabase-{service_name}",
+                service_name.replace("local-ai-", ""),
+                service_name.replace("supabase-", ""),
+            ]
+
+            for variation in variations:
+                cmd_var = [
+                    "podman",
+                    "ps",
+                    "-a",
+                    "--filter",
+                    f"name={variation}",
+                    "--format",
+                    "{{.Names}} {{.Status}}",
+                ]
+
+                result = subprocess.run(
+                    cmd_var, capture_output=True, text=True, timeout=5
+                )
+
+                if result.returncode == 0 and result.stdout.strip():
+                    lines = result.stdout.strip().split("\n")
+                    for line in lines:
+                        if variation in line:
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                status = " ".join(parts[1:])
+                                status_lower = status.lower()
+                                if "up" in status_lower or "running" in status_lower:
+                                    return f"[green]{status}[/green]"
+                                elif "exited" in status_lower:
+                                    if "exited (0)" in status_lower:
+                                        return f"[orange1]{status}[/orange1]"
+                                    else:
+                                        return f"[red]{status}[/red]"
+                                elif "created" in status_lower:
+                                    return f"[dim]{status}[/dim]"
+                                elif "restarting" in status_lower:
+                                    return f"[yellow]{status}[/yellow]"
+                                else:
+                                    return f"[dim]{status}[/dim]"
+
+            # If not found in containers, return not found
+            return "[white]not found[/white]"
+
+        except Exception:
+            return "[red]error[/red]"
+
+    def _get_all_container_statuses(self):
+        """Get all container statuses at once using a single podman ps command"""
+        try:
+            cmd = ["podman", "ps", "-a", "--format", "{{.Names}};{{.Status}}"]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+            if result.returncode == 0 and result.stdout.strip():
+                container_statuses = {}
+                for line in result.stdout.strip().split("\n"):
+                    if ";" in line:
+                        name, status = line.split(";", 1)
+                        container_statuses[name.strip()] = status.strip()
+                return container_statuses
+
+            return {}
+
+        except Exception:
+            return {}
+
+    def _get_service_status_from_cache(self, service_name, all_container_statuses):
+        """Get service status from cached container statuses"""
+        try:
+            # Check exact match first
+            if service_name in all_container_statuses:
+                return self._format_status(all_container_statuses[service_name])
+
+            # Check for partial matches
+            for container_name, status in all_container_statuses.items():
+                if service_name in container_name:
+                    return self._format_status(status)
+
+            # Check for common service variations
+            variations = [
+                service_name.replace("-", "_"),
+                service_name.replace("_", "-"),
+                f"local-ai-{service_name}",
+                f"supabase-{service_name}",
+                service_name.replace("local-ai-", ""),
+                service_name.replace("supabase-", ""),
+            ]
+
+            for variation in variations:
+                if variation in all_container_statuses:
+                    return self._format_status(all_container_statuses[variation])
+
+                # Check partial matches for variations
+                for container_name, status in all_container_statuses.items():
+                    if variation in container_name:
+                        return self._format_status(status)
+
+            return "[white]not found[/white]"
+
+        except Exception:
+            return "[red]error[/red]"
+
+    def _format_status(self, status):
+        """Format container status with appropriate colors"""
+        status_lower = status.lower()
+
+        if "unhealthy" in status_lower or "starting" in status_lower:
+            return f"[yellow]{status}[/yellow]"
+        elif "up" in status_lower or "running" in status_lower:
+            # If status only has 'Up n <time period>' without health status, add (running)
+            if "up" in status_lower and "(" not in status:
+                return f"[green]{status} (running)[/green]"
+            else:
+                return f"[green]{status}[/green]"
+        elif "exited" in status_lower:
+            # Check exit code
+            if "exited (0)" in status_lower:
+                return f"[orange1]{status}[/orange1]"
+            else:
+                return f"[red]{status}[/red]"
+        elif "created" in status_lower:
+            return f"[dim]{status}[/dim]"
+        elif "restarting" in status_lower:
+            return f"[yellow]{status}[/yellow]"
+        else:
+            return f"[dim]{status}[/dim]"

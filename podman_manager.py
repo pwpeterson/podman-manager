@@ -68,12 +68,12 @@ def show_rich_help():
             [
                 (
                     "list <[cyan]stack|service[/cyan]>",
-                    "List quadlet services and compose stacks",
+                    "List quadlet services and compose stacks with running status",
                     "pm list",
                 ),
                 (
                     "status [cyan]<stack|service>[/cyan]",
-                    "Detailed service status",
+                    "Show service status tree with running status",
                     "pm status vllm-qwen25",
                 ),
                 ("ps", "Container status table", "pm ps"),
@@ -307,58 +307,19 @@ class CustomArgumentParser(argparse.ArgumentParser):
             console.print("[red]No stacks found[/red]")
 
     def _show_service_hierarchy(self, dim_stacks: bool = False) -> None:
-        """Show full service hierarchy, optionally dimming stacks"""
-        from rich.tree import Tree
-
-        # Try to get the full hierarchy from display managers
+        """Show full service hierarchy with status indicators, optionally dimming stacks"""
+        # Try to get the full hierarchy from display managers with status
         try:
-            # Try quadlet display first
+            # Try quadlet display first - use the enhanced show_status method
             from quadlet_display import QuadletDisplayManager
             from quadlet_manager import QuadletManager
 
             quadlet_manager = QuadletManager()
             display = QuadletDisplayManager(quadlet_manager)
-            all_items = display._get_all_projects_and_services()
 
-            if all_items:
-                if dim_stacks:
-                    tree = Tree("Services available:", style="cyan")
-                else:
-                    tree = Tree("Stacks & Services available:", style="cyan")
-
-                # Sort projects alphabetically
-                for project_name in sorted(all_items.keys()):
-                    project_info = all_items[project_name]
-
-                    # Use display_name if available, otherwise use project_name
-                    display_name = project_info.get("display_name", project_name)
-
-                    # Dim stacks if requested
-                    if dim_stacks:
-                        project_node = tree.add(f"[dim cyan]{display_name}[/dim cyan]")
-                    else:
-                        project_node = tree.add(f"[cyan]{display_name}[/cyan]")
-
-                    services = project_info.get("services", {})
-                    if services:
-                        # Sort services alphabetically
-                        for service_name in sorted(services.keys()):
-                            # Clean up the service name display - remove color codes if stacks are dimmed
-                            if dim_stacks:
-                                # Extract just the service name without color formatting
-                                clean_name = service_name
-                                # Remove rich color tags
-                                import re
-
-                                clean_name = re.sub(r"\[/?[^\]]*\]", "", clean_name)
-                                project_node.add(f"[green]{clean_name}[/green]")
-                            else:
-                                project_node.add(f"[yellow]{service_name}[/yellow]")
-                    else:
-                        project_node.add("[dim](no services found)[/dim]")
-
-                console.print(tree)
-                return
+            # Use the enhanced show_status method which includes running status
+            display.show_status()
+            return
         except Exception:
             pass
 
@@ -603,7 +564,7 @@ def main():
 
     # Status and info commands
     list_parser = subparsers.add_parser(
-        "list", help="List quadlet services and compose stacks"
+        "list", help="List quadlet services and compose stacks with running status"
     )
     list_parser.add_argument(
         "target",
@@ -619,9 +580,13 @@ def main():
 
     # Keep 'status' as an alias for backward compatibility
     status_parser = subparsers.add_parser(
-        "status", help="Show service status (detailed)"
+        "status", help="Show service status tree with running status"
     )
-    status_parser.add_argument("target", help="Stack or service name")
+    status_parser.add_argument(
+        "target",
+        nargs="?",
+        help="Stack or service name (optional - shows all if not specified)",
+    )
     status_parser.add_argument(
         "-v",
         "--verbose",
@@ -1101,10 +1066,14 @@ def main():
             else:
                 display.show_status()
         elif args.command == "status":
-            if selected_mode == "quadlet":
-                container_ops.show_service_status(args.target)
+            if args.target:
+                if selected_mode == "quadlet":
+                    container_ops.show_service_status(args.target)
+                else:
+                    display.show_status(args.target)
             else:
-                display.show_status(args.target)
+                # Show full status tree when no target specified
+                display.show_status()
         elif args.command == "ps":
             # Run podman ps with specific format and display in borderless table
             try:

@@ -30,6 +30,7 @@ These rules apply to all Roo modes and override any conflicting mode-specific ru
 - User can request "verbose" or "more details" to switch to verbose mode for that response
 - User can request "brief" or "concise" to return to brief mode
 - Verbosity setting applies per-response unless user requests persistent change
+- For persistent changes, user can say "always be verbose" or "always be brief"
 - **MUST** acknowledge verbosity changes: "Switching to verbose mode" or "Returning to brief mode"
 
 **BRIEF MODE GUIDELINES**:
@@ -135,13 +136,13 @@ These rules apply to all Roo modes and override any conflicting mode-specific ru
 
 **NOTE**: These universal rules form the foundation for all Roo interactions. Mode-specific rules build upon these fundamentals.
 
-## Task Completion Reporting
+## Task Summary Reporting
 
-**MUST** provide brief completion confirmations by default:
-- One-line summary of what was accomplished
-- No detailed feature lists or technical explanations
-- No step-by-step breakdowns unless requested
-- Format: "Completed: [brief action description]"
+**DEFAULT**: Brief summaries
+- One to two sentences depending on task complexity
+- Simple tasks: One sentence summary
+- Complex tasks: Two sentence summary maximum
+- No detailed explanations unless requested
 
 **DETAILED SUMMARIES**: Only when user explicitly requests with phrases like:
 - "Give me a summary"
@@ -149,18 +150,14 @@ These rules apply to all Roo modes and override any conflicting mode-specific ru
 - "Provide details"
 - "Show me what was done"
 
-**BRIEF COMPLETION EXAMPLES**:
-- "Completed: Enhanced AI troubleshooting for reinit command with automatic diagnostic parsing"
-- "Completed: Updated configuration file with new database settings"
-- "Completed: Fixed memory leak in user authentication module"
-```
+**BRIEF SUMMARY EXAMPLES**:
+- "Updated configuration."
+- "Enhanced troubleshooting."
+- "Fixed memory leak in authentication module."
+- "Added new API endpoint and updated documentation."
 
-## Alternative Approach
-
-If you want even more control, add this verbosity toggle:
-```
-## Completion Verbosity Control
-
-**DEFAULT**: Brief completions ("Done." or single sentence)
-**VERBOSE**: Detailed completion reports
-**TOGGLE**: User can say "verbose completions" or "brief completions" to change default
+**SUMMARY VERBOSITY CONTROL**:
+- **DEFAULT**: Brief summaries (one to two sentences)
+- **VERBOSE**: Detailed summary reports
+- **TOGGLE**: User can say "verbose summaries" or "brief summaries" to change default
+- **PERSISTENT**: User can say "always detailed summaries" or "always brief summaries" for permanent change

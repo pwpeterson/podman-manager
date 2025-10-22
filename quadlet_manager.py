@@ -1223,8 +1223,6 @@ class QuadletManager:
         result = self._run_systemctl_command(cmd, "daemon_reload")
 
         if result.returncode == 0:
-            console.print("[green]Reloaded systemd user daemon[/green]")
-            console.print()
             return True
         else:
             console.print("[red]Failed to reload systemd user daemon[/red]")

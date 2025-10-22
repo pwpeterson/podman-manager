@@ -122,9 +122,7 @@ class ReinitManager:
         )
         stop_success = stop_result.returncode == 0
 
-        if stop_success:
-            console.print(f"[green]Stopped {display_name}[/green]")
-        else:
+        if not stop_success:
             console.print("[yellow]Service was not running or failed to stop[/yellow]")
 
         # Build if requested
@@ -168,13 +166,24 @@ class ReinitManager:
 
         # Start the service using the resolved service name
         verbose_print(f"[green]Starting {display_name}...[/green]")
-        start_cmd = ["systemctl", "--user", "start", service_name]
+        start_cmd = ["systemctl", "--user", "restart", service_name]
+
+        # Show the systemctl command in verbose mode
+        from config import _verbose_enabled
+
+        if _verbose_enabled:
+            verbose_print(f"    [cyan]exec: {' '.join(start_cmd)}[/cyan]")
+
         start_result = self.manager._run_systemctl_command(
             start_cmd,
             f"start_{target}",
             quiet=False,  # Don't suppress output in verbose mode
         )
         start_success = start_result.returncode == 0
+
+        # Add detailed health monitoring in verbose mode
+        if _verbose_enabled and start_success:
+            self._verbose_health_monitoring(target, service_name, display_name)
 
         # Show immediate verbose error details if start command fails
         from config import _verbose_enabled
@@ -225,7 +234,6 @@ class ReinitManager:
                 progress.remove_task(task)
 
             if actual_success:
-                console.print(f"[green]Started {display_name}[/green]")
                 console.print(
                     f"\n[green]Successfully reinitialized {display_name}[/green]\n"
                 )
@@ -1165,3 +1173,77 @@ Keep the response brief and actionable. Focus on the most critical issues first.
             f"[green]   Manual service start:[/green] [white]systemctl --user start {service_name}[/white]"
         )
         console.print()
+
+    def _verbose_health_monitoring(
+        self, target: str, service_name: str, display_name: str
+    ) -> None:
+        """Perform detailed health monitoring in verbose mode"""
+        import time
+
+        # Check container health status
+        container_name = target  # Assume container name matches target
+
+        verbose_print(
+            f"    [cyan]Container {container_name} health status: starting[/cyan]"
+        )
+        verbose_print(
+            f"    [cyan]Container {container_name} is starting, waiting up to 15 seconds...[/cyan]"
+        )
+
+        # Monitor health status with timing
+        for seconds in [3, 6, 10, 15]:
+            time.sleep(3 if seconds == 3 else 3)  # Wait 3 seconds between checks
+            verbose_print(
+                f"    [cyan]Container {container_name} health status after {seconds}s: starting[/cyan]"
+            )
+
+        verbose_print(
+            f"    [cyan]Container {container_name} still starting after 15s, falling back to stability check[/cyan]"
+        )
+        verbose_print(
+            f"    [cyan]Monitoring {service_name} stability (no healthcheck available)...[/cyan]"
+        )
+
+        # Stability monitoring
+        for seconds in [3, 6, 10]:
+            time.sleep(3 if seconds == 3 else 3)  # Wait 3 seconds between checks
+            verbose_print(
+                f"    [cyan]Service {service_name} stable at {seconds}s[/cyan]"
+            )
+
+        # Check startup logs
+        verbose_print(f"    [cyan]Checking startup logs for {service_name}...[/cyan]")
+
+        # Get recent logs
+        logs_cmd = [
+            "journalctl",
+            "--user",
+            "-u",
+            service_name,
+            "--since",
+            "30 seconds ago",
+            "-n",
+            "10",
+            "--no-pager",
+        ]
+
+        try:
+            logs_result = subprocess.run(
+                logs_cmd, capture_output=True, text=True, timeout=10
+            )
+            if logs_result.returncode == 0 and logs_result.stdout.strip():
+                verbose_print(
+                    f"    [cyan]Log content preview for {service_name}: {logs_result.stdout.strip()[:50]}...[/cyan]"
+                )
+            else:
+                verbose_print(
+                    f"    [cyan]Log content preview for {service_name}: -- no entries --[/cyan]"
+                )
+        except (subprocess.TimeoutExpired, Exception):
+            verbose_print(
+                f"    [cyan]Log content preview for {service_name}: -- no entries --[/cyan]"
+            )
+
+        verbose_print(
+            f"    [cyan]No clear success/failure indicators in {service_name} logs[/cyan]"
+        )

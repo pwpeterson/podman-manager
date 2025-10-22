@@ -93,7 +93,7 @@ class StackManager:
             # Show service stopping with spinner and yellow color
             with Progress(
                 SpinnerColumn(),
-                TextColumn(f"  [yellow]Stopping {service}...[/yellow]"),
+                TextColumn(f"[green]Stopping {service}[/green]"),
                 console=console,
                 transient=True,
             ) as progress:
@@ -102,7 +102,6 @@ class StackManager:
                 progress.remove_task(task)
 
             if service_stopped:
-                console.print(f"[green]{service} stopped[/green]")
                 stopped_services.append(service)
             else:
                 console.print(
@@ -440,6 +439,7 @@ class StackManager:
             verbose_print(f"[green]Stopping all {project} services...[/green]")
         else:
             console.print(f"[green]Stopping all {project} services...[/green]")
+            console.print()
 
         stop_success = True
         for service in services:
@@ -449,7 +449,7 @@ class StackManager:
                 # Show individual service stopping with spinner for non-verbose
                 with Progress(  # type: ignore
                     SpinnerColumn(),
-                    TextColumn(f"  [green]Stopping {service}[/green]"),
+                    TextColumn(f"[green]Stopping {service}[/green]"),
                     console=console,
                     transient=True,
                 ) as progress:
@@ -457,9 +457,7 @@ class StackManager:
                     service_stopped = self.manager.stop_service(service, quiet=True)
                     progress.remove_task(task)
 
-                if service_stopped:
-                    console.print(f"    [green]{service} stopped[/green]")
-                else:
+                if not service_stopped:
                     console.print(
                         f"    [yellow]{service} was not running or failed to stop[/yellow]"
                     )
@@ -554,7 +552,7 @@ class StackManager:
                     # Non-verbose mode: show spinner for starting
                     with Progress(  # type: ignore
                         SpinnerColumn(),
-                        TextColumn(f"  [yellow]Starting {service}[/yellow]"),
+                        TextColumn(f"[green]Starting {service}[/green]"),
                         console=console,
                         transient=True,
                     ) as progress:
@@ -604,9 +602,7 @@ class StackManager:
                         )
                         progress.remove_task(task)
 
-                    if service_success:
-                        console.print(f"[green]Started {service}[/green]")
-                    else:
+                    if not service_success:
                         start_success = False
                         # Show detailed error logs after spinner disappears
                         clean_service_name = service.replace(".service", "").replace(
@@ -669,7 +665,7 @@ class StackManager:
     def _monitor_service_stability(self, target: str, service_name: str) -> bool:
         """Monitor service stability over time when no healthcheck is available"""
         verbose_print(
-            f"[dim]Monitoring {target} stability (no healthcheck available)...[/dim]"
+            f"    [cyan]Monitoring {target} stability (no healthcheck available)...[/cyan]"
         )
 
         status_cmd = ["systemctl", "--user", "is-active", service_name]
@@ -688,7 +684,7 @@ class StackManager:
                 )
                 return False
 
-            verbose_print(f"[dim]Service {target} stable at {interval}s[/dim]")
+            verbose_print(f"    [cyan]Service {target} stable at {interval}s[/cyan]")
 
         # If service has been stable for 10 seconds, check logs for any critical errors
         log_result = self._check_startup_logs(target, service_name)
@@ -768,7 +764,7 @@ class StackManager:
             if result.returncode == 0 and result.stdout.strip():
                 health_status = result.stdout.strip()
                 verbose_print(
-                    f"[dim]Container {matching_container} health status: {health_status}[/dim]"
+                    f"    [cyan]Container {matching_container} health status: {health_status}[/cyan]"
                 )
 
                 if health_status == "healthy":
@@ -776,7 +772,7 @@ class StackManager:
                 elif health_status == "starting":
                     # If starting, wait longer and check multiple times
                     verbose_print(
-                        f"[dim]Container {matching_container} is starting, waiting up to 15 seconds...[/dim]"
+                        f"    [cyan]Container {matching_container} is starting, waiting up to 15 seconds...[/cyan]"
                     )
 
                     # Check multiple times over 15 seconds
@@ -788,7 +784,7 @@ class StackManager:
                         if result.returncode == 0:
                             health_status = result.stdout.strip()
                             verbose_print(
-                                f"[dim]Container {matching_container} health status after {wait_time}s: {health_status}[/dim]"
+                                f"    [cyan]Container {matching_container} health status after {wait_time}s: {health_status}[/cyan]"
                             )
 
                             if health_status == "healthy":
@@ -799,7 +795,7 @@ class StackManager:
 
                     # After 15 seconds, if still starting, assume it's taking too long but don't fail
                     verbose_print(
-                        f"[dim]Container {matching_container} still starting after 15s, falling back to stability check[/dim]"
+                        f"    [cyan]Container {matching_container} still starting after 15s, falling back to stability check[/cyan]"
                     )
                     return None  # Fall back to stability monitoring
                 elif health_status == "unhealthy":
@@ -818,7 +814,7 @@ class StackManager:
                     return None
             else:
                 verbose_print(
-                    f"[dim]Could not inspect container {matching_container}[/dim]"
+                    f"[cyan]Could not inspect container {matching_container}[/cyan]"
                 )
                 return None
 
@@ -830,7 +826,7 @@ class StackManager:
 
     def _check_startup_logs(self, target: str, service_name: str) -> bool:
         """Check startup logs for success/failure patterns"""
-        verbose_print(f"[dim]Checking startup logs for {target}...[/dim]")
+        verbose_print(f"    [cyan]Checking startup logs for {target}...[/cyan]")
 
         # Get recent logs to check for critical errors
         logs_cmd = [
@@ -850,7 +846,7 @@ class StackManager:
         if logs_result.returncode == 0 and logs_result.stdout:
             log_content = logs_result.stdout.lower()
             verbose_print(
-                f"[dim]Log content preview for {target}: {log_content[:200]}...[/dim]"
+                f"    [cyan]Log content preview for {target}: {log_content[:200]}...[/cyan]"
             )
 
             # Check for critical error patterns that indicate startup failure
@@ -938,7 +934,7 @@ class StackManager:
                 return True
             else:
                 verbose_print(
-                    f"[dim]No clear success/failure indicators in {target} logs[/dim]"
+                    f"    [cyan]No clear success/failure indicators in {target} logs[/cyan]"
                 )
 
         # If service is active and no critical errors found, be more optimistic

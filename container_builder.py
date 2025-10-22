@@ -161,7 +161,7 @@ class ContainerBuilder:
             # Now stop and remove existing container if it exists with spinner
             with Progress(
                 SpinnerColumn(),
-                TextColumn(f"[bold white]Stopping {target}...[/bold white]"),
+                TextColumn(f"[green]Stopping {target}[/green]"),
                 console=console,
                 transient=True,
             ) as progress:
@@ -407,7 +407,7 @@ class ContainerBuilder:
         else:
             with Progress(
                 SpinnerColumn(),
-                TextColumn(f"[bold white]Starting {target}...[/bold white]"),
+                TextColumn(f"[green]Starting {target}[/green]"),
                 console=console,
                 transient=True,
             ) as progress:

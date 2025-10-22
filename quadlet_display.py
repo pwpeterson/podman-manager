@@ -16,9 +16,17 @@ class QuadletDisplayManager:
         self.manager = manager
 
     def show_status(self, target=None):
-        """Show projects and services in alphabetical tree format"""
-        # Get all available projects and services
-        all_items = self._get_all_projects_and_services()
+        """Show projects and services in alphabetical tree format with running status"""
+
+        # Show spinner while retrieving status
+        with console.status("[green]Retrieving status...[/green]", spinner="dots"):
+            # Get all available projects and services
+            all_items = self._get_all_projects_and_services()
+            # Get all container statuses at once
+            all_container_statuses = self._get_all_container_statuses()
+            import time
+
+            time.sleep(0.5)  # Brief pause to show spinner
 
         if not all_items:
             console.print("[red]No projects or services found![/red]")
@@ -68,7 +76,7 @@ class QuadletDisplayManager:
             all_items = filtered_items
 
         console.print()
-        tree = Tree("Projects & Services", style="cyan")
+        tree = Tree("Stacks & Services", style="cyan")
 
         # Sort projects alphabetically
         for project_name in sorted(all_items.keys()):
@@ -84,7 +92,40 @@ class QuadletDisplayManager:
             if services:
                 # Sort services alphabetically
                 for service_name in sorted(services.keys()):
-                    project_node.add(f"[yellow]{service_name}[/yellow]")
+                    # Get the clean service name (remove color formatting)
+                    clean_service_name = self._extract_clean_service_name(service_name)
+
+                    # Get service status from cached data
+                    status_info = self._get_service_status_from_cache(
+                        clean_service_name, all_container_statuses
+                    )
+
+                    # Format service with status (30 character field for alignment)
+                    clean_service_display = self._extract_clean_service_name(
+                        service_name
+                    )
+                    # Ensure all service names are exactly 30 characters for alignment
+                    if len(clean_service_display) > 30:
+                        # Truncate and pad to exactly 30 characters
+                        # Find truncation point that doesn't break color codes
+                        truncated_service = service_name
+                        while (
+                            len(self._extract_clean_service_name(truncated_service))
+                            > 30
+                        ):
+                            truncated_service = truncated_service[:-1]
+                        clean_truncated = self._extract_clean_service_name(
+                            truncated_service
+                        )
+                        padding_needed = 30 - len(clean_truncated)
+                        service_display = truncated_service + (" " * padding_needed)
+                    else:
+                        # Pad original formatted name to exactly 30 characters with spaces
+                        padding_needed = 30 - len(clean_service_display)
+                        service_display = service_name + (" " * padding_needed)
+
+                    service_with_status = f"{service_display} {status_info}"
+                    project_node.add(service_with_status)
             else:
                 project_node.add("[dim](no services found)[/dim]")
 
@@ -573,3 +614,208 @@ class QuadletDisplayManager:
         """Clear display cache"""
         # Clear any cached data if we have any
         console.print("[green]Display cache cleared[/green]")
+
+    def _extract_clean_service_name(self, service_name: str) -> str:
+        """Extract clean service name by removing Rich color formatting"""
+        import re
+
+        # Remove rich color tags like [green], [/green], [yellow], etc.
+        clean_name = re.sub(r"\[/?[^\]]*\]", "", service_name)
+        return clean_name.strip()
+
+    def _get_service_running_status(self, service_name: str) -> str:
+        """Get the running status of a service using only podman ps -a"""
+        try:
+            # Only use podman ps -a command
+            container_status = self._get_container_status(service_name)
+            if container_status:
+                return container_status
+
+            # Check for common service variations
+            variations = [
+                service_name.replace("-", "_"),
+                service_name.replace("_", "-"),
+                f"local-ai-{service_name}",
+                f"supabase-{service_name}",
+                service_name.replace("local-ai-", ""),
+                service_name.replace("supabase-", ""),
+                f"{service_name}-1",  # Common compose suffix
+                f"{service_name}_1",  # Alternative compose suffix
+            ]
+
+            for variation in variations:
+                container_status = self._get_container_status(variation)
+                if container_status:
+                    return container_status
+
+            # If not found in containers, return not found
+            return "[white]not found[/white]"
+
+        except Exception:
+            return "[red]error[/red]"
+
+    def _get_container_status(self, container_name: str) -> str | None:
+        """Get container status using podman ps"""
+        try:
+            import subprocess
+
+            # Check if container exists and get its status
+            cmd = [
+                "podman",
+                "ps",
+                "-a",
+                "--filter",
+                f"name=^{container_name}$",
+                "--format",
+                "{{.Status}}",
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+
+            if result.returncode == 0 and result.stdout.strip():
+                status = result.stdout.strip()
+                status_lower = status.lower()
+
+                if "unhealthy" in status_lower or "starting" in status_lower:
+                    return f"[yellow]{status}[/yellow]"
+                elif "up" in status_lower or "running" in status_lower:
+                    # If status only has 'Up n <time period>' without health status, add (running)
+                    if "up" in status_lower and "(" not in status:
+                        return f"[green]{status} (running)[/green]"
+                    else:
+                        return f"[green]{status}[/green]"
+                elif "exited" in status_lower:
+                    # Check exit code
+                    if "exited (0)" in status_lower:
+                        return f"[orange1]{status}[/orange1]"
+                    else:
+                        return f"[red]{status}[/red]"
+                elif "created" in status_lower:
+                    return f"[dim]{status}[/dim]"
+                elif "restarting" in status_lower:
+                    return f"[yellow]{status}[/yellow]"
+                else:
+                    return f"[dim]{status}[/dim]"
+
+            # Try partial name match if exact match fails
+            cmd_partial = [
+                "podman",
+                "ps",
+                "-a",
+                "--filter",
+                f"name={container_name}",
+                "--format",
+                "{{.Names}} {{.Status}}",
+            ]
+
+            result = subprocess.run(
+                cmd_partial, capture_output=True, text=True, timeout=5
+            )
+
+            if result.returncode == 0 and result.stdout.strip():
+                lines = result.stdout.strip().split("\n")
+                for line in lines:
+                    if container_name in line:
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            status = " ".join(parts[1:])
+                            status_lower = status.lower()
+                            if "up" in status_lower or "running" in status_lower:
+                                return f"[green]{status}[/green]"
+                            elif "exited" in status_lower:
+                                if "exited (0)" in status_lower:
+                                    return f"[orange1]{status}[/orange1]"
+                                else:
+                                    return f"[red]{status}[/red]"
+                            elif "created" in status_lower:
+                                return f"[dim]{status}[/dim]"
+                            elif "restarting" in status_lower:
+                                return f"[yellow]{status}[/yellow]"
+                            else:
+                                return f"[dim]{status}[/dim]"
+
+            return None
+
+        except Exception:
+            return None
+
+    def _get_all_container_statuses(self):
+        """Get all container statuses at once using a single podman ps command"""
+        try:
+            cmd = ["podman", "ps", "-a", "--format", "{{.Names}};{{.Status}}"]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+            if result.returncode == 0 and result.stdout.strip():
+                container_statuses = {}
+                for line in result.stdout.strip().split("\n"):
+                    if ";" in line:
+                        name, status = line.split(";", 1)
+                        container_statuses[name.strip()] = status.strip()
+                return container_statuses
+
+            return {}
+
+        except Exception:
+            return {}
+
+    def _get_service_status_from_cache(self, service_name, all_container_statuses):
+        """Get service status from cached container statuses"""
+        try:
+            # Check exact match first
+            if service_name in all_container_statuses:
+                return self._format_status(all_container_statuses[service_name])
+
+            # Check for partial matches
+            for container_name, status in all_container_statuses.items():
+                if service_name in container_name:
+                    return self._format_status(status)
+
+            # Check for common service variations
+            variations = [
+                service_name.replace("-", "_"),
+                service_name.replace("_", "-"),
+                f"local-ai-{service_name}",
+                f"supabase-{service_name}",
+                service_name.replace("local-ai-", ""),
+                service_name.replace("supabase-", ""),
+            ]
+
+            for variation in variations:
+                if variation in all_container_statuses:
+                    return self._format_status(all_container_statuses[variation])
+
+                # Check partial matches for variations
+                for container_name, status in all_container_statuses.items():
+                    if variation in container_name:
+                        return self._format_status(status)
+
+            return "[white]not found[/white]"
+
+        except Exception:
+            return "[red]error[/red]"
+
+    def _format_status(self, status):
+        """Format container status with appropriate colors"""
+        status_lower = status.lower()
+
+        if "unhealthy" in status_lower or "starting" in status_lower:
+            return f"[yellow]{status}[/yellow]"
+        elif "up" in status_lower or "running" in status_lower:
+            # If status only has 'Up n <time period>' without health status, add (running)
+            if "up" in status_lower and "(" not in status:
+                return f"[green]{status} (running)[/green]"
+            else:
+                return f"[green]{status}[/green]"
+        elif "exited" in status_lower:
+            # Check exit code
+            if "exited (0)" in status_lower:
+                return f"[orange1]{status}[/orange1]"
+            else:
+                return f"[red]{status}[/red]"
+        elif "created" in status_lower:
+            return f"[dim]{status}[/dim]"
+        elif "restarting" in status_lower:
+            return f"[yellow]{status}[/yellow]"
+        else:
+            return f"[dim]{status}[/dim]"
