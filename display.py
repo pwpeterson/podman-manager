@@ -19,7 +19,7 @@ class DisplayManager:
         """Show status of all projects and services with running status"""
 
         # Show status while retrieving
-        console.print("[green]Retrieving status...[/green]")
+        console.print("\n[green]Retrieving podman status...[/green]")
         projects = self.manager._parse_compose_files()
         # Get all container statuses at once
         all_container_statuses = self._get_all_container_statuses(verbose=verbose)

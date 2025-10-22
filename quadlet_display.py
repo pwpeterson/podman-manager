@@ -19,7 +19,7 @@ class QuadletDisplayManager:
         """Show projects and services in alphabetical tree format with running status"""
 
         # Show status while retrieving
-        console.print("[green]Retrieving status...[/green]")
+        console.print("\n[green]Retrieving podman status...[/green]")
         # Get all available projects and services
         all_items = self._get_all_projects_and_services()
         # Get all container statuses at once
