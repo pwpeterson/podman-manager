@@ -104,6 +104,8 @@ class ReinitManager:
         self, target: str, service_name: str, build_type: str | None = None
     ) -> bool:
         """Reinit a single service using already-resolved service name"""
+        from config import _verbose_enabled
+
         # Use the actual service name for display (remove .service suffix if present)
         display_name = (
             service_name.replace(".service", "")
@@ -168,12 +170,6 @@ class ReinitManager:
         verbose_print(f"[green]Starting {display_name}...[/green]")
         start_cmd = ["systemctl", "--user", "restart", service_name]
 
-        # Show the systemctl command in verbose mode
-        from config import _verbose_enabled
-
-        if _verbose_enabled:
-            verbose_print(f"    [cyan]exec: {' '.join(start_cmd)}[/cyan]")
-
         start_result = self.manager._run_systemctl_command(
             start_cmd,
             f"start_{target}",
@@ -186,7 +182,6 @@ class ReinitManager:
             self._verbose_health_monitoring(target, service_name, display_name)
 
         # Show immediate verbose error details if start command fails
-        from config import _verbose_enabled
 
         if _verbose_enabled and not start_success:
             console.print("[red]❌ systemctl start command failed immediately[/red]")
@@ -1180,8 +1175,8 @@ Keep the response brief and actionable. Focus on the most critical issues first.
         """Perform detailed health monitoring in verbose mode"""
         import time
 
-        # Check container health status
-        container_name = target  # Assume container name matches target
+        # Check container health status using display_name (full service name)
+        container_name = display_name  # Use full service name for consistency
 
         verbose_print(
             f"    [cyan]Container {container_name} health status: starting[/cyan]"

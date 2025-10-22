@@ -38,6 +38,30 @@ class QuadletOperations:
         self.system_monitor = SystemMonitor(manager)
         self.reinit_manager = ReinitManager(manager)
 
+    def _resolve_service_name(
+        self, target: str, strip_service_suffix: bool = False
+    ) -> str:
+        """Resolve service name using fuzzy matching and optionally strip .service suffix.
+
+        Args:
+            target: Original target name (e.g., 'ollama')
+            strip_service_suffix: If True, remove .service suffix for Dockerfile naming
+
+        Returns:
+            Resolved service name, optionally without .service suffix
+        """
+        service_name = self.manager._find_service_name(target)
+        resolved_target = (
+            service_name
+            if service_name and not service_name.startswith("STACK:")
+            else target
+        )
+
+        if strip_service_suffix and resolved_target.endswith(".service"):
+            resolved_target = resolved_target[:-8]
+
+        return resolved_target
+
     # Service Lifecycle Operations
     def start(self, target: str, build: bool = False) -> bool:
         """Start a service or stack"""
@@ -118,12 +142,14 @@ class QuadletOperations:
             project_name = target[:-6]  # Remove "-stack" suffix
             return self.container_builder.rebuild_stack(project_name)
 
-        # Handle individual service
-        return self.container_builder.rebuild_service(target)
+        # Handle individual service - use resolved service name without .service suffix
+        resolved_target = self._resolve_service_name(target, strip_service_suffix=True)
+        return self.container_builder.rebuild_service(resolved_target)
 
     def update_images_and_restart(self, target: str) -> bool:
         """Update container images and restart service (for quadlets with auto-update)"""
-        return self.container_builder.update_images_and_restart(target)
+        resolved_target = self._resolve_service_name(target, strip_service_suffix=True)
+        return self.container_builder.update_images_and_restart(resolved_target)
 
     # Stack Management Operations
     def down(self, target: str = "vllm-stack") -> bool:
@@ -212,27 +238,35 @@ class QuadletOperations:
 
     def _build_service(self, target: str) -> bool:
         """Build images for a single service using quadlet build process"""
-        return self.container_builder.build_service(target)
+        resolved_target = self._resolve_service_name(target, strip_service_suffix=True)
+        return self.container_builder.build_service(resolved_target)
 
     def _build_service_podman(self, target: str) -> bool:
         """Build images using regular podman build"""
-        return self.container_builder.build_service_podman(target)
+        resolved_target = self._resolve_service_name(target, strip_service_suffix=True)
+        return self.container_builder.build_service_podman(resolved_target)
 
     def _start_service_with_build(self, target: str, build: bool = False) -> bool:
         """Start a service with optional build"""
-        return self.service_lifecycle._start_service_with_build(target, build)
+        # For service lifecycle operations, keep the full service name with .service suffix
+        resolved_target = self._resolve_service_name(target, strip_service_suffix=False)
+        return self.service_lifecycle._start_service_with_build(resolved_target, build)
 
     def _restart_service_with_build(self, target: str, build: bool = False) -> bool:
         """Restart a service with optional build"""
+        # For service lifecycle operations, keep the full service name with .service suffix
+        resolved_target = self._resolve_service_name(target, strip_service_suffix=False)
+
         if build:
             # Stop first (clear cache to prevent duplicate messages)
             self.manager._clear_auto_match_cache()
-            self.manager.stop_service(target, quiet=True)
-            # Build
-            if not self.container_builder.build_service(target):
+            self.manager.stop_service(resolved_target, quiet=True)
+            # Build - use service name without .service suffix for Dockerfile naming
+            build_target = self._resolve_service_name(target, strip_service_suffix=True)
+            if not self.container_builder.build_service(build_target):
                 return False
             # Reload daemon
             self.manager.reload_daemon()
             # Clear cache again before restart
             self.manager._clear_auto_match_cache()
-        return self.manager.restart_service(target)
+        return self.manager.restart_service(resolved_target)

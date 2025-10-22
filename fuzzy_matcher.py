@@ -1,5 +1,6 @@
 """Unified fuzzy matching utility for service and stack names."""
 
+from pathlib import Path
 from typing import List, Optional
 
 from config import console
@@ -23,21 +24,10 @@ class FuzzyMatcher:
             - Stack identifier (e.g., "STACK:local-ai-stack")
             - None if no matches or user cancels
         """
-        # Handle common service name aliases first
-        service_aliases = {
-            "vllm-qwen": "vllm-qwen25",
-            "qwen": "vllm-qwen25",
-            "qwen25": "vllm-qwen25",
-            "delegator": "vllm-delegator",
-            "proxy": "vllm-proxy",
-        }
-
-        if partial_name in service_aliases:
-            original_target = partial_name
-            partial_name = service_aliases[partial_name]
-            console.print(
-                f"[dim]Resolved alias '{original_target}' -> '{partial_name}'[/dim]"
-            )
+        # First, try to resolve using directory structure and file names
+        resolved_name = self._resolve_from_directory_structure(partial_name)
+        if resolved_name:
+            partial_name = resolved_name
 
         # Get all available services and stacks
         all_items = self._get_all_available_items()
@@ -256,3 +246,113 @@ class FuzzyMatcher:
             else:
                 # Return service name for installer
                 return item["name"]
+
+    def _resolve_from_directory_structure(self, partial_name: str) -> Optional[str]:
+        """Resolve service/stack names using directory structure and file names."""
+        quadlets_base_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
+
+        if not quadlets_base_dir.exists():
+            return None
+
+        try:
+            # Get all stack directories
+            stack_dirs = [d for d in quadlets_base_dir.iterdir() if d.is_dir()]
+
+            # 1. Check for exact stack name match
+            for stack_dir in stack_dirs:
+                if partial_name == stack_dir.name:
+                    return f"STACK:{stack_dir.name}"
+
+            # 2. Check if partial_name matches first part of stack directory name
+            for stack_dir in stack_dirs:
+                stack_name = stack_dir.name
+                # Check if input matches the beginning of stack name (e.g., "local" matches "local-ai-stack")
+                if (
+                    stack_name.startswith(f"{partial_name}-")
+                    or partial_name in stack_name.split("-")[0]
+                ):
+                    return f"STACK:{stack_name}"
+
+            # 3. Look for service files in all stack directories
+            all_services = {}
+            for stack_dir in stack_dirs:
+                try:
+                    # Look for .container, .service, or Dockerfile.* files
+                    service_files = []
+                    service_files.extend(stack_dir.glob("*.container"))
+                    service_files.extend(stack_dir.glob("*.service"))
+                    service_files.extend(stack_dir.glob("Dockerfile.*"))
+
+                    for service_file in service_files:
+                        if service_file.name.startswith("Dockerfile."):
+                            # Extract service name from Dockerfile.service-name
+                            service_name = service_file.name.replace("Dockerfile.", "")
+                        else:
+                            # Extract service name from service-name.container or service-name.service
+                            service_name = service_file.stem
+
+                        all_services[service_name] = stack_dir.name
+                except Exception:
+                    continue
+
+            # 4. Check for exact service name match
+            if partial_name in all_services:
+                return partial_name
+
+            # 5. Check for partial service name matches
+            matching_services = []
+            for service_name in all_services.keys():
+                if partial_name.lower() in service_name.lower():
+                    matching_services.append(service_name)
+
+            # If single match, return it
+            if len(matching_services) == 1:
+                return matching_services[0]
+
+            # 6. Check for prefix matches in service names
+            prefix_matches = []
+            for service_name in all_services.keys():
+                if service_name.lower().startswith(partial_name.lower()):
+                    prefix_matches.append(service_name)
+
+            if len(prefix_matches) == 1:
+                return prefix_matches[0]
+
+            # 7. Try fuzzy matching with edit distance for services
+            if len(partial_name) >= 3:  # Only for reasonable length inputs
+                fuzzy_matches = []
+                for service_name in all_services.keys():
+                    distance = self._levenshtein_distance(
+                        partial_name.lower(), service_name.lower()
+                    )
+                    if distance <= 2:  # Allow up to 2 character differences
+                        fuzzy_matches.append((service_name, distance))
+
+                # Sort by distance and return best match if unique
+                fuzzy_matches.sort(key=lambda x: x[1])
+                if len(fuzzy_matches) == 1:
+                    return fuzzy_matches[0][0]
+
+            return None
+
+        except Exception as e:
+            console.print(f"[dim]Error scanning directory structure: {e}[/dim]")
+            return None
+
+    def _levenshtein_distance(self, s1: str, s2: str) -> int:
+        """Calculate Levenshtein distance between two strings."""
+        if len(s1) < len(s2):
+            return self._levenshtein_distance(s2, s1)
+        if len(s2) == 0:
+            return len(s1)
+
+        previous_row = list(range(len(s2) + 1))
+        for i, c1 in enumerate(s1):
+            current_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (c1 != c2)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+        return previous_row[-1]

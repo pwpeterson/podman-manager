@@ -724,15 +724,32 @@ class StackManager:
                 else []
             )
 
-            # Try to find the container name - it might match the service name or be similar
-            container_names = [
-                target,
-                target.replace("-", "_"),
-                f"local-ai-{target}",
-                f"local_ai_{target}",
-                target.replace("local-ai-", ""),
-                target.replace("local_ai_", ""),
-            ]
+            # Try to find the container name - handle both full and short service names
+            container_names = [target]  # Start with the exact target name
+
+            # Add variations with underscores
+            container_names.append(target.replace("-", "_"))
+
+            # If target is a full service name (e.g., local-ai-ollama), also try the short name
+            if target.startswith("local-ai-"):
+                short_name = target.replace("local-ai-", "")
+                container_names.extend([short_name, short_name.replace("-", "_")])
+            elif target.startswith("supabase-"):
+                short_name = target.replace("supabase-", "")
+                container_names.extend([short_name, short_name.replace("-", "_")])
+
+            # Also try with prefixes in case container has them
+            if not target.startswith("local-ai-") and not target.startswith(
+                "supabase-"
+            ):
+                container_names.extend(
+                    [
+                        f"local-ai-{target}",
+                        f"local_ai_{target}",
+                        f"supabase-{target}",
+                        f"supabase_{target}",
+                    ]
+                )
 
             # Find matching container from running containers
             matching_container = None

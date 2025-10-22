@@ -3,7 +3,7 @@
 import os
 import subprocess
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -16,20 +16,185 @@ class ContainerBuilder:
     def __init__(self, manager):
         self.manager = manager
 
+    def _find_stack_for_service(self, service_name: str) -> Optional[str]:
+        """Find which stack directory contains the given service."""
+        quadlets_base_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
+
+        if not quadlets_base_dir.exists():
+            # Fallback logic if directory doesn't exist
+            if service_name.startswith("local-ai-"):
+                return "local-ai-stack"
+            elif service_name.startswith("supabase-"):
+                return "supabase-stack"
+            elif service_name.startswith("vllm-"):
+                return "vllm-stack"
+            elif "-" in service_name:
+                base_name = service_name.split("-")[0]
+                return f"{base_name}-stack"
+            else:
+                return f"{service_name}-stack"
+
+        try:
+            # Search all stack directories for the service
+            for stack_dir in quadlets_base_dir.iterdir():
+                if not stack_dir.is_dir():
+                    continue
+
+                # Look for Dockerfile.service-name in this stack directory
+                dockerfile_path = stack_dir / f"Dockerfile.{service_name}"
+                if dockerfile_path.exists():
+                    return stack_dir.name
+
+                # Also check for .container and .service files
+                container_file = stack_dir / f"{service_name}.container"
+                service_file = stack_dir / f"{service_name}.service"
+                if container_file.exists() or service_file.exists():
+                    return stack_dir.name
+
+            # If not found, use fallback logic based on service name patterns
+            if service_name.startswith("local-ai-"):
+                return "local-ai-stack"
+            elif service_name.startswith("supabase-"):
+                return "supabase-stack"
+            elif service_name.startswith("vllm-"):
+                return "vllm-stack"
+            elif "-" in service_name:
+                base_name = service_name.split("-")[0]
+                return f"{base_name}-stack"
+            else:
+                # For single word services, try common stack patterns first
+                common_stacks = ["local-ai-stack", "vllm-stack", "supabase-stack"]
+                for stack in common_stacks:
+                    stack_dir = quadlets_base_dir / stack
+                    if stack_dir.exists():
+                        # Check if any service file in this stack might match
+                        dockerfile_path = stack_dir / f"Dockerfile.{service_name}"
+                        if dockerfile_path.exists():
+                            return stack
+                # Final fallback
+                return f"{service_name}-stack"
+
+        except Exception as e:
+            console.print(f"[dim]Error scanning for service stack: {e}[/dim]")
+            # Fallback logic based on service name patterns
+            if service_name.startswith("local-ai-"):
+                return "local-ai-stack"
+            elif service_name.startswith("supabase-"):
+                return "supabase-stack"
+            elif service_name.startswith("vllm-"):
+                return "vllm-stack"
+            elif "-" in service_name:
+                base_name = service_name.split("-")[0]
+                return f"{base_name}-stack"
+            else:
+                return f"{service_name}-stack"
+
     def _render_ansi_output(self, output: str) -> None:
         """Render ANSI-colored output from subprocess"""
         # For now, just print the output directly
         # Rich console should handle ANSI codes properly
         console.print(output)
 
+    def _get_container_image(self, container_name: str) -> Optional[str]:
+        """Get the image name used by a container using podman ps command."""
+        try:
+            # Use the exact command format specified by the user
+            cmd = f"podman ps --filter name={container_name} --format '{{{{.Image}}}}'"
+            verbose_print(f"[cyan]exec: {cmd}[/cyan]")
+
+            result = subprocess.run(
+                [
+                    "podman",
+                    "ps",
+                    "--filter",
+                    f"name={container_name}",
+                    "--format",
+                    "{{.Image}}",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode == 0 and result.stdout.strip():
+                image_name = result.stdout.strip()
+                verbose_print(
+                    f"    [cyan]Found image for {container_name}: {image_name}[/cyan]"
+                )
+                return image_name
+            else:
+                verbose_print(
+                    f"[dim]No running container found for {container_name}[/dim]"
+                )
+                return None
+
+        except Exception as e:
+            verbose_print(f"[dim]Error getting container image: {e}[/dim]")
+            return None
+
+    def _cleanup_existing_container(self, container_name: str) -> None:
+        """Stop and remove existing container following the proper cleanup sequence."""
+        try:
+            # Check if container exists (silently)
+            exists_result = subprocess.run(
+                ["podman", "container", "exists", container_name],
+                capture_output=True,
+                text=True,
+            )
+
+            if exists_result.returncode == 0:
+                # Container exists, check if it's running
+                verbose_print(
+                    f"[cyan]exec: podman container inspect {container_name} --format {{{{.State.Running}}}}[/cyan]"
+                )
+                inspect_result = subprocess.run(
+                    [
+                        "podman",
+                        "container",
+                        "inspect",
+                        container_name,
+                        "--format",
+                        "{{.State.Running}}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+
+                # Stop container if running
+                if (
+                    inspect_result.returncode == 0
+                    and inspect_result.stdout.strip() == "true"
+                ):
+                    verbose_print(f"[cyan]exec: podman stop {container_name}[/cyan]")
+                    subprocess.run(
+                        ["podman", "stop", container_name],
+                        capture_output=True,
+                        text=True,
+                    )
+                    console.print(f"[green]Stopped container: {container_name}[/green]")
+
+                # Remove container
+                verbose_print(f"[cyan]exec: podman rm {container_name}[/cyan]")
+                subprocess.run(
+                    ["podman", "rm", container_name],
+                    capture_output=True,
+                    text=True,
+                )
+                console.print(f"[green]Removed container: {container_name}[/green]")
+
+        except Exception as e:
+            verbose_print(f"[dim]Error during container cleanup: {e}[/dim]")
+
     def build_service(self, target: str) -> bool:
         """Build images for a single service by looking for Dockerfile.<service_name>"""
         try:
-            # Look for Dockerfile with service name suffix in source directory
+            # Dynamically determine stack name from directory structure
+            stack_name = self._find_stack_for_service(target)
+
+            # Construct Dockerfile name using the full service name
             dockerfile_name = f"Dockerfile.{target}"
 
-            # Search in quadlets directory
-            quadlets_dir = "/home/pwp/srv/local-ai-packaged/quadlets"
+            # Search in quadlets directory with stack name subdirectory
+            quadlets_dir = f"/home/pwp/srv/local-ai-packaged/quadlets/{stack_name}/"
 
             dockerfile_path: Union[Path, None] = None
             build_dir: Union[Path, None] = None
@@ -78,19 +243,72 @@ class ContainerBuilder:
     ) -> bool:
         """Build container image using the specified Dockerfile"""
         original_cwd = os.getcwd()
+        # Initialize service_name for error handling
+        service_name = target
         try:
             os.chdir(build_dir)
 
-            # Determine image name
-            image_name = f"localhost/{target}:latest"
+            # Determine service names
+            service_name = target  # Full service name (e.g., "local-ai-ollama")
+            stack_name = self._find_stack_for_service(
+                service_name
+            )  # e.g., "local-ai-stack"
 
-            # Remove old image to force rebuild (quietly)
-            verbose_print(f"[cyan]exec: podman rmi {image_name}[/cyan]")
-            subprocess.run(
-                ["podman", "rmi", image_name], capture_output=True, text=True
-            )
+            # Calculate short_service_name by removing stack prefix
+            if stack_name and stack_name.endswith("-stack"):
+                stack_prefix = stack_name[
+                    :-6
+                ]  # Remove "-stack" suffix (e.g., "local-ai")
+                if service_name.startswith(f"{stack_prefix}-"):
+                    short_service_name = service_name[
+                        len(stack_prefix) + 1 :
+                    ]  # Remove "local-ai-" prefix
+                else:
+                    short_service_name = (
+                        service_name  # Fallback if pattern doesn't match
+                    )
+            else:
+                short_service_name = service_name  # Fallback if no stack found
 
-            # Build new image first
+            # Get the actual image name from running container using short service name
+            actual_image_name = self._get_container_image(short_service_name)
+            if not actual_image_name:
+                # Fallback: try with full service name
+                actual_image_name = self._get_container_image(service_name)
+
+            # Determine target image name for building (what we want to build)
+            target_image_name = f"localhost/{service_name}:latest"
+
+            # Service information (hidden in normal output)
+            # verbose_print(f"[dim]Service name: {service_name}[/dim]")
+            # verbose_print(f"[dim]Stack name: {stack_name}[/dim]")
+            # verbose_print(f"[dim]Short service name: {short_service_name}[/dim]")
+            # verbose_print(f"[dim]Image name: {actual_image_name or target_image_name}[/dim]")
+
+            # Step 1: Stop and remove existing container (try both names)
+            self._cleanup_existing_container(service_name)  # Try full name first
+            self._cleanup_existing_container(
+                short_service_name
+            )  # Try short name as fallback
+
+            # Step 2: Remove the current image if we found one
+            if actual_image_name:
+                verbose_print(f"[cyan]exec: podman rmi {actual_image_name}[/cyan]")
+                subprocess.run(
+                    ["podman", "rmi", actual_image_name], capture_output=True, text=True
+                )
+                console.print(f"[green]Removed image: {actual_image_name}[/green]")
+            else:
+                # Fallback: remove image by expected name
+                verbose_print(f"[cyan]exec: podman rmi {target_image_name}[/cyan]")
+                subprocess.run(
+                    ["podman", "rmi", target_image_name], capture_output=True, text=True
+                )
+                verbose_print(
+                    f"[dim]No running container found, tried to remove expected image: {target_image_name}[/dim]"
+                )
+
+            # Build new image using target image name
             build_cmd = [
                 "podman",
                 "build",
@@ -98,7 +316,7 @@ class ContainerBuilder:
                 "-f",
                 dockerfile_name,
                 "-t",
-                image_name,
+                target_image_name,
                 ".",
             ]
             verbose_print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
@@ -107,7 +325,7 @@ class ContainerBuilder:
 
             if _verbose_enabled:
                 # In verbose mode, show build output with indentation
-                console.print(f"[green]Building image: {image_name}[/green]")
+                console.print(f"[green]Building image: {target_image_name}[/green]")
 
                 process = subprocess.Popen(
                     build_cmd,
@@ -127,7 +345,7 @@ class ContainerBuilder:
                 # In non-verbose mode, use spinner and capture output
                 with Progress(
                     SpinnerColumn(),
-                    TextColumn(f"[yellow]Building image: {image_name}[/yellow]"),
+                    TextColumn(f"[yellow]Building image: {target_image_name}[/yellow]"),
                     console=console,
                     transient=True,
                 ) as progress:
@@ -157,60 +375,16 @@ class ContainerBuilder:
                         if line.strip():
                             console.print(f"  {line}")
 
-            console.print(f"[green]Image {target} built successfully[/green]")
-            # Now stop and remove existing container if it exists with spinner
-            with Progress(
-                SpinnerColumn(),
-                TextColumn(f"[green]Stopping {target}[/green]"),
-                console=console,
-                transient=True,
-            ) as progress:
-                task = progress.add_task("stopping", total=None)
-
-                verbose_print(f"[cyan]exec: podman container exists {target}[/cyan]")
-                subprocess.run(
-                    ["podman", "container", "exists", target],
-                    capture_output=True,
-                    text=True,
-                )
-                if (
-                    subprocess.run(
-                        ["podman", "container", "exists", target], capture_output=True
-                    ).returncode
-                    == 0
-                ):
-                    # Check if container is running
-                    verbose_print(
-                        f"[cyan]exec: podman container inspect {target} --format {{{{.State.Running}}}}[/cyan]"
-                    )
-                    result = subprocess.run(
-                        [
-                            "podman",
-                            "container",
-                            "inspect",
-                            target,
-                            "--format",
-                            "{{.State.Running}}",
-                        ],
-                        capture_output=True,
-                        text=True,
-                    )
-                    if result.returncode == 0 and result.stdout.strip() == "true":
-                        verbose_print(f"[cyan]exec: podman stop {target}[/cyan]")
-                        subprocess.run(
-                            ["podman", "stop", target], capture_output=True, text=True
-                        )
-                    verbose_print(f"[cyan]exec: podman rm {target}[/cyan]")
-                    subprocess.run(
-                        ["podman", "rm", target], capture_output=True, text=True
-                    )
-
-                progress.remove_task(task)
+            console.print(
+                f"[green]✅ Image {target_image_name} built successfully[/green]"
+            )
 
             return True
 
         except Exception as e:
-            console.print(f"[red]Error during container build: {e}[/red]")
+            console.print(
+                f"[red]Error during container build for {service_name}: {e}[/red]"
+            )
             return False
         finally:
             os.chdir(original_cwd)
@@ -231,20 +405,16 @@ class ContainerBuilder:
             # Remove -mcp suffix if present to get the base service name
             service_name = target.replace("-mcp", "")
 
-            # Map service names to quadlet group names
-            service_to_group = {
-                "vllm-delegator": "vllm",
-                "vllm-proxy": "vllm",
-                "vllm-qwen25": "vllm",
-                "taskflow-backend": "taskflow",
-                "taskflow-frontend": "taskflow",
-            }
-
-            # Determine the quadlet group
-            if service_name in service_to_group:
-                quadlet_group = service_to_group[service_name]
+            # Determine the quadlet group from stack name
+            stack_name = self._find_stack_for_service(service_name)
+            if stack_name:
+                # Convert stack name to group name (remove -stack suffix)
+                if stack_name.endswith("-stack"):
+                    quadlet_group = stack_name[:-6]  # Remove "-stack"
+                else:
+                    quadlet_group = stack_name
             else:
-                # For other services, try to extract group from service name
+                # Fallback: extract group from service name
                 if "-" in service_name:
                     quadlet_group = service_name.split("-")[0]
                 else:
