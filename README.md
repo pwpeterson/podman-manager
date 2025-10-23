@@ -15,6 +15,8 @@ A comprehensive Python-based container management tool for Podman with rich term
 - **Progress Tracking** - Visual feedback with spinners and elapsed time
 - **YAML Validation** - Comprehensive compose file validation
 - **Safety Checks** - Confirmations for destructive operations
+- **AI-Powered Analysis** - Intelligent log analysis with comprehensive diagnostic data collection
+- **Verbose Diagnostics** - Detailed command execution tracking for transparency
 
 ## Prerequisites
 
@@ -352,6 +354,17 @@ When you run `pm prune`, the system follows this workflow:
 # Analyze logs with health metrics
 pm logs open-webui
 
+# AI-powered log analysis with comprehensive diagnostics
+pm logs vllm-qwen25 -ai qwen25 -v
+
+# AI analysis with different agents
+pm logs service-name -ai claude    # Use Claude Sonnet
+pm logs service-name -ai gpt4      # Use GPT-4
+pm logs service-name -ai glm46     # Use local GLM-4-6B
+
+# Verbose AI analysis showing all diagnostic commands
+pm logs service-name -ai qwen25 -v -n 100
+
 # Execute interactive shell
 pm exec ollama bash
 
@@ -436,9 +449,91 @@ A smart wrapper script `pm` automatically detects your environment:
 - **Better testing**: Individual components can be tested separately
 - **Extensibility**: Easy to add new features without touching core logic
 
-## Health Monitoring
+## AI-Powered Analysis & Health Monitoring
 
-The logs command provides intelligent health analysis:
+### AI Log Analysis
+
+The enhanced logs command provides intelligent AI-powered analysis with comprehensive diagnostic data collection:
+
+```bash
+# Basic AI analysis
+pm logs service-name -ai
+
+# Specific AI agent with verbose diagnostics
+pm logs vllm-qwen25 -ai qwen25 -v
+
+# Comprehensive analysis with more log lines
+pm logs service-name -ai claude -n 200 -v
+```
+
+#### Available AI Agents
+
+**Local vLLM Models:**
+- `qwen25` → `vllm-qwen25` (Qwen2.5-Coder-32B-Instruct)
+- `glm46` → `vllm-glm46` (GLM-4-6B-Chat)
+
+**Cloud Models:**
+- `claude` → `claude-sonnet` (Claude 3.5 Sonnet)
+- `gpt4` → `gpt-4` (GPT-4)
+
+#### Comprehensive Diagnostic Data Collection
+
+When using AI analysis with verbose mode (`-v`), the system collects and shows:
+
+**1. Systemd Service Diagnostics:**
+- `journalctl --user -u service-name -n 50 --no-pager`
+- `systemctl --user status service-name --no-pager -l`
+- `systemctl --user cat service-name`
+- `systemctl --user show service-name -p ExecMainStatus,ExecMainCode,Result`
+
+**2. Container Analysis:**
+- `podman ps -a --format "{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}"`
+- `podman logs container-name --since 2h --timestamps --tail 100`
+- `podman inspect container-name`
+- `podman pod ps --format "{{.ID}}\t{{.Name}}\t{{.Status}}"`
+
+**3. System Resources:**
+- `df -h /`
+- `podman system info`
+- `podman system df`
+
+**4. Network & Storage:**
+- `podman network ls`
+- `podman volume ls`
+- `ss -tulpen -H` (port conflict detection)
+
+**5. Podman Quadlet Troubleshooting:**
+- Service dependency analysis
+- Environment variable resolution
+- Systemd unit file validation
+- Container image availability
+- Port binding conflicts
+- Volume mount permissions
+
+#### Verbose Output Example
+
+```bash
+pm logs vllm-qwen25 -ai qwen25 -v
+```
+
+Shows detailed execution:
+```
+  exec: Resolving service name for target 'vllm-qwen25'
+  exec: Resolved to service 'vllm-qwen25-coder-32b-instruct-awq-simple.service'
+  exec: journalctl --user -u vllm-qwen25-coder-32b-instruct-awq-simple.service -n 50 --no-pager
+  exec: Collected 45 lines of systemd logs
+  exec: systemctl --user status vllm-qwen25-coder-32b-instruct-awq-simple.service --no-pager -l
+  exec: Unit status collected (exit code: 0)
+  exec: podman ps -a --format {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Image}}
+  exec: Found 3 containers
+  exec: Found matching container: vllm-qwen25-coder
+  exec: podman logs vllm-qwen25-coder --since 2h --timestamps --tail 100
+  exec: Container logs collected (23 lines)
+```
+
+### Traditional Health Monitoring
+
+The system also provides traditional health analysis:
 
 - **HEALTHY**: Service running normally
 - **MOSTLY_HEALTHY**: Minor warnings detected

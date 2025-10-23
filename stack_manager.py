@@ -445,6 +445,8 @@ class StackManager:
         for service in services:
             if _verbose_enabled:
                 verbose_print(f"  Stopping {service}...")
+                if not self.manager.stop_service(service, quiet=False):
+                    stop_success = False
             else:
                 # Show individual service stopping with spinner for non-verbose
                 with Progress(  # type: ignore
@@ -462,10 +464,6 @@ class StackManager:
                         f"    [yellow]{service} was not running or failed to stop[/yellow]"
                     )
                     stop_success = False
-                continue
-
-            if not self.manager.stop_service(service, quiet=False):
-                stop_success = False
 
         if not stop_success:
             console.print(
@@ -537,17 +535,45 @@ class StackManager:
         for service in services:
             from config import _verbose_enabled
 
-            if _verbose_enabled:
-                verbose_print(f"[dim]  Starting {service}...[/dim]")
-
             service_name = self.manager._find_service_name(service)
             if service_name:
                 if _verbose_enabled:
+                    verbose_print(f"[green]  Starting {service}...[/green]")
                     restart_cmd = ["systemctl", "--user", "restart", service_name]
                     verbose_print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
                     restart_result = subprocess.run(
                         restart_cmd, capture_output=True, text=True
                     )
+
+                    # Verbose mode continues with original logic
+                    if restart_result.returncode == 0:
+                        # Monitor service startup for this service
+                        with Progress(  # type: ignore
+                            SpinnerColumn(),
+                            TextColumn(
+                                f"[yellow]Monitoring {service} startup...[/yellow]"
+                            ),
+                            console=console,
+                            transient=True,
+                        ) as progress:
+                            task = progress.add_task("monitoring", total=None)
+                            service_success = self._monitor_service_startup(
+                                service, service_name
+                            )
+                            progress.remove_task(task)
+
+                        if not service_success:
+                            start_success = False
+                            # Show detailed error logs after spinner disappears
+                            clean_service_name = service.replace(
+                                ".service", ""
+                            ).replace(".target", "")
+                            console.print(
+                                f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
+                            )
+                    else:
+                        start_success = False
+                        self._handle_service_start_failure(service, restart_result)
                 else:
                     # Non-verbose mode: show spinner for starting
                     with Progress(  # type: ignore
@@ -585,35 +611,6 @@ class StackManager:
                         console.print(
                             f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
                         )
-                    continue
-
-                # Verbose mode continues with original logic
-                if restart_result.returncode == 0:
-                    # Monitor service startup for this service
-                    with Progress(  # type: ignore
-                        SpinnerColumn(),
-                        TextColumn(f"[yellow]Monitoring {service} startup...[/yellow]"),
-                        console=console,
-                        transient=True,
-                    ) as progress:
-                        task = progress.add_task("monitoring", total=None)
-                        service_success = self._monitor_service_startup(
-                            service, service_name
-                        )
-                        progress.remove_task(task)
-
-                    if not service_success:
-                        start_success = False
-                        # Show detailed error logs after spinner disappears
-                        clean_service_name = service.replace(".service", "").replace(
-                            ".target", ""
-                        )
-                        console.print(
-                            f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
-                        )
-                else:
-                    start_success = False
-                    self._handle_service_start_failure(service, restart_result)
             else:
                 console.print(f"[red]Could not find service for {service}[/red]")
                 start_success = False

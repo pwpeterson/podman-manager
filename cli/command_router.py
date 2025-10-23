@@ -8,6 +8,7 @@ import sys
 
 from rich.table import Table
 
+from ai_analyzer import ai_analyzer
 from config import console, set_verbose
 from utils.supabase_fixer import fix_supabase_environment_variables
 
@@ -21,20 +22,184 @@ class CommandRouter:
         self.display = display
         self.selected_mode = selected_mode
         self.detector = detector
+        self.ai_agent = None  # Store AI agent selection
 
     def handle_command_verbose(self, args):
         """Handle command-specific verbose flags"""
         if hasattr(args, "verbose") and args.verbose:
             set_verbose(True)
 
+    def _resolve_ai_agent_name(self, short_name):
+        """Convert short AI agent names to full names"""
+        if not short_name or short_name is True:
+            return None
+
+        # Mapping of short names to full agent names
+        agent_mapping = {
+            "qwen25": "vllm-qwen25",
+            "glm46": "vllm-glm46",
+            "claude": "claude-sonnet",
+            "gpt4": "gpt-4",
+            "gpt-4": "gpt-4",  # Allow both formats
+            "claude-sonnet": "claude-sonnet",  # Allow full names too
+            "vllm-qwen25": "vllm-qwen25",
+            "vllm-glm46": "vllm-glm46",
+        }
+
+        return agent_mapping.get(short_name.lower(), short_name)
+
+    def _detect_podman_error(
+        self, result, command_type: str, target: str | None = None
+    ) -> bool:
+        """Detect if a command result indicates a Podman-related error that should trigger AI analysis"""
+        if not result or result is True:
+            return False
+
+        # Check for common Podman error patterns
+        error_patterns = [
+            "error",
+            "failed",
+            "cannot",
+            "unable to",
+            "connection refused",
+            "timeout",
+            "permission denied",
+            "no such container",
+            "no such image",
+            "port already in use",
+            "network not found",
+            "volume not found",
+            "image pull failed",
+            "container creation failed",
+            "service failed",
+            "unit failed",
+            "systemd",
+            "quadlet",
+        ]
+
+        # If result is False (operation failed), that's an error
+        if result is False:
+            return True
+
+        # If result is a subprocess result with non-zero return code
+        if hasattr(result, "returncode") and result.returncode != 0:
+            return True
+
+        # Check stderr/stdout for error patterns if available
+        if hasattr(result, "stderr") and result.stderr:
+            error_text = result.stderr.lower()
+            if any(pattern in error_text for pattern in error_patterns):
+                return True
+
+        if hasattr(result, "stdout") and result.stdout:
+            output_text = result.stdout.lower()
+            if any(pattern in output_text for pattern in error_patterns):
+                return True
+
+        return False
+
+    def _trigger_automatic_ai_analysis(
+        self,
+        command_type: str,
+        target: str,
+        error_context: dict | None = None,
+        ai_agent: str | None = None,
+    ):
+        """Automatically trigger AI analysis when Podman errors are detected"""
+        from config import _verbose_enabled
+
+        try:
+            # Show error detection message
+            console.print(f"\n[red]Error found in {command_type} command[/red]")
+            console.print("[green]Starting AI analysis and diagnostics...[/green]")
+
+            # Initialize AI analyzer with manager if not already done
+            if ai_analyzer.manager is None:
+                ai_analyzer.manager = self.manager
+
+            # Determine analysis type based on command
+            analysis_type_mapping = {
+                "reinit": "reinit_failure",
+                "start": "reinit_failure",
+                "restart": "reinit_failure",
+                "build": "build_failure",
+                "logs": "logs",
+                "status": "status",
+            }
+
+            analysis_type = analysis_type_mapping.get(command_type, "logs")
+
+            # Prepare context data
+            context_data = error_context or {}
+            if command_type in ["reinit", "start", "restart"]:
+                context_data["start_error"] = "Service failed to start/restart"
+
+            # Resolve AI agent name if provided
+            resolved_ai_agent = (
+                self._resolve_ai_agent_name(ai_agent) if ai_agent else None
+            )
+
+            # Run AI analysis with verbose mode from global config
+            result = ai_analyzer.ai_analyze(
+                analysis_type=analysis_type,
+                target=target or "unknown",
+                context_data=context_data,
+                ai_agent=resolved_ai_agent,
+                verbose=_verbose_enabled,  # Use global verbose setting
+            )
+
+            if result:
+                console.print("[green]✓ AI analysis completed[/green]")
+            else:
+                console.print(
+                    "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
+                )
+
+        except Exception as e:
+            console.print(f"[red]AI analysis failed: {e}[/red]")
+
     def try_with_fallback(self, operation_func, *operation_args, **operation_kwargs):
-        """Try operation with current mode, fallback to alternative if it fails"""
+        """Try operation with current mode, fallback to alternative if it fails, and run AI analysis on Podman errors"""
         target = operation_kwargs.get(
             "target", operation_args[0] if operation_args else ""
         )
 
+        # Determine command type from function name
+        command_type = (
+            operation_func.__name__.replace("_", "")
+            .replace("container", "")
+            .replace("ops", "")
+        )
+        if hasattr(operation_func, "__self__"):
+            # Extract method name for better command type detection
+            method_name = operation_func.__name__
+            if "reinit" in method_name:
+                command_type = "reinit"
+            elif "start" in method_name:
+                command_type = "start"
+            elif "restart" in method_name:
+                command_type = "restart"
+            elif "build" in method_name or "rebuild" in method_name:
+                command_type = "build"
+            elif "stop" in method_name:
+                command_type = "stop"
+
         try:
             result = operation_func(*operation_args, **operation_kwargs)
+
+            # Check if this is a Podman-related error that should trigger AI analysis
+            if self._detect_podman_error(result, command_type, target):
+                self._trigger_automatic_ai_analysis(
+                    command_type,
+                    target,
+                    {
+                        "operation": operation_func.__name__,
+                        "args": operation_args,
+                        "kwargs": operation_kwargs,
+                    },
+                    ai_agent=self.ai_agent,
+                )
+
             # If operation returns False (failure), try fallback
             if result is False:
                 alternative_mode = self.detector.suggest_alternative_mode(
@@ -50,6 +215,20 @@ class CommandRouter:
             return result
         except Exception as e:
             console.print(f"[red]Operation failed: {e}[/red]")
+
+            # Trigger AI analysis for exceptions as well
+            self._trigger_automatic_ai_analysis(
+                command_type,
+                target,
+                {
+                    "operation": operation_func.__name__,
+                    "exception": str(e),
+                    "args": operation_args,
+                    "kwargs": operation_kwargs,
+                },
+                ai_agent=self.ai_agent,
+            )
+
             alternative_mode = self.detector.suggest_alternative_mode(
                 target, self.selected_mode
             )
@@ -62,6 +241,9 @@ class CommandRouter:
     def route_command(self, args):
         """Route command to appropriate handler"""
         command = args.command
+
+        # Store AI agent selection for use in error analysis
+        self.ai_agent = getattr(args, "ai_agent", None)
 
         # Status and information commands
         if command == "list":
@@ -82,6 +264,8 @@ class CommandRouter:
             return self._handle_events(args)
         elif command == "targets":
             return self._handle_targets(args)
+        elif command == "ai-agents":
+            return self._handle_ai_agents(args)
 
         # Resource commands
         elif command == "logs":
@@ -198,15 +382,58 @@ class CommandRouter:
                 return True
             else:
                 console.print(f"[red]Error running podman ps: {result.stderr}[/red]")
+
+                # Trigger automatic AI analysis for podman ps errors
+                self._trigger_automatic_ai_analysis(
+                    "ps",
+                    "system",
+                    {
+                        "operation": "podman_ps",
+                        "error": result.stderr,
+                        "returncode": result.returncode,
+                    },
+                    ai_agent=self.ai_agent,
+                )
+
                 return False
         except subprocess.TimeoutExpired:
             console.print("[red]Timeout running podman ps[/red]")
+
+            # Trigger automatic AI analysis for timeout
+            self._trigger_automatic_ai_analysis(
+                "ps",
+                "system",
+                {"operation": "podman_ps", "error": "Command timeout", "timeout": 10},
+                ai_agent=self.ai_agent,
+            )
+
             return False
         except FileNotFoundError:
             console.print("[red]Podman command not found. Please install podman.[/red]")
+
+            # Trigger automatic AI analysis for missing podman
+            self._trigger_automatic_ai_analysis(
+                "ps",
+                "system",
+                {
+                    "operation": "podman_ps",
+                    "error": "Podman command not found - installation issue",
+                },
+                ai_agent=self.ai_agent,
+            )
+
             return False
         except Exception as e:
             console.print(f"[red]Error running podman ps: {e}[/red]")
+
+            # Trigger automatic AI analysis for general errors
+            self._trigger_automatic_ai_analysis(
+                "ps",
+                "system",
+                {"operation": "podman_ps", "exception": str(e)},
+                ai_agent=self.ai_agent,
+            )
+
             return False
 
     def _handle_help(self, args):
@@ -279,18 +506,29 @@ class CommandRouter:
 
     # Resource command handlers
     def _handle_logs(self, args):
-        if getattr(args, "ai_diagnose", False):
-            self.container_ops.ai_analyze_logs(
-                args.target,
-                lines=args.tail,
-                vllm_url=args.vllm_url,
-                verbose=args.verbose,
-            )
-        else:
+        try:
+            # Show logs - AI analysis will be triggered automatically if errors are detected
             self.container_ops.show_logs(
                 args.target, follow=args.follow, tail=args.tail
             )
-        return True
+            return True
+        except Exception as e:
+            console.print(f"[red]Error showing logs: {e}[/red]")
+
+            # Trigger automatic AI analysis for log viewing errors
+            self._trigger_automatic_ai_analysis(
+                "logs",
+                args.target,
+                {
+                    "operation": "show_logs",
+                    "exception": str(e),
+                    "follow": args.follow,
+                    "tail": args.tail,
+                },
+                ai_agent=self.ai_agent,
+            )
+
+            return False
 
     def _handle_diagnose(self, args):
         if self.selected_mode == "quadlet":
@@ -461,4 +699,16 @@ class CommandRouter:
             console.print(
                 "[red]Fix Supabase environment command only available in quadlet mode[/red]"
             )
+            return False
+
+    def _handle_ai_agents(self, args):
+        """Show available AI agents for log analysis"""
+        self.handle_command_verbose(args)
+        try:
+            from ai_agents import ai_agent_manager
+
+            ai_agent_manager.show_agents_status()
+            return True
+        except ImportError:
+            console.print("[red]AI agents system not available[/red]")
             return False

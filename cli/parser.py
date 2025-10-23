@@ -186,6 +186,13 @@ def create_argument_parser():
         action="store_true",
         help="Show detailed command execution (exec lines)",
     )
+    parser.add_argument(
+        "--ai-agent",
+        "-ai",
+        choices=["qwen25", "glm46", "claude", "gpt4"],
+        default="qwen25",
+        help="AI agent for analysis (default: qwen25)",
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -311,6 +318,17 @@ def _add_status_commands(subparsers):
         "targets", help="Show available targets by type (quadlet/compose)"
     )
     targets_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    # AI Agents command
+    ai_agents_parser = subparsers.add_parser(
+        "ai-agents", help="Show available AI agents for log analysis"
+    )
+    ai_agents_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -584,7 +602,9 @@ def _add_image_commands(subparsers):
 def _add_resource_commands(subparsers):
     """Add resource and log commands"""
     # Logs command
-    logs_parser = subparsers.add_parser("logs", help="Show service logs")
+    logs_parser = subparsers.add_parser(
+        "logs", help="Show service logs with automatic AI analysis on errors"
+    )
     logs_parser.add_argument("target", help="Stack or service name")
     logs_parser.add_argument(
         "-f", "--follow", action="store_true", help="Follow log output"
@@ -597,21 +617,10 @@ def _add_resource_commands(subparsers):
         help="Number of lines to show from end of logs (default: 100)",
     )
     logs_parser.add_argument(
-        "-ai",
-        "--ai-diagnose",
-        action="store_true",
-        help="AI-powered log analysis for root causes and solutions",
-    )
-    logs_parser.add_argument(
-        "--vllm-url",
-        default="http://localhost:8002",
-        help="vLLM proxy URL for AI analysis (default: http://localhost:8002)",
-    )
-    logs_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
-        help="Show detailed command execution (exec lines)",
+        help="Show detailed command execution and comprehensive diagnostic data collection",
     )
 
     # Diagnose command

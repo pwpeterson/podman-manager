@@ -579,7 +579,7 @@ class ContainerOperations:
 
             console.print("\nFollow-up Commands:")
             console.print(
-                f"[cyan]1[/cyan]  pm logs {cmd_service} -ai\t\t# Analyze logs with AI"
+                f"[cyan]1[/cyan]  pm logs {cmd_service}\t\t# View logs (AI analysis runs automatically on errors)"
             )
             console.print(f"[cyan]2[/cyan]  pm logs {cmd_service:<20}\t\t# View logs")
             console.print(

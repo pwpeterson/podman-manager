@@ -119,9 +119,10 @@ class QuadletOperations:
         lines: int = 50,
         vllm_url: str = "http://localhost:8002",
         verbose: bool = False,
+        ai_agent: str | None = None,
     ) -> None:
         """AI-powered analysis of service logs for root causes and solutions"""
-        self.ai_diagnostics.ai_analyze_logs(target, lines, vllm_url, verbose)
+        self.ai_diagnostics.ai_analyze_logs(target, lines, vllm_url, verbose, ai_agent)
 
     # Container Building Operations
     def rebuild(self, target: str) -> bool:

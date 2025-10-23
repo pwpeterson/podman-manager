@@ -116,7 +116,9 @@ class ReinitManager:
 
         # Use the provided service_name to avoid duplicate resolution
         # Stop the service
-        verbose_print(f"[green]Stopping {display_name}...[/green]")
+        console.print(f"[green]Stopping {display_name}...[/green]")
+        if not _verbose_enabled:
+            console.print()
         stop_cmd = ["systemctl", "--user", "stop", service_name]
         verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
         stop_result = self.manager._run_systemctl_command(
@@ -148,7 +150,9 @@ class ReinitManager:
                 return False
 
         # Handle daemon reload
-        verbose_print("[green]Reloading systemd daemon...[/green]")
+        console.print("[green]Reloading systemd daemon...[/green]")
+        if not _verbose_enabled:
+            console.print()
 
         if build_type not in ["legacy", "quadlet"]:
             reload_success = self.manager.reload_daemon()
@@ -167,7 +171,9 @@ class ReinitManager:
                 time.sleep(1)
 
         # Start the service using the resolved service name
-        verbose_print(f"[green]Starting {display_name}...[/green]")
+        console.print(f"[green]Starting {display_name}...[/green]")
+        if not _verbose_enabled:
+            console.print()
         start_cmd = ["systemctl", "--user", "restart", service_name]
 
         start_result = self.manager._run_systemctl_command(
@@ -237,20 +243,51 @@ class ReinitManager:
                 self._show_next_steps(target)
                 return True
             else:
-                clean_service_name = display_name.replace(".service", "").replace(
-                    ".target", ""
-                )
+                # Service failed to start
+                pass
                 # Suggest service-specific journalctl command
-                console.print(
-                    f"    [red]{clean_service_name} failed -[/red] [red]See[/red] journalctl --user -u {service_name} -e"
-                )
+                # Error message removed - automatic AI analysis will handle diagnostics
+                pass
 
                 # Add a small delay to ensure any Rich displays are properly closed
                 time.sleep(0.1)
 
-                # Automatically run AI troubleshooting analysis
-                verbose_print("  [cyan]exec: ai_analyze_reinit_failure()[/cyan]")
-                self._ai_analyze_reinit_failure(target, service_name)
+                # Show error detection message and start AI analysis
+                console.print("\n[red]Error found in reinit command[/red]")
+                console.print("[green]Starting AI analysis and diagnostics...[/green]")
+
+                verbose_print("  [cyan]exec: ai_analyze(type=reinit_failure)[/cyan]")
+                try:
+                    from ai_analyzer import ai_analyzer
+                    from config import _verbose_enabled
+
+                    # Initialize ai_analyzer with manager if not already done
+                    if ai_analyzer.manager is None:
+                        ai_analyzer.manager = self.manager
+
+                    # Run unified AI analysis with verbose mode
+                    result = ai_analyzer.ai_analyze(
+                        analysis_type="reinit_failure",
+                        target=target,
+                        context_data={
+                            "start_error": "Service failed to start after reinit"
+                        },
+                        ai_agent=None,
+                        verbose=_verbose_enabled,
+                    )
+
+                    if result:
+                        console.print("[green]✓ AI analysis completed[/green]")
+                    else:
+                        console.print(
+                            "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
+                        )
+
+                except Exception as e:
+                    verbose_print(
+                        f"  [cyan]exec: AI analysis failed with error: {e}[/cyan]"
+                    )
+                    console.print(f"[yellow]AI analysis failed: {e}[/yellow]")
 
                 return False
         else:
@@ -264,12 +301,43 @@ class ReinitManager:
             # Add a small delay to ensure any Rich displays are properly closed
             time.sleep(0.1)
 
-            # Automatically run AI troubleshooting analysis with start failure error
-            verbose_print("  [cyan]exec: ai_analyze_reinit_failure_with_error()[/cyan]")
-            error_message = start_result.stderr.strip() if start_result.stderr else ""
-            self._ai_analyze_reinit_failure(
-                target, service_name, start_error=error_message
+            # Show error detection message and start AI analysis
+            console.print("\n[red]Error found in reinit command[/red]")
+            console.print("[green]Starting AI analysis and diagnostics...[/green]")
+
+            verbose_print(
+                "  [cyan]exec: ai_analyze(type=reinit_failure, with_error)[/cyan]"
             )
+            error_message = start_result.stderr.strip() if start_result.stderr else ""
+            try:
+                from ai_analyzer import ai_analyzer
+                from config import _verbose_enabled
+
+                # Initialize ai_analyzer with manager if not already done
+                if ai_analyzer.manager is None:
+                    ai_analyzer.manager = self.manager
+
+                # Run unified AI analysis with error context and verbose mode
+                result = ai_analyzer.ai_analyze(
+                    analysis_type="reinit_failure",
+                    target=target,
+                    context_data={"start_error": error_message},
+                    ai_agent=None,
+                    verbose=_verbose_enabled,
+                )
+
+                if result:
+                    console.print("[green]✓ AI analysis completed[/green]")
+                else:
+                    console.print(
+                        "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
+                    )
+
+            except Exception as e:
+                verbose_print(
+                    f"  [cyan]exec: AI analysis failed with error: {e}[/cyan]"
+                )
+                console.print(f"[yellow]AI analysis failed: {e}[/yellow]")
 
             return False
 
@@ -303,7 +371,7 @@ class ReinitManager:
                 ".service", ""
             ).replace(".target", "")
             console.print(
-                f"    [red]{clean_service_name} failed -[/red] [white]pm logs {target} -ai[/white]"
+                f"    [red]{clean_service_name} failed -[/red] [white]AI analysis will run automatically[/white]"
             )
         else:
             console.print(f"[red]Start failed: {error_msg}[/red]")
@@ -508,187 +576,6 @@ class ReinitManager:
         )
         console.print()
 
-    def _ai_analyze_reinit_failure(
-        self,
-        target: str,
-        service_name: str,
-        vllm_url: str = "http://localhost:8002",
-        start_error: str = "",
-    ) -> None:
-        """Automatically analyze reinit failure using AI and provide troubleshooting suggestions."""
-        if not requests:
-            console.print(
-                "[red]Error: requests library not available for AI analysis[/red]"
-            )
-            return
-
-        # Check if vLLM is available
-        if not self._check_vllm_availability(vllm_url):
-            return
-
-        # Collect comprehensive diagnostic information
-        diagnostic_info = self._collect_diagnostic_information(
-            service_name, start_error
-        )
-
-        # Strip Rich markup from diagnostic info before sending to AI
-        diagnostic_info = self._strip_rich_markup(diagnostic_info)
-
-        # Show spinner while analyzing - use try/except to handle display conflicts
-        analysis = None
-        try:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[green]Running AI analysis of reinit failure...[/green]"),
-                console=console,
-                transient=False,  # Keep visible after completion
-            ) as progress:
-                task = progress.add_task("analyzing", total=None)
-
-                # Analyze with AI
-                analysis = self._get_ai_reinit_analysis(
-                    diagnostic_info, target, service_name
-                )
-
-                progress.remove_task(task)
-        except Exception as e:
-            # If Rich display fails, continue without spinner
-            verbose_print(
-                f"  [cyan]exec: Display conflict detected, running AI analysis without spinner: {e}[/cyan]"
-            )
-            console.print("[green]Running AI analysis of reinit failure...[/green]")
-            analysis = self._get_ai_reinit_analysis(
-                diagnostic_info, target, service_name
-            )
-
-        console.print()
-
-        if analysis:
-            self._display_ai_reinit_analysis(analysis, target, service_name)
-        else:
-            console.print(
-                "[yellow]AI analysis unavailable (vLLM service may be down)[/yellow]"
-            )
-
-    def _check_vllm_availability(self, vllm_url: str) -> bool:
-        """Check if vLLM service is available for AI analysis."""
-        if requests is None:
-            verbose_print("  [cyan]exec: requests library not available[/cyan]")
-            return False
-
-        verbose_print(
-            f"  [cyan]exec: Checking vLLM health at curl -X GET {vllm_url}/health[/cyan]"
-        )
-        try:
-            # Check if vLLM is available
-            health_response = requests.get(f"{vllm_url}/health", timeout=5)
-            verbose_print(
-                f"  [cyan]exec: Health check response: status={health_response.status_code}[/cyan]"
-            )
-            if health_response.status_code != 200:
-                verbose_print(
-                    f"  [cyan]exec: Health check failed with status {health_response.status_code}[/cyan]"
-                )
-                return False
-            verbose_print("  [cyan]exec: vLLM health check passed[/cyan]")
-            return True
-
-        except requests.RequestException as e:
-            verbose_print(f"  [cyan]exec: Health check request failed: {e}[/cyan]")
-            return False
-
-    def _collect_diagnostic_information(
-        self, service_name: str, start_error: str = ""
-    ) -> str:
-        """Collect diagnostic information and filter for error/warning lines only."""
-        diagnostic_sections = []
-
-        # Add start error if provided
-        if start_error:
-            diagnostic_sections.append("=== START COMMAND ERROR ===")
-            diagnostic_sections.append(start_error)
-            diagnostic_sections.append("")
-
-        # Collect service-specific logs using the same pattern as suggested command
-        # Use journalctl --user -u service -e for targeted service logs
-        journalctl_cmd = [
-            "journalctl",
-            "--user",
-            "-u",
-            service_name,
-            "-e",
-            "--no-pager",
-            "-n",
-            "50",
-        ]
-        verbose_print(f"  [cyan]exec: {' '.join(journalctl_cmd)}[/cyan]")
-
-        try:
-            # Run service-specific journalctl command
-            result = subprocess.run(
-                journalctl_cmd, capture_output=True, text=True, timeout=30
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                diagnostic_sections.append(
-                    f"=== JOURNALCTL --USER -U {service_name.upper()} -E ==="
-                )
-                diagnostic_sections.append(result.stdout.strip())
-                diagnostic_sections.append("")
-            else:
-                verbose_print(
-                    f"  [cyan]exec: No recent logs found for {service_name}[/cyan]"
-                )
-
-        except subprocess.TimeoutExpired:
-            diagnostic_sections.append(
-                f"=== JOURNALCTL --USER -U {service_name.upper()} -E ==="
-            )
-            diagnostic_sections.append("Command timed out")
-            diagnostic_sections.append("")
-        except Exception as e:
-            diagnostic_sections.append(
-                f"=== JOURNALCTL --USER -U {service_name.upper()} -E ==="
-            )
-            diagnostic_sections.append(f"Command failed: {e}")
-            diagnostic_sections.append("")
-
-        # Also get specific service status for additional context
-        status_cmd = ["systemctl", "--user", "status", service_name, "--no-pager", "-l"]
-        verbose_print(f"  [cyan]exec: {' '.join(status_cmd)}[/cyan]")
-
-        try:
-            result = subprocess.run(
-                status_cmd, capture_output=True, text=True, timeout=15
-            )
-            # Include both stdout and stderr, as systemctl status shows useful info in both
-            status_output = ""
-            if result.stdout:
-                status_output += result.stdout
-            if result.stderr:
-                status_output += "\nSTDERR:\n" + result.stderr
-
-            if status_output.strip():
-                diagnostic_sections.append(
-                    f"=== SYSTEMCTL STATUS {service_name.upper()} ==="
-                )
-                diagnostic_sections.append(status_output.strip())
-                diagnostic_sections.append("")
-
-        except subprocess.TimeoutExpired:
-            diagnostic_sections.append(
-                f"=== SYSTEMCTL STATUS {service_name.upper()} ==="
-            )
-            diagnostic_sections.append("Command timed out")
-            diagnostic_sections.append("")
-        except Exception as e:
-            diagnostic_sections.append(
-                f"=== SYSTEMCTL STATUS {service_name.upper()} ==="
-            )
-            diagnostic_sections.append(f"Command failed: {e}")
-            diagnostic_sections.append("")
-
-        return "\n".join(diagnostic_sections)
-
     def _filter_error_warning_lines(self, stdout: str, stderr: str) -> str:
         """Filter output to extract only lines containing errors or warnings."""
         filtered_lines = []
@@ -877,101 +764,6 @@ class ReinitManager:
 
         return commands
 
-    def _strip_rich_markup(self, text: str) -> str:
-        """Strip Rich markup from text before sending to AI."""
-        import re
-
-        # Remove Rich markup patterns like [cyan], [/cyan], [bold], [/bold], etc.
-        # This regex matches [tag] and [/tag] patterns, including colors and styles
-        text = re.sub(r"\[/?[a-zA-Z0-9_\s#.]+\]", "", text)
-
-        # Also remove any remaining isolated [/cyan] type patterns that might be missed
-        text = re.sub(r"\[/[a-zA-Z0-9_]+\]", "", text)
-
-        # Clean up any double spaces that might result from markup removal, but preserve line breaks
-        text = re.sub(
-            r"[ \t]+", " ", text
-        )  # Only collapse spaces and tabs, not newlines
-
-        return text.strip()
-
-    def _get_ai_reinit_analysis(
-        self, diagnostic_info: str, target: str, service_name: str
-    ) -> Optional[str]:
-        """Get AI analysis of reinit failure from local vLLM."""
-        if requests is None:
-            verbose_print("  [cyan]exec: requests library not available[/cyan]")
-            return None
-
-        # Prepare the analysis prompt
-        prompt = self._build_reinit_analysis_prompt(
-            diagnostic_info, target, service_name
-        )
-
-        # Display the full AI prompt in verbose mode
-        from config import _verbose_enabled
-
-        if _verbose_enabled:
-            verbose_print("  [cyan]exec: AI Analysis Prompt:[/cyan]")
-            verbose_print("  [cyan]" + "─" * 80 + "[/cyan]")
-            for line in prompt.split("\n"):
-                verbose_print(f"  [cyan]{line}[/cyan]")
-            verbose_print("  [cyan]" + "─" * 80 + "[/cyan]")
-            verbose_print("")
-
-        verbose_print(
-            "  [cyan]exec: Sending AI analysis request to curl -X POST http://localhost:8002/v1/chat/completions[/cyan]"
-        )
-
-        try:
-            response = requests.post(
-                "http://localhost:8002/v1/chat/completions",
-                json={
-                    "model": "vllm-qwen25-coder-32b-instruct-awq",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 1000,
-                    "temperature": 0.1,
-                    "stop": ["\n\n---", "\n\nUser:", "\n\nHuman:"],
-                },
-                headers={"Content-Type": "application/json"},
-                timeout=30,
-            )
-
-            verbose_print(
-                f"  [cyan]exec: AI analysis response: status={response.status_code}[/cyan]"
-            )
-            if response.status_code == 200:
-                result = response.json()
-                verbose_print(
-                    f"  [cyan]exec: Response JSON keys: {list(result.keys()) if result else 'None'}[/cyan]"
-                )
-                if "choices" in result and len(result["choices"]) > 0:
-                    verbose_print(
-                        "  [cyan]exec: AI analysis successful, returning response[/cyan]"
-                    )
-                    # Handle both completions and chat completions response formats
-                    choice = result["choices"][0]
-                    if "message" in choice:
-                        return choice["message"]["content"].strip()
-                    elif "text" in choice:
-                        return choice["text"].strip()
-                else:
-                    verbose_print(
-                        "  [cyan]exec: No choices in response or empty choices[/cyan]"
-                    )
-            else:
-                verbose_print(
-                    f"  [cyan]exec: AI analysis request failed with status {response.status_code}[/cyan]"
-                )
-                verbose_print(
-                    f"  [cyan]exec: Response text: {response.text[:200]}...[/cyan]"
-                )
-
-        except requests.RequestException as e:
-            verbose_print(f"  [cyan]exec: AI analysis request failed: {e}[/cyan]")
-
-        return None
-
     def _build_reinit_analysis_prompt(
         self, diagnostic_info: str, target: str, service_name: str
     ) -> str:
@@ -993,6 +785,8 @@ Error and Warning Messages:
 {diagnostic_info}
 
 Note: The diagnostic information above contains only filtered error and warning messages from systemctl status, journalctl, and recent service logs. This focused data should help identify the root cause quickly.
+
+IMPORTANT: Use podman, not docker in all recommendations and commands.
 
 Provide a concise analysis with:
 1. **Root Cause**: Primary reason for the reinit failure based on the error/warning messages
@@ -1242,3 +1036,54 @@ Keep the response brief and actionable. Focus on the most critical issues first.
         verbose_print(
             f"    [cyan]No clear success/failure indicators in {service_name} logs[/cyan]"
         )
+
+    def _ai_analyze_reinit_failure(
+        self,
+        target: str,
+        service_name: str,
+        start_error: str = "",
+        verbose: bool = False,
+        ai_agent: Optional[str] = None,
+    ) -> None:
+        """Run AI analysis on reinit failure using unified AI analyzer."""
+        from config import _verbose_enabled
+
+        try:
+            from ai_analyzer import ai_analyzer
+
+            verbose_print(
+                "  [cyan]exec: Using unified AI analyzer for reinit failure analysis[/cyan]"
+            )
+
+            # Initialize ai_analyzer with manager if not already done
+            if ai_analyzer.manager is None:
+                ai_analyzer.manager = self.manager
+
+            # Prepare context data for reinit failure analysis
+            context_data = {"start_error": start_error, "lines": 50}
+
+            # Run unified AI analysis
+            ai_analyzer.ai_analyze(
+                analysis_type="reinit_failure",
+                target=target,
+                context_data=context_data,
+                ai_agent=ai_agent,
+                verbose=_verbose_enabled,
+            )
+
+        except ImportError as e:
+            verbose_print(f"  [cyan]exec: AI analyzer import failed: {e}[/cyan]")
+            console.print(
+                "[yellow]AI analysis unavailable (ai_analyzer not found)[/yellow]"
+            )
+        except Exception as e:
+            verbose_print(
+                f"  [cyan]exec: AI analysis failed with exception: {e}[/cyan]"
+            )
+            console.print(f"[yellow]AI analysis failed: {e}[/yellow]")
+            # Also print the full traceback in verbose mode
+            import traceback
+
+            verbose_print(
+                f"  [cyan]exec: Full traceback: {traceback.format_exc()}[/cyan]"
+            )

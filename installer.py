@@ -1070,7 +1070,20 @@ class FileManager:
         if not is_verbose():
             console.print()
 
-        for file in files:
+        # Group files by type for better organization
+        container_files = [f for f in files if f.endswith(".container")]
+        network_files = [f for f in files if f.endswith(".network")]
+        volume_files = [f for f in files if f.endswith(".volume")]
+        other_files = [
+            f
+            for f in files
+            if not any(f.endswith(ext) for ext in [".container", ".network", ".volume"])
+        ]
+
+        # Process files in order: containers, networks, volumes, others
+        all_files_ordered = container_files + network_files + volume_files + other_files
+
+        for file in all_files_ordered:
             if file.endswith(".container"):
                 service_name = file.replace(".container", "")
                 console.print(
@@ -1079,9 +1092,10 @@ class FileManager:
                 if not is_verbose():
                     console.print()
             elif file.endswith(".network"):
-                service_name = self._extract_service_name_from_file(file)
+                # Extract stack name from network file for consistent messaging
+                stack_name = self._extract_stack_name_from_network_file(file)
                 console.print(
-                    f"[green]Copying {service_name} networks to systemd[/green]"
+                    f"[green]Copying {stack_name} networks to systemd[/green]"
                 )
                 if not is_verbose():
                     console.print()
@@ -1202,6 +1216,26 @@ class FileManager:
                 # Return first two parts for names like "service-name"
                 return "-".join(parts[:2])
 
+        return base_name
+
+    def _extract_stack_name_from_network_file(self, file: str) -> str:
+        """Extract stack name from network file for consistent messaging."""
+        # Remove .network extension
+        base_name = file.replace(".network", "")
+
+        # For files like "supabase-network.network" -> "supabase"
+        # For files like "local-ai-network.network" -> "local-ai"
+        # For files like "postgres-network.network" -> "postgres"
+        if base_name.endswith("-network"):
+            return base_name.replace("-network", "")
+
+        # For files like "supabase-volumes.network" -> "supabase"
+        if "-" in base_name:
+            parts = base_name.split("-")
+            # Return the first part as the stack name
+            return parts[0]
+
+        # Fallback to the base name
         return base_name
 
     def set_file_permissions(

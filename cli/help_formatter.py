@@ -15,10 +15,10 @@ def show_rich_help():
     console.print()
     console.print("[bold]USAGE:[/bold]")
     console.print(
-        "  [cyan]python podman_manager.py[/cyan] [dim][OPTIONS][/dim] [green]COMMAND[/green] [dim][ARGS][/dim]"
+        "  [cyan]python podman_manager.py[/cyan] [green]COMMAND[/green] [dim][<stack|service>][/dim] [dim][OPTIONS][/dim]"
     )
     console.print(
-        "  [cyan]pm[/cyan] [dim][OPTIONS][/dim] [green]COMMAND[/green] [dim][ARGS][/dim]                    [dim]# Short alias[/dim]"
+        "  [cyan]pm[/cyan] [green]COMMAND[/green] [dim][<stack|service>][/dim] [dim][OPTIONS][/dim]                    [dim]# Short alias[/dim]"
     )
     console.print()
     console.print(
@@ -33,10 +33,17 @@ def show_rich_help():
     options_table.add_row(
         "--mode [auto|quadlet|compose]", "Manager mode (default: auto-detect)"
     )
-    options_table.add_row("--debug-detection", "Show project type detection details")
+    options_table.add_row(
+        "--debug-detection", "Show how PM detects quadlet vs compose targets"
+    )
     options_table.add_row(
         "-v, --verbose", "Show detailed command execution (exec lines)"
     )
+    options_table.add_row(
+        "-ai, --ai-agent [qwen25|glm46|claude|gpt4]",
+        "AI agent for analysis (default: qwen25)",
+    )
+    options_table.add_row("-b, --build", "Build images before starting/restarting")
     options_table.add_row("-h, --help", "Show this help message")
     console.print(options_table)
 
@@ -54,14 +61,14 @@ def show_rich_help():
                     "pm list",
                 ),
                 (
-                    "status [cyan]<stack|service>[/cyan] [-v]",
-                    "Show service status tree with running status (-v: verbose with container details)",
-                    "pm status vllm-qwen25 -v",
+                    "status [cyan]<stack|service>[/cyan]",
+                    "Show service status tree with running status",
+                    "pm status vllm-qwen25",
                 ),
                 ("ps", "Container status table", "pm ps"),
                 ("targets", "Show available targets by type", "pm targets"),
-                ("images [-a]", "Show container images", "pm images -a"),
-                ("stats [-f]", "Show container resource usage", "pm stats -f"),
+                ("images", "Show container images", "pm images"),
+                ("stats", "Show container resource usage", "pm stats"),
                 ("events [--since TIME]", "Show container events", "pm events"),
             ],
         ),
@@ -69,9 +76,9 @@ def show_rich_help():
             "Service Lifecycle",
             [
                 (
-                    "reinit [cyan]<stack|service>[/cyan] [-v] [-b]",
-                    "Stop, reload daemon, and restart stack or service (-v: verbose, -b: specialized rebuild for vllm-delegator/vllm-proxy)",
-                    "pm reinit vllm-delegator -v -b",
+                    "reinit [cyan]<stack|service>[/cyan] [-b]",
+                    "Stop, reload daemon, and restart stack or service (-b: specialized rebuild for vllm-delegator/vllm-proxy)",
+                    "pm reinit vllm-delegator -b",
                 ),
                 (
                     "build [cyan]<service>[/cyan]",
@@ -154,9 +161,9 @@ def show_rich_help():
                 ("volumes", "List volumes", "pm volumes"),
                 ("networks", "List networks", "pm networks"),
                 (
-                    "logs [cyan]<stack|service>[/cyan] [-f] [-n N] [-ai]",
-                    "Show service logs with optional AI analysis",
-                    "pm logs vllm-qwen25 -f -n 50 -ai",
+                    "logs [cyan]<stack|service>[/cyan] [-n N]",
+                    "Show service logs with automatic AI analysis on errors",
+                    "pm logs vllm-qwen25 -n 100",
                 ),
                 (
                     "diagnose [cyan]<service>[/cyan]",
@@ -189,6 +196,43 @@ def show_rich_help():
         console.print(cmd_table)
 
     console.print()
+    console.print("[bold]AUTOMATIC AI ANALYSIS:[/bold]")
+    console.print(
+        "  🤖 [green]AI analysis runs automatically when Podman errors are detected[/green]"
+    )
+    console.print(
+        "  📊 [cyan]Comprehensive diagnostics collected for all failures[/cyan]"
+    )
+    console.print(
+        "  🔍 [yellow]Analyzes logs, systemd status, container state, and system resources[/yellow]"
+    )
+    console.print(
+        "  💡 [light_blue]Provides root cause analysis and step-by-step solutions[/light_blue]"
+    )
+    console.print()
+    console.print("[bold]Available AI Agents:[/bold]")
+    ai_table = Table(show_header=False, box=None, padding=(0, 2))
+    ai_table.add_column("Agent", style="green", width=15)
+    ai_table.add_column("Description", style="white", width=35)
+    ai_table.add_column("Trigger", style="dim", width=30)
+    ai_table.add_row(
+        "qwen25", "Local Qwen2.5-Coder-32B (default)", "Automatic on errors"
+    )
+    ai_table.add_row("glm46", "Local GLM-4-6B-Chat", "Automatic on errors")
+    ai_table.add_row("claude", "Claude 3.5 Sonnet", "Automatic on errors")
+    ai_table.add_row("gpt4", "GPT-4", "Automatic on errors")
+    console.print(ai_table)
+
+    console.print()
+    console.print("[bold]AI AGENT SELECTION:[/bold]")
+    console.print(
+        "  Use [cyan]-ai[/cyan] or [cyan]--ai-agent[/cyan] to select AI agent:"
+    )
+    console.print("  [dim]pm reinit supabase-analytics -ai claude[/dim]")
+    console.print("  [dim]pm logs vllm-qwen25 -ai glm46[/dim]")
+    console.print("  [dim]pm build vllm-delegator -ai qwen25[/dim]")
+
+    console.print()
     console.print("[bold]TIPS:[/bold]")
     console.print(
         "  • Use stacks (e.g., 'vllm-stack', 'local-ai-packaged') to manage all services together"
@@ -206,4 +250,13 @@ def show_rich_help():
     console.print("  • Use [cyan]--mode compose[/cyan] to force compose mode")
     console.print(
         "  • Use [cyan]--verbose[/cyan] or [cyan]-v[/cyan] before commands for detailed output"
+    )
+    console.print(
+        "  • 🤖 AI analysis runs automatically when errors occur - no flags needed!"
+    )
+    console.print(
+        "  • Verbose mode shows all diagnostic commands executed during AI analysis"
+    )
+    console.print(
+        "  • AI analysis covers logs, systemd status, container state, and system resources"
     )
