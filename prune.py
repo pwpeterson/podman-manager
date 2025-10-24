@@ -457,12 +457,102 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
             if result.returncode == 0:
                 self.console.print(result.stdout)
             else:
+                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
                 self.console.print(
-                    f"[yellow]Could not get system disk usage: {result.stderr}[/yellow]"
+                    f"[yellow]Could not get system disk usage: {error_msg}[/yellow]"
                 )
+
+                # Try alternative approach - get basic info without problematic volumes
+                self._show_alternative_disk_usage()
+
+                # Show helpful message about permission issues
+                if "permission denied" in error_msg.lower():
+                    self.console.print(
+                        "\n[dim]Note: Permission denied errors are common with certain volume configurations.\n"
+                        "This doesn't affect the cleanup functionality - proceeding with analysis...[/dim]"
+                    )
 
         except Exception as e:
             self.console.print(f"[red]Error getting system disk usage: {e}[/red]")
+            # Try alternative approach
+            self._show_alternative_disk_usage()
+
+    def _show_alternative_disk_usage(self) -> None:
+        """Show alternative disk usage information when podman system df fails."""
+        try:
+            self.console.print(
+                "\n[dim]Attempting alternative disk usage analysis...[/dim]"
+            )
+
+            # Get container count and basic info
+            containers_cmd = ["podman", "ps", "-a", "--format", "{{.Names}}"]
+            containers_result = subprocess.run(
+                containers_cmd, capture_output=True, text=True, timeout=10
+            )
+
+            if containers_result.returncode == 0:
+                container_lines = [
+                    line.strip()
+                    for line in containers_result.stdout.split("\n")
+                    if line.strip()
+                ]
+                container_count = len(container_lines)
+                self.console.print(f"Containers: {container_count}")
+
+            # Get image count and basic info
+            images_cmd = [
+                "podman",
+                "images",
+                "--format",
+                "{{.Repository}}:{{.Tag}} {{.Size}}",
+            ]
+            images_result = subprocess.run(
+                images_cmd, capture_output=True, text=True, timeout=10
+            )
+
+            if images_result.returncode == 0:
+                image_lines = [
+                    line.strip()
+                    for line in images_result.stdout.split("\n")
+                    if line.strip()
+                ]
+                image_count = len(image_lines)
+                self.console.print(f"Images: {image_count}")
+
+                # Calculate total image size (approximate)
+                total_size_bytes = 0
+                for line in image_lines:
+                    if " " in line:
+                        size_part = line.split()[-1]
+                        total_size_bytes += self._parse_size_to_bytes(size_part)
+
+                if total_size_bytes > 0:
+                    self.console.print(
+                        f"Approximate total image size: {self._format_bytes(total_size_bytes)}"
+                    )
+
+            # Try to get volume info (this might also fail, but worth trying)
+            try:
+                volumes_cmd = ["podman", "volume", "ls", "--format", "{{.Name}}"]
+                volumes_result = subprocess.run(
+                    volumes_cmd, capture_output=True, text=True, timeout=10
+                )
+
+                if volumes_result.returncode == 0:
+                    volume_lines = [
+                        line.strip()
+                        for line in volumes_result.stdout.split("\n")
+                        if line.strip()
+                    ]
+                    volume_count = len(volume_lines)
+                    self.console.print(f"Volumes: {volume_count}")
+            except Exception:
+                self.console.print("Volumes: Unable to determine (permission issues)")
+
+        except Exception as e:
+            self.console.print(
+                f"[yellow]Alternative disk usage analysis also failed: {e}[/yellow]"
+            )
 
     def run_safe_prune_workflow(self) -> bool:
         """Run the complete safe prune workflow."""

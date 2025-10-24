@@ -187,40 +187,9 @@ class ReinitManager:
         if _verbose_enabled and start_success:
             self._verbose_health_monitoring(target, service_name, display_name)
 
-        # Show immediate verbose error details if start command fails
-
-        if _verbose_enabled and not start_success:
-            console.print("[red]❌ systemctl start command failed immediately[/red]")
-            if start_result.stderr:
-                console.print("[red]Error details:[/red]")
-                console.print("[dim]" + "─" * 60 + "[/dim]")
-                for line in start_result.stderr.strip().split("\n"):
-                    if line.strip():
-                        console.print(f"[red]{line}[/red]")
-                console.print("[dim]" + "─" * 60 + "[/dim]")
-            if start_result.stdout:
-                console.print("[yellow]Command output:[/yellow]")
-                console.print("[dim]" + "─" * 60 + "[/dim]")
-                for line in start_result.stdout.strip().split("\n"):
-                    if line.strip():
-                        console.print(f"[yellow]{line}[/yellow]")
-                console.print("[dim]" + "─" * 60 + "[/dim]")
-
-        if not start_success and start_result.stderr:
+        # Handle start failure - delegate to _handle_start_failure to avoid duplication
+        if not start_success:
             self._handle_start_failure(target, start_result)
-        elif not start_success:
-            # Even if no stderr, show verbose error details in verbose mode
-            from config import _verbose_enabled
-
-            if _verbose_enabled:
-                console.print("[red]❌ Service start command failed[/red]")
-                if start_result.stdout:
-                    console.print("[yellow]Command output:[/yellow]")
-                    console.print("[dim]" + "─" * 60 + "[/dim]")
-                    for line in start_result.stdout.strip().split("\n"):
-                        if line.strip():
-                            console.print(f"[yellow]{line}[/yellow]")
-                    console.print("[dim]" + "─" * 60 + "[/dim]")
 
         if start_success:
             # Monitor service logs to verify successful startup
@@ -292,11 +261,7 @@ class ReinitManager:
                 return False
         else:
             console.print(f"[red]Failed to start {display_name} after reinit[/red]")
-            # Also show verbose error details when start command fails
-            from config import _verbose_enabled
-
-            if _verbose_enabled and start_result.stderr:
-                self._handle_start_failure(target, start_result)
+            # Error details already handled by _handle_start_failure above
 
             # Add a small delay to ensure any Rich displays are properly closed
             time.sleep(0.1)
@@ -348,17 +313,6 @@ class ReinitManager:
         # Extract and summarize the error message
         error_msg = start_result.stderr.strip()
 
-        # Show complete error message in verbose mode
-        if _verbose_enabled and error_msg:
-            console.print("[red]❌ Complete systemd error message:[/red]")
-            console.print("[dim]" + "─" * 60 + "[/dim]")
-            # Split error message into lines and display with proper formatting
-            for line in error_msg.split("\n"):
-                if line.strip():
-                    console.print(f"[red]{line}[/red]")
-            console.print("[dim]" + "─" * 60 + "[/dim]")
-            console.print()
-
         if "Job for" in error_msg and "failed because" in error_msg:
             # Extract service name from error
             service_match = re.search(r"Job for ([^\s]+) failed", error_msg)
@@ -373,17 +327,25 @@ class ReinitManager:
             console.print(
                 f"    [red]{clean_service_name} failed -[/red] [white]AI analysis will run automatically[/white]"
             )
-        else:
-            console.print(f"[red]Start failed: {error_msg}[/red]")
 
-        # In verbose mode, also show stdout if available
-        if _verbose_enabled and start_result.stdout and start_result.stdout.strip():
-            console.print("[yellow]Additional output:[/yellow]")
+        # Only show detailed error in verbose mode to avoid duplication
+        if _verbose_enabled and error_msg:
+            console.print("[red]❌ Complete systemd error message:[/red]")
             console.print("[dim]" + "─" * 60 + "[/dim]")
-            for line in start_result.stdout.strip().split("\n"):
+            # Split error message into lines and display with proper formatting
+            for line in error_msg.split("\n"):
                 if line.strip():
-                    console.print(f"[yellow]{line}[/yellow]")
+                    console.print(f"[red]{line}[/red]")
             console.print("[dim]" + "─" * 60 + "[/dim]")
+
+            # In verbose mode, also show stdout if available
+            if start_result.stdout and start_result.stdout.strip():
+                console.print("[yellow]Additional output:[/yellow]")
+                console.print("[dim]" + "─" * 60 + "[/dim]")
+                for line in start_result.stdout.strip().split("\n"):
+                    if line.strip():
+                        console.print(f"[yellow]{line}[/yellow]")
+                console.print("[dim]" + "─" * 60 + "[/dim]")
 
     def _monitor_service_startup(
         self, target: str, service_name: str, timeout: int = 10

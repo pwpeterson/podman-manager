@@ -236,7 +236,7 @@ class SystemMonitor:
         df_cmd = ["podman", "system", "df"]
         console.print(f"[cyan]exec: {' '.join(df_cmd)}[/cyan]")
 
-        result = subprocess.run(df_cmd, capture_output=True, text=True)
+        result = subprocess.run(df_cmd, capture_output=True, text=True, timeout=30)
 
         if result.returncode == 0:
             console.print(result.stdout)
@@ -244,7 +244,132 @@ class SystemMonitor:
             error_msg = (
                 result.stderr.strip() if result.stderr.strip() else "Unknown error"
             )
-            console.print(f"[red]Failed to get system disk usage: {error_msg}[/red]")
+            console.print(
+                f"[yellow]Failed to get system disk usage: {error_msg}[/yellow]"
+            )
+
+            # Try alternative approach for basic disk usage info
+            self._show_alternative_disk_usage()
+
+    def _show_alternative_disk_usage(self) -> None:
+        """Show alternative disk usage information when podman system df fails."""
+        try:
+            console.print("\n[dim]Attempting alternative disk usage analysis...[/dim]")
+
+            # Get container count and basic info
+            containers_cmd = ["podman", "ps", "-a", "--format", "{{.Names}}"]
+            containers_result = subprocess.run(
+                containers_cmd, capture_output=True, text=True, timeout=10
+            )
+
+            if containers_result.returncode == 0:
+                container_lines = [
+                    line.strip()
+                    for line in containers_result.stdout.split("\n")
+                    if line.strip()
+                ]
+                container_count = len(container_lines)
+                console.print(f"Containers: {container_count}")
+
+            # Get image count and basic info
+            images_cmd = [
+                "podman",
+                "images",
+                "--format",
+                "{{.Repository}}:{{.Tag}} {{.Size}}",
+            ]
+            images_result = subprocess.run(
+                images_cmd, capture_output=True, text=True, timeout=10
+            )
+
+            if images_result.returncode == 0:
+                image_lines = [
+                    line.strip()
+                    for line in images_result.stdout.split("\n")
+                    if line.strip()
+                ]
+                image_count = len(image_lines)
+                console.print(f"Images: {image_count}")
+
+                # Calculate total image size (approximate)
+                total_size_bytes = 0
+                for line in image_lines:
+                    if " " in line:
+                        size_part = line.split()[-1]
+                        total_size_bytes += self._parse_size_to_bytes(size_part)
+
+                if total_size_bytes > 0:
+                    console.print(
+                        f"Approximate total image size: {self._format_bytes(total_size_bytes)}"
+                    )
+
+            # Try to get volume info (this might also fail, but worth trying)
+            try:
+                volumes_cmd = ["podman", "volume", "ls", "--format", "{{.Name}}"]
+                volumes_result = subprocess.run(
+                    volumes_cmd, capture_output=True, text=True, timeout=10
+                )
+
+                if volumes_result.returncode == 0:
+                    volume_lines = [
+                        line.strip()
+                        for line in volumes_result.stdout.split("\n")
+                        if line.strip()
+                    ]
+                    volume_count = len(volume_lines)
+                    console.print(f"Volumes: {volume_count}")
+            except Exception:
+                console.print("Volumes: Unable to determine (permission issues)")
+
+        except Exception as e:
+            console.print(
+                f"[yellow]Alternative disk usage analysis also failed: {e}[/yellow]"
+            )
+
+    def _parse_size_to_bytes(self, size_str: str) -> int:
+        """Parse size string like '1.2GB' to bytes."""
+        try:
+            size_str = size_str.strip().upper()
+            if size_str == "0B" or not size_str:
+                return 0
+
+            # Extract number and unit
+            import re
+
+            match = re.match(r"([0-9.]+)\s*([KMGT]?B)", size_str)
+            if not match:
+                return 0
+
+            number = float(match.group(1))
+            unit = match.group(2)
+
+            multipliers = {
+                "B": 1,
+                "KB": 1024,
+                "MB": 1024**2,
+                "GB": 1024**3,
+                "TB": 1024**4,
+            }
+
+            return int(number * multipliers.get(unit, 1))
+
+        except Exception:
+            return 0
+
+    def _format_bytes(self, bytes_count: int) -> str:
+        """Format bytes to human readable string."""
+        if bytes_count == 0:
+            return "0 B"
+
+        units = ["B", "KB", "MB", "GB", "TB"]
+        size = float(bytes_count)
+        unit_index = 0
+
+        while size >= 1024 and unit_index < len(units) - 1:
+            size /= 1024
+            unit_index += 1
+
+        return f"{size:.1f} {units[unit_index]}"
 
     def health_check(self, target: str | None = None) -> None:
         """Perform comprehensive health check on services or entire system"""

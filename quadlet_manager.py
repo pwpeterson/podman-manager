@@ -561,7 +561,7 @@ class QuadletManager:
                         if result.stderr:
                             logger.error("Error output: {}", result.stderr)
 
-                            # Show detailed error in verbose mode
+                            # Only show error details in verbose mode to avoid duplication
                             if _verbose_enabled:
                                 console.print("[red]❌ Complete command error:[/red]")
                                 console.print("[dim]" + "─" * 60 + "[/dim]")
@@ -569,11 +569,8 @@ class QuadletManager:
                                     if line.strip():
                                         console.print(f"[red]{line}[/red]")
                                 console.print("[dim]" + "─" * 60 + "[/dim]")
-                            else:
-                                # Show brief error in non-verbose mode
-                                console.print(
-                                    f"[red]Command failed: {result.stderr.strip()}[/red]"
-                                )
+                            # Remove the brief error display here to avoid duplication
+                            # The calling method will handle user-facing error messages
                 else:
                     logger.debug(
                         "Command failed with code {} in {:.2f}s (suppressed)",
