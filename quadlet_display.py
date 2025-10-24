@@ -102,38 +102,43 @@ class QuadletDisplayManager:
                     has_dockerfile = self._has_dockerfile(service_name)
                     buildable_indicator = " [blue]🔨[/blue]" if has_dockerfile else ""
 
-                    # Format service with status (30 character field for alignment, accounting for indicator)
+                    # Format service with status (30 character field for alignment)
                     clean_service_display = self._extract_clean_service_name(
                         service_name
                     )
-                    # Account for buildable indicator in length calculations (emoji + space = 2 chars visually)
-                    indicator_length = 2 if has_dockerfile else 0
-                    available_space = 30 - indicator_length
 
-                    # Ensure service name fits within available space
-                    if len(clean_service_display) > available_space:
-                        # Truncate and pad to fit available space
-                        truncated_service = service_name
-                        while (
-                            len(self._extract_clean_service_name(truncated_service))
-                            > available_space
-                        ):
-                            truncated_service = truncated_service[:-1]
-                        clean_truncated = self._extract_clean_service_name(
-                            truncated_service
-                        )
-                        padding_needed = available_space - len(clean_truncated)
-                        service_display = (
-                            truncated_service
-                            + buildable_indicator
-                            + (" " * padding_needed)
-                        )
+                    if has_dockerfile:
+                        # For services with Dockerfile: subtract 4 spaces from padding
+                        service_name_length = len(clean_service_display)
+                        normal_padding = 30 - service_name_length
+                        padding_needed = (
+                            normal_padding - 4
+                        )  # Subtract 4 spaces as requested
+
+                        if padding_needed < 0:
+                            # Service name too long, truncate it
+                            max_service_length = 26  # 30 - 4 for spacing adjustment
+                            truncated_service = service_name
+                            while (
+                                len(self._extract_clean_service_name(truncated_service))
+                                > max_service_length
+                            ):
+                                truncated_service = truncated_service[:-1]
+                            service_display = (
+                                truncated_service + " " + buildable_indicator
+                            )
+                        else:
+                            # Add space and emoji, then reduced padding
+                            service_display = (
+                                service_name
+                                + " "
+                                + buildable_indicator
+                                + (" " * padding_needed)
+                            )
                     else:
-                        # Pad service name and add indicator
-                        padding_needed = available_space - len(clean_service_display)
-                        service_display = (
-                            service_name + buildable_indicator + (" " * padding_needed)
-                        )
+                        # No indicator, pad to full 30 characters
+                        padding_needed = 30 - len(clean_service_display)
+                        service_display = service_name + (" " * padding_needed)
 
                     service_with_status = f"{service_display} {status_info}"
 
