@@ -100,9 +100,9 @@ class QuadletOperations:
         return self.service_lifecycle.reload_daemon()
 
     # Log Analysis Operations
-    def show_logs(self, target: str, follow: bool = False, tail: int = 100) -> None:
+    def show_logs(self, target: str, follow: bool = False) -> None:
         """Show service logs using journalctl"""
-        self.log_analyzer.show_logs(target, follow, tail)
+        self.log_analyzer.show_logs(target, follow)
 
     def analyze_logs(self, target: str, lines: int = 50) -> None:
         """Analyze service logs for errors, warnings, and other issues"""

@@ -1228,7 +1228,7 @@ class QuadletManager:
             console.print("[red]Failed to reload systemd user daemon[/red]")
             return False
 
-    def show_logs(self, target: str, follow: bool = False, lines: int = 100) -> bool:
+    def show_logs(self, target: str, follow: bool = False) -> bool:
         """Show logs for a service"""
         self._clear_auto_match_cache()
 
@@ -1246,7 +1246,7 @@ class QuadletManager:
         elif service_name == "CANCELLED":
             return False
 
-        cmd = ["journalctl", "--user", "-u", service_name, "-n", str(lines)]
+        cmd = ["journalctl", "--user", "-u", service_name]
         if follow:
             cmd.append("-f")
 

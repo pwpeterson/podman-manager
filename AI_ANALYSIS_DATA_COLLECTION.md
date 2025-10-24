@@ -230,11 +230,11 @@ You can control how many log lines are analyzed:
 # Default: 50 lines
 pm logs vllm-glm46 -ai
 
-# Custom: 100 lines
-pm logs vllm-glm46 -ai -n 100
+# Standard analysis (uses default log collection)
+pm logs vllm-glm46 -ai
 
-# Custom: 20 lines (faster analysis)
-pm logs vllm-glm46 -ai -n 20
+# Verbose analysis for comprehensive diagnostics
+pm logs vllm-glm46 -ai -v
 ```
 
 ### Verbose Mode
@@ -329,7 +329,7 @@ This comprehensive verbose output ensures complete transparency of:
 
 **User command:**
 ```bash
-pm logs vllm-glm46 -ai qwen25 -n 30 -v
+pm logs vllm-glm46 -ai qwen25 -v
 ```
 
 **Data collection steps:**

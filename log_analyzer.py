@@ -82,9 +82,9 @@ class LogAnalyzer:
         else:
             return message_content
 
-    def show_logs(self, target: str, follow: bool = False, tail: int = 100) -> None:
+    def show_logs(self, target: str, follow: bool = False) -> None:
         """Show service logs using journalctl"""
-        success = self.manager.show_logs(target, follow=follow, lines=tail)
+        success = self.manager.show_logs(target, follow=follow)
         if not success:
             console.print("[dim]Try running: pm list to see available services[/dim]")
 

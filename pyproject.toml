@@ -1,7 +1,7 @@
 [project]
 name = "podman-manager"
 version = "0.1.0"
-description = "Comprehensive Python-based container management tool for Podman with rich terminal UI, health monitoring, and compose file integration"
+description = "Comprehensive Python-based container management tool for Podman with rich terminal UI, health monitoring, and systemd quadlet integration"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

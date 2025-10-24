@@ -363,7 +363,7 @@ pm logs service-name -ai gpt4      # Use GPT-4
 pm logs service-name -ai glm46     # Use local GLM-4-6B
 
 # Verbose AI analysis showing all diagnostic commands
-pm logs service-name -ai qwen25 -v -n 100
+pm logs service-name -ai qwen25 -v
 
 # Execute interactive shell
 pm exec ollama bash
@@ -462,8 +462,8 @@ pm logs service-name -ai
 # Specific AI agent with verbose diagnostics
 pm logs vllm-qwen25 -ai qwen25 -v
 
-# Comprehensive analysis with more log lines
-pm logs service-name -ai claude -n 200 -v
+# Comprehensive analysis with comprehensive diagnostics
+pm logs service-name -ai claude -v
 ```
 
 #### Available AI Agents

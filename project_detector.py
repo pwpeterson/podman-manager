@@ -1,4 +1,4 @@
-"""Intelligent target type detection for pm facade."""
+"""Intelligent target type detection for pm facade - Quadlet-only version."""
 
 import subprocess
 from pathlib import Path
@@ -8,14 +8,10 @@ from loguru import logger
 
 
 class ProjectTypeDetector:
-    """Automatically detect if a target is a podman compose stack or quadlet service"""
+    """Automatically detect quadlet services and targets"""
 
     def __init__(self, compose_dir: Optional[Path] = None):
-        self.compose_dir = (
-            Path(compose_dir)
-            if compose_dir
-            else Path.home() / "srv" / "local-ai-packaged"
-        )
+        # Keep compose_dir parameter for backward compatibility but ignore it
 
         # Known quadlet services
         self.quadlet_services = {
@@ -34,11 +30,11 @@ class ProjectTypeDetector:
 
     def detect_project_type(self, target: str) -> Tuple[str, str]:
         """
-        Detect project type for a given target.
+        Detect project type for a given target (quadlet-only).
 
         Returns:
             Tuple[str, str]: (project_type, reason)
-            project_type: 'quadlet', 'compose', or 'unknown'
+            project_type: 'quadlet' or 'unknown'
             reason: explanation of detection logic
         """
         logger.debug("Detecting target type for target: {}", target)
@@ -63,11 +59,6 @@ class ProjectTypeDetector:
                     "quadlet",
                     f"Stack target with quadlet services: {target}",
                 )
-
-        # 1.1. Check if it's a known compose stack name
-        compose_stack = self._find_compose_stack(target)
-        if compose_stack:
-            return "compose", f"Known compose stack: {target}"
 
         # 2. Check if it's a known quadlet service
         if target in self.quadlet_services or target in self.stack_aliases:
@@ -95,19 +86,7 @@ class ProjectTypeDetector:
         if self._systemd_unit_exists(potential_service):
             return "quadlet", f"Found systemd service: {potential_service}"
 
-        # 5. Check if it's in any compose file
-        compose_stack = self._find_in_compose_files(target)
-        if compose_stack:
-            return "compose", f"Found in compose file: {compose_stack}"
-
-        # 6. Default fallback logic
-        # If compose directory exists and has files, assume compose
-        if self.compose_dir.exists() and list(
-            self.compose_dir.glob("podman-compose*.yml")
-        ):
-            return "compose", "Defaulting to compose mode (compose files available)"
-
-        # 7. Final fallback to quadlet (current default)
+        # 5. Default to quadlet mode
         return "quadlet", "Defaulting to quadlet mode"
 
     def _systemd_unit_exists(self, unit_name: str) -> bool:
@@ -124,126 +103,53 @@ class ProjectTypeDetector:
             logger.debug("Error checking systemd unit {}: {}", unit_name, e)
             return False
 
-    def _find_in_compose_files(self, service_name: str) -> Optional[str]:
-        """Find if service exists in any compose file"""
-        if not self.compose_dir.exists():
-            return None
-
-        try:
-            import yaml
-
-            for compose_file in self.compose_dir.glob("podman-compose*.yml"):
-                try:
-                    with open(compose_file, "r") as f:
-                        compose_data = yaml.safe_load(f)
-
-                    if compose_data and "services" in compose_data:
-                        if service_name in compose_data["services"]:
-                            return compose_file.name
-                except (OSError, yaml.YAMLError) as e:
-                    logger.debug("Error reading compose file {}: {}", compose_file, e)
-                    continue
-
-            return None
-        except ImportError:
-            logger.warning("PyYAML not available, cannot check compose files")
-            return None
-
-    def _find_compose_stack(self, stack_name: str) -> Optional[str]:
-        """Check if target is a compose stack name"""
-        if not self.compose_dir.exists():
-            return None
-
-        try:
-            import yaml
-
-            for compose_file in self.compose_dir.glob("podman-compose*.yml"):
-                try:
-                    with open(compose_file, "r") as f:
-                        compose_data = yaml.safe_load(f)
-
-                    # Check if compose file has a name field matching the target
-                    if compose_data and "name" in compose_data:
-                        if compose_data["name"] == stack_name:
-                            return compose_file.name
-
-                    # Check if filename-derived stack name matches
-                    if compose_file.name == "podman-compose.yml":
-                        derived_name = "default"
-                    else:
-                        derived_name = compose_file.name.replace(
-                            "podman-compose-", ""
-                        ).replace(".yml", "")
-
-                    if derived_name == stack_name:
-                        return compose_file.name
-
-                except (OSError, yaml.YAMLError) as e:
-                    logger.debug("Error reading compose file {}: {}", compose_file, e)
-                    continue
-
-            return None
-        except ImportError:
-            logger.warning("PyYAML not available, cannot check compose files")
-            return None
-
     def get_intelligent_mode(
         self, target: Optional[str] = None, user_mode: Optional[str] = None
     ) -> Tuple[str, str]:
         """
-        Get the intelligent mode selection.
+        Get the intelligent mode selection (quadlet-only).
 
         Args:
             target: The target service/project name
-            user_mode: User-specified mode (overrides detection)
+            user_mode: User-specified mode (ignored, always returns quadlet)
 
         Returns:
             Tuple[str, str]: (mode, reason)
         """
-        # User override takes precedence
-        if user_mode:
-            return user_mode, f"User specified mode: {user_mode}"
+        # Always return quadlet mode
+        if user_mode and user_mode != "quadlet":
+            logger.warning(
+                "Ignoring user mode '{}' - only quadlet mode supported", user_mode
+            )
 
-        # If no target specified, use default
+        # If no target specified, use quadlet
         if not target:
-            return "quadlet", "No target specified, using default mode"
+            return "quadlet", "No target specified, using quadlet mode"
 
-        # Detect based on target
+        # Detect based on target (will always be quadlet or unknown)
         detected_mode, reason = self.detect_project_type(target)
+        if detected_mode == "unknown":
+            # Force to quadlet even if unknown
+            return "quadlet", f"Unknown target, defaulting to quadlet mode: {reason}"
+
         return detected_mode, f"Auto-detected: {reason}"
 
     def suggest_alternative_mode(self, target: str, current_mode: str) -> Optional[str]:
         """
-        Suggest alternative mode if current mode fails.
+        Suggest alternative mode if current mode fails (quadlet-only).
 
-        Args:
-            target: The target that failed
-            current_mode: The mode that was tried
-
-        Returns:
-            Alternative mode to try, or None
+        Since we only support quadlet mode, this always returns None.
         """
-        if current_mode == "quadlet":
-            # Try compose if quadlet fails
-            if self._find_in_compose_files(target):
-                return "compose"
-        elif current_mode == "compose":
-            # Try quadlet if compose fails
-            if target in self.quadlet_services or self._systemd_unit_exists(
-                f"{target}.service"
-            ):
-                return "quadlet"
-
         return None
 
     def list_available_targets(self) -> dict:
         """
-        List all available targets by type.
+        List all available targets by type (quadlet-only).
 
         Returns:
-            Dict with 'quadlet' and 'compose' keys containing lists of targets
+            Dict with 'quadlet' key containing list of targets
         """
-        targets = {"quadlet": [], "compose": []}
+        targets = {"quadlet": []}
 
         # Add known quadlet services
         targets["quadlet"].extend(self.quadlet_services.keys())
@@ -275,27 +181,7 @@ class ProjectTypeDetector:
         except Exception as e:
             logger.debug("Error listing systemd services: {}", e)
 
-        # Scan compose files
-        if self.compose_dir.exists():
-            try:
-                import yaml
-
-                for compose_file in self.compose_dir.glob("podman-compose*.yml"):
-                    try:
-                        with open(compose_file, "r") as f:
-                            compose_data = yaml.safe_load(f)
-
-                        if compose_data and "services" in compose_data:
-                            targets["compose"].extend(compose_data["services"].keys())
-                    except Exception as e:
-                        logger.debug(
-                            "Error reading compose file {}: {}", compose_file, e
-                        )
-            except ImportError:
-                logger.debug("PyYAML not available for compose file scanning")
-
         # Remove duplicates and sort
         targets["quadlet"] = sorted(set(targets["quadlet"]))
-        targets["compose"] = sorted(set(targets["compose"]))
 
         return targets

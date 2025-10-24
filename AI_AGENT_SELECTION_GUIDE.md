@@ -169,8 +169,8 @@ pm logs vllm-glm46 -ai qwen25 -v
 # Show AI prompt and detailed execution (long syntax)
 pm logs vllm-glm46 -ai --ai-agent vllm-qwen25 -v
 
-# Verbose mode with more log lines for comprehensive analysis
-pm logs vllm-glm46 -ai qwen25 -v -n 100
+# Verbose mode for comprehensive analysis
+pm logs vllm-glm46 -ai qwen25 -v
 ```
 
 #### What Verbose Mode Shows

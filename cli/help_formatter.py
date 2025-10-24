@@ -9,8 +9,8 @@ from config import console
 
 
 def show_rich_help():
-    """Show beautiful Rich-formatted help for vLLM Quadlet Manager"""
-    console.print("[bold blue]Podman Manager[/bold blue]")
+    """Show beautiful Rich-formatted help for Quadlet Manager"""
+    console.print("[bold blue]Quadlet Manager[/bold blue]")
 
     console.print()
     console.print("[bold]USAGE:[/bold]")
@@ -21,21 +21,10 @@ def show_rich_help():
         "  [cyan]pm[/cyan] [green]COMMAND[/green] [dim][<stack|service>][/dim] [dim][OPTIONS][/dim]                    [dim]# Short alias[/dim]"
     )
     console.print()
-    console.print(
-        "[bold yellow]Note:[/bold yellow] Manages both quadlet services and compose stacks"
-    )
-
-    console.print()
     console.print("[bold]GLOBAL OPTIONS:[/bold]")
     options_table = Table(show_header=False, box=None, padding=(0, 2))
     options_table.add_column("Option", style="yellow", width=30)
     options_table.add_column("Description", style="white")
-    options_table.add_row(
-        "--mode [auto|quadlet|compose]", "Manager mode (default: auto-detect)"
-    )
-    options_table.add_row(
-        "--debug-detection", "Show how PM detects quadlet vs compose targets"
-    )
     options_table.add_row(
         "-v, --verbose", "Show detailed command execution (exec lines)"
     )
@@ -57,7 +46,7 @@ def show_rich_help():
             [
                 (
                     "list <[cyan]stack|service[/cyan]>",
-                    "List quadlet services and compose stacks with running status",
+                    "List quadlet services with running status",
                     "pm list",
                 ),
                 (
@@ -66,10 +55,9 @@ def show_rich_help():
                     "pm status vllm-qwen25",
                 ),
                 ("ps", "Container status table", "pm ps"),
-                ("targets", "Show available targets by type", "pm targets"),
+                ("targets", "Show available quadlet targets", "pm targets"),
                 ("images", "Show container images", "pm images"),
                 ("stats", "Show container resource usage", "pm stats"),
-                ("events [--since TIME]", "Show container events", "pm events"),
             ],
         ),
         (
@@ -161,9 +149,9 @@ def show_rich_help():
                 ("volumes", "List volumes", "pm volumes"),
                 ("networks", "List networks", "pm networks"),
                 (
-                    "logs [cyan]<stack|service>[/cyan] [-n N]",
+                    "logs [cyan]<stack|service>[/cyan]",
                     "Show service logs with automatic AI analysis on errors",
-                    "pm logs vllm-qwen25 -n 100",
+                    "pm logs vllm-qwen25",
                 ),
                 (
                     "diagnose [cyan]<service>[/cyan]",
@@ -245,9 +233,7 @@ def show_rich_help():
     console.print("  • Press [cyan]Ctrl+C[/cyan] to interrupt long-running operations")
     console.print("  • Use 'pm list' or 'pm targets' to see available services")
     console.print("  • Use 'pm auto-update' to enable automatic image updates")
-    console.print("  • Mode auto-detects target type (quadlet vs compose)")
-    console.print("  • Use [cyan]--debug-detection[/cyan] to see detection logic")
-    console.print("  • Use [cyan]--mode compose[/cyan] to force compose mode")
+    console.print("  • Uses quadlet mode for systemd-based container management")
     console.print(
         "  • Use [cyan]--verbose[/cyan] or [cyan]-v[/cyan] before commands for detailed output"
     )

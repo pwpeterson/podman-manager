@@ -1,6 +1,7 @@
 """Rich UI display components for quadlet services."""
 
 import subprocess
+from pathlib import Path
 from typing import Optional
 
 from rich.table import Table
@@ -97,29 +98,42 @@ class QuadletDisplayManager:
                         clean_service_name, all_container_statuses
                     )
 
-                    # Format service with status (30 character field for alignment)
+                    # Check if service has a Dockerfile and add buildable indicator
+                    has_dockerfile = self._has_dockerfile(service_name)
+                    buildable_indicator = " [blue]🔨[/blue]" if has_dockerfile else ""
+
+                    # Format service with status (30 character field for alignment, accounting for indicator)
                     clean_service_display = self._extract_clean_service_name(
                         service_name
                     )
-                    # Ensure all service names are exactly 30 characters for alignment
-                    if len(clean_service_display) > 30:
-                        # Truncate and pad to exactly 30 characters
-                        # Find truncation point that doesn't break color codes
+                    # Account for buildable indicator in length calculations (emoji + space = 2 chars visually)
+                    indicator_length = 2 if has_dockerfile else 0
+                    available_space = 30 - indicator_length
+
+                    # Ensure service name fits within available space
+                    if len(clean_service_display) > available_space:
+                        # Truncate and pad to fit available space
                         truncated_service = service_name
                         while (
                             len(self._extract_clean_service_name(truncated_service))
-                            > 30
+                            > available_space
                         ):
                             truncated_service = truncated_service[:-1]
                         clean_truncated = self._extract_clean_service_name(
                             truncated_service
                         )
-                        padding_needed = 30 - len(clean_truncated)
-                        service_display = truncated_service + (" " * padding_needed)
+                        padding_needed = available_space - len(clean_truncated)
+                        service_display = (
+                            truncated_service
+                            + buildable_indicator
+                            + (" " * padding_needed)
+                        )
                     else:
-                        # Pad original formatted name to exactly 30 characters with spaces
-                        padding_needed = 30 - len(clean_service_display)
-                        service_display = service_name + (" " * padding_needed)
+                        # Pad service name and add indicator
+                        padding_needed = available_space - len(clean_service_display)
+                        service_display = (
+                            service_name + buildable_indicator + (" " * padding_needed)
+                        )
 
                     service_with_status = f"{service_display} {status_info}"
 
@@ -139,30 +153,13 @@ class QuadletDisplayManager:
         console.print()
 
     def _get_all_projects_and_services(self):
-        """Get all projects and services from both quadlets and compose"""
+        """Get all projects and services from quadlets only"""
         all_items = {}
-
-        # Get compose projects first
-        compose_projects = self._get_compose_projects()
-
-        # Add compose projects to all_items (excluding those that have quadlet equivalents)
-        compose_stack_names = set()
-        for project_name, project_info in compose_projects.items():
-            # Convert compose project names to potential stack names for comparison
-            potential_stack_name = f"{project_name}-stack"
-            if potential_stack_name not in self.manager.stack_services:
-                all_items[project_name] = {"type": "mixed", "services": {}}
-                # Add compose services
-                for service_name, service_info in project_info["services"].items():
-                    display_name = service_name
-                    all_items[project_name]["services"][display_name] = service_info
-            else:
-                compose_stack_names.add(project_name)
 
         # Process all discovered quadlet stacks
         for stack_name, stack_service_list in self.manager.stack_services.items():
             if stack_name not in all_items:
-                all_items[stack_name] = {"type": "mixed", "services": {}}
+                all_items[stack_name] = {"type": "quadlet", "services": {}}
 
             # Add all quadlet services in this stack
             for short_name in stack_service_list:
@@ -196,17 +193,6 @@ class QuadletDisplayManager:
                         "full_name": full_name
                     }
 
-            # Add compose services if they exist for this stack
-            compose_project_name = stack_name.replace("-stack", "")
-            if compose_project_name in compose_projects:
-                for service_name, service_info in compose_projects[
-                    compose_project_name
-                ]["services"].items():
-                    compose_display_name = service_name
-                    all_items[stack_name]["services"][
-                        compose_display_name
-                    ] = service_info
-
         # Add the vllm-stack.target if it exists and vllm-stack is present
         if "vllm-stack" in all_items and hasattr(self.manager, "stack_target"):
             # Check if the stack target file actually exists
@@ -223,121 +209,47 @@ class QuadletDisplayManager:
 
         return all_items
 
-    def _get_compose_projects(self):
-        """Get compose projects from actual compose files or fallback to containers"""
+    def _has_dockerfile(self, service_name: str) -> bool:
+        """Check if a service has a corresponding Dockerfile.<service_name>"""
         try:
-            # Import here to avoid circular imports
-            import os
-            from pathlib import Path
+            # Get the clean service name (remove color formatting)
+            clean_service_name = self._extract_clean_service_name(service_name)
 
-            from manager import PodmanManager
+            # Check in the quadlets source directory structure
+            quadlets_source_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
 
-            # Try to find compose directory
-            compose_dir = os.environ.get("PODMAN_COMPOSE_DIR")
-            if not compose_dir:
-                # Try common locations
-                possible_dirs = [
-                    Path.home() / "srv" / "local-ai-packaged",
-                    Path("/home/pwp/srv/local-ai-packaged"),
-                    Path(".") / "compose",
-                ]
-                for dir_path in possible_dirs:
-                    if dir_path.exists() and any(dir_path.glob("*compose*.yml")):
-                        compose_dir = str(dir_path)
-                        break
+            if not quadlets_source_dir.exists():
+                return False
 
-            if compose_dir and Path(compose_dir).exists():
-                compose_manager = PodmanManager(compose_dir)
-                projects = compose_manager._parse_compose_files()
-                if projects:
-                    return projects
+            # Look through all stack directories for the Dockerfile
+            for stack_dir in quadlets_source_dir.iterdir():
+                if not stack_dir.is_dir() or not stack_dir.name.endswith("-stack"):
+                    continue
 
-            # Fallback to container-based detection
-            return self._get_projects_from_containers()
+                # Try exact match first
+                dockerfile_path = stack_dir / f"Dockerfile.{clean_service_name}"
+                if dockerfile_path.exists():
+                    return True
 
-        except Exception as e:
-            console.print(
-                f"[dim]Error getting compose projects, using container fallback: {e}[/dim]"
-            )
-            return self._get_projects_from_containers()
+                # Try with underscores instead of hyphens
+                service_with_underscores = clean_service_name.replace("-", "_")
+                dockerfile_path_underscore = (
+                    stack_dir / f"Dockerfile.{service_with_underscores}"
+                )
+                if dockerfile_path_underscore.exists():
+                    return True
 
-    def _get_projects_from_containers(self):
-        """Fallback: Get projects by parsing container names and labels"""
-        compose_containers = self._get_compose_containers()
-        compose_projects = {}
+                # Try with hyphens instead of underscores
+                service_with_hyphens = clean_service_name.replace("_", "-")
+                dockerfile_path_hyphen = (
+                    stack_dir / f"Dockerfile.{service_with_hyphens}"
+                )
+                if dockerfile_path_hyphen.exists():
+                    return True
 
-        for container in compose_containers:
-            # Try to extract project name from container name
-            # Most compose containers are named like: project-service or project_service
-            name = container["name"]
-
-            # Common patterns for compose project extraction
-            if "-" in name:
-                parts = name.split("-")
-                if len(parts) >= 2:
-                    project = parts[0]
-                    service = "-".join(parts[1:])
-                else:
-                    project = "containers"
-                    service = name
-            elif "_" in name:
-                parts = name.split("_")
-                if len(parts) >= 2:
-                    project = parts[0]
-                    service = "_".join(parts[1:])
-                else:
-                    project = "containers"
-                    service = name
-            else:
-                project = "containers"
-                service = name
-
-            if project not in compose_projects:
-                compose_projects[project] = {"services": {}}
-
-            compose_projects[project]["services"][service] = {
-                "image": container["image"],
-                "status": container["status"],
-                "ports": container["ports"],
-            }
-
-        return compose_projects
-
-    def _get_compose_containers(self):
-        """Get list of running compose containers"""
-        try:
-            cmd = [
-                "podman",
-                "ps",
-                "-a",
-                "--format",
-                "{{.Names}};{{.Image}};{{.Status}};{{.Ports}}",
-                "--filter",
-                "label=com.docker.compose.project",
-            ]
-
-            result = subprocess.run(cmd, capture_output=True, text=True)
-
-            containers = []
-            if result.returncode == 0 and result.stdout.strip():
-                for line in result.stdout.strip().split("\n"):
-                    if line.strip():
-                        parts = line.split(";")
-                        if len(parts) >= 4:
-                            name, image, status, ports = parts[:4]
-                            containers.append(
-                                {
-                                    "name": name,
-                                    "image": image,
-                                    "status": status,
-                                    "ports": ports,
-                                }
-                            )
-
-            return containers
-        except Exception as e:
-            console.print(f"[dim]Error getting compose containers: {e}[/dim]")
-            return []
+            return False
+        except Exception:
+            return False
 
     def _show_stack_status(self, stack_status):
         """Show detailed stack status"""
@@ -645,8 +557,8 @@ class QuadletDisplayManager:
                 f"supabase-{service_name}",
                 service_name.replace("local-ai-", ""),
                 service_name.replace("supabase-", ""),
-                f"{service_name}-1",  # Common compose suffix
-                f"{service_name}_1",  # Alternative compose suffix
+                f"{service_name}-1",  # Common suffix
+                f"{service_name}_1",  # Alternative suffix
             ]
 
             for variation in variations:

@@ -4,7 +4,6 @@ Command routing and execution logic
 """
 
 import subprocess
-import sys
 
 from rich.table import Table
 
@@ -16,12 +15,14 @@ from utils.supabase_fixer import fix_supabase_environment_variables
 class CommandRouter:
     """Routes commands to appropriate handlers"""
 
-    def __init__(self, manager, container_ops, display, selected_mode, detector):
+    def __init__(
+        self, manager, container_ops, display, selected_mode=None, detector=None
+    ):
         self.manager = manager
         self.container_ops = container_ops
         self.display = display
-        self.selected_mode = selected_mode
-        self.detector = detector
+        self.selected_mode = "quadlet"  # Always quadlet mode
+        self.detector = detector  # Keep for compatibility but not used
         self.ai_agent = None  # Store AI agent selection
 
     def handle_command_verbose(self, args):
@@ -159,7 +160,7 @@ class CommandRouter:
             console.print(f"[red]AI analysis failed: {e}[/red]")
 
     def try_with_fallback(self, operation_func, *operation_args, **operation_kwargs):
-        """Try operation with current mode, fallback to alternative if it fails, and run AI analysis on Podman errors"""
+        """Execute operation in quadlet mode with AI analysis on Podman errors"""
         target = operation_kwargs.get(
             "target", operation_args[0] if operation_args else ""
         )
@@ -200,18 +201,6 @@ class CommandRouter:
                     ai_agent=self.ai_agent,
                 )
 
-            # If operation returns False (failure), try fallback
-            if result is False:
-                alternative_mode = self.detector.suggest_alternative_mode(
-                    target, self.selected_mode
-                )
-                if alternative_mode:
-                    console.print(
-                        f"[yellow]Trying alternative mode: {alternative_mode}[/yellow]"
-                    )
-                    console.print(
-                        f"[dim]Try: pm --mode {alternative_mode} {' '.join(sys.argv[1:])}[/dim]"
-                    )
             return result
         except Exception as e:
             console.print(f"[red]Operation failed: {e}[/red]")
@@ -229,13 +218,6 @@ class CommandRouter:
                 ai_agent=self.ai_agent,
             )
 
-            alternative_mode = self.detector.suggest_alternative_mode(
-                target, self.selected_mode
-            )
-            if alternative_mode:
-                console.print(
-                    f"[dim]Try: pm --mode {alternative_mode} {' '.join(sys.argv[1:])}[/dim]"
-                )
             return False
 
     def route_command(self, args):
@@ -248,8 +230,6 @@ class CommandRouter:
         # Status and information commands
         if command == "list":
             return self._handle_list(args)
-        elif command == "status":
-            return self._handle_status(args)
         elif command == "ps":
             return self._handle_ps(args)
         elif command == "help":
@@ -260,8 +240,6 @@ class CommandRouter:
             return self._handle_images(args)
         elif command == "stats":
             return self._handle_stats(args)
-        elif command == "events":
-            return self._handle_events(args)
         elif command == "targets":
             return self._handle_targets(args)
         elif command == "ai-agents":
@@ -332,14 +310,6 @@ class CommandRouter:
             self.display.show_status(args.target)
         else:
             self.display.show_status()
-        return True
-
-    def _handle_status(self, args):
-        verbose = getattr(args, "verbose", False)
-        if args.target:
-            self.display.show_status(args.target, verbose=verbose)
-        else:
-            self.display.show_status(verbose=verbose)
         return True
 
     def _handle_ps(self, args):
@@ -476,12 +446,11 @@ class CommandRouter:
         self.display.show_stats(follow=args.follow)
         return True
 
-    def _handle_events(self, args):
-        self.display.show_events(since=args.since)
-        return True
-
     def _handle_targets(self, args):
-        available_targets = self.detector.list_available_targets()
+        if self.detector:
+            available_targets = self.detector.list_available_targets()
+        else:
+            available_targets = {"quadlet": []}
 
         table = Table(
             show_header=True, header_style="bold magenta", title="Available Targets"
@@ -491,12 +460,8 @@ class CommandRouter:
 
         if available_targets["quadlet"]:
             table.add_row("Quadlet Services", ", ".join(available_targets["quadlet"]))
-
-        if available_targets["compose"]:
-            table.add_row("Compose Services", ", ".join(available_targets["compose"]))
-
-        if not available_targets["quadlet"] and not available_targets["compose"]:
-            table.add_row("None", "No targets found")
+        else:
+            table.add_row("Quadlet Services", "No targets found")
 
         console.print(table)
 
@@ -508,9 +473,7 @@ class CommandRouter:
     def _handle_logs(self, args):
         try:
             # Show logs - AI analysis will be triggered automatically if errors are detected
-            self.container_ops.show_logs(
-                args.target, follow=args.follow, tail=args.tail
-            )
+            self.container_ops.show_logs(args.target, follow=args.follow)
             return True
         except Exception as e:
             console.print(f"[red]Error showing logs: {e}[/red]")
@@ -523,7 +486,6 @@ class CommandRouter:
                     "operation": "show_logs",
                     "exception": str(e),
                     "follow": args.follow,
-                    "tail": args.tail,
                 },
                 ai_agent=self.ai_agent,
             )
@@ -531,12 +493,8 @@ class CommandRouter:
             return False
 
     def _handle_diagnose(self, args):
-        if self.selected_mode == "quadlet":
-            self.container_ops.diagnose_container_failure(args.target)
-            return True
-        else:
-            console.print("[red]Diagnose command only available in quadlet mode[/red]")
-            return False
+        self.container_ops.diagnose_container_failure(args.target)
+        return True
 
     def _handle_exec(self, args):
         self.container_ops.exec_command(args.target, args.cmd)
@@ -557,10 +515,7 @@ class CommandRouter:
         return True
 
     def _handle_system_df(self, args):
-        if self.selected_mode == "quadlet":
-            self.container_ops.show_system_df()
-        else:
-            self.display.show_system_df()
+        self.container_ops.show_system_df()
         return True
 
     # Service lifecycle command handlers
@@ -614,92 +569,45 @@ class CommandRouter:
 
     def _handle_reset_failed(self, args):
         self.handle_command_verbose(args)
-        if self.selected_mode == "quadlet":
-            return self.try_with_fallback(self.container_ops.reset_failed, args.target)
-        else:
-            console.print(
-                "[red]Reset-failed command only available in quadlet mode[/red]"
-            )
-            return False
+        return self.try_with_fallback(self.container_ops.reset_failed, args.target)
 
     def _handle_show_service_file(self, args):
         self.handle_command_verbose(args)
-        if self.selected_mode == "quadlet":
-            return self.try_with_fallback(
-                self.container_ops.show_service_file, args.target
-            )
-        else:
-            console.print(
-                "[red]Show-service-file command only available in quadlet mode[/red]"
-            )
-            return False
+        return self.try_with_fallback(self.container_ops.show_service_file, args.target)
 
     # Image and update command handlers
     def _handle_install(self, args):
         self.handle_command_verbose(args)
-        if self.selected_mode == "quadlet":
-            return self.try_with_fallback(self.container_ops.install_stack, args.target)
-        else:
-            console.print("[red]Install command only available in quadlet mode[/red]")
-            return False
+        return self.try_with_fallback(self.container_ops.install_stack, args.target)
 
     def _handle_uninstall(self, args):
-        if self.selected_mode == "quadlet":
-            return self.try_with_fallback(
-                self.container_ops.uninstall_stack, args.target
-            )
-        else:
-            console.print("[red]Uninstall command only available in quadlet mode[/red]")
-            return False
+        return self.try_with_fallback(self.container_ops.uninstall_stack, args.target)
 
     def _handle_update(self, args):
-        if self.selected_mode == "quadlet":
-            return self.try_with_fallback(
-                self.container_ops.update_images_and_restart, args.target
-            )
-        else:
-            console.print("[red]Update command only available in quadlet mode[/red]")
-            return False
+        return self.try_with_fallback(
+            self.container_ops.update_images_and_restart, args.target
+        )
 
     def _handle_auto_update(self, args):
-        if self.selected_mode == "quadlet":
-            self.container_ops.check_auto_update_status()
-            return True
-        else:
-            console.print(
-                "[red]Auto-update command only available in quadlet mode[/red]"
-            )
-            return False
+        self.container_ops.check_auto_update_status()
+        return True
 
     def _handle_reload(self, args):
-        if self.selected_mode == "quadlet":
-            return self.container_ops.reload_daemon()
-        else:
-            console.print("[red]Reload command only available in quadlet mode[/red]")
-            return False
+        return self.container_ops.reload_daemon()
 
     def _handle_refresh(self, args):
         # Hidden refresh command used internally by universal script
-        if self.selected_mode == "quadlet":
-            if hasattr(self.manager, "refresh_service_discovery"):
-                self.manager.refresh_service_discovery()
-            # Also clear any display caches
-            if hasattr(self.display, "clear_cache"):
-                self.display.clear_cache()
-            console.print("[green]Service discovery refreshed[/green]")
-            return True
-        else:
-            return False
+        if hasattr(self.manager, "refresh_service_discovery"):
+            self.manager.refresh_service_discovery()
+        # Also clear any display caches
+        if hasattr(self.display, "clear_cache"):
+            self.display.clear_cache()
+        console.print("[green]Service discovery refreshed[/green]")
+        return True
 
     def _handle_fix_supabase_env(self, args):
         # Fix Supabase environment variable issues
-        if self.selected_mode == "quadlet":
-            return fix_supabase_environment_variables()
-        else:
-            console.print(
-                "[red]Fix Supabase environment command only available in quadlet mode[/red]"
-            )
-            return False
+        return fix_supabase_environment_variables()
 
     def _handle_ai_agents(self, args):
         """Show available AI agents for log analysis"""

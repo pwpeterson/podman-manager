@@ -5,7 +5,6 @@ Custom argument parser with enhanced error handling
 
 import argparse
 import sys
-from pathlib import Path
 from typing import NoReturn
 
 from config import console
@@ -66,19 +65,7 @@ class CustomArgumentParser(argparse.ArgumentParser):
         except Exception:
             pass
 
-        # Try compose manager
-        try:
-            import os
-
-            from manager import PodmanManager
-
-            compose_dir = os.environ.get("PODMAN_COMPOSE_DIR")
-            if compose_dir and Path(compose_dir).exists():
-                compose_manager = PodmanManager(compose_dir)
-                projects = compose_manager._parse_compose_files()
-                stacks.update(projects.keys())
-        except Exception:
-            pass
+        # Compose manager removed - quadlet-only mode
 
         if stacks:
             tree = Tree("Stacks available:", style="cyan")
@@ -105,21 +92,7 @@ class CustomArgumentParser(argparse.ArgumentParser):
         except Exception:
             pass
 
-        # Fallback to compose display
-        try:
-            import os
-
-            from display import DisplayManager
-            from manager import PodmanManager
-
-            compose_dir = os.environ.get("PODMAN_COMPOSE_DIR")
-            if compose_dir and Path(compose_dir).exists():
-                compose_manager = PodmanManager(compose_dir)
-                display = DisplayManager(compose_manager)
-                display.show_status()
-                return
-        except Exception:
-            pass
+        # Compose display removed - quadlet-only mode
 
         # Final fallback
         console.print("[red]No services or stacks found[/red]")
@@ -163,23 +136,12 @@ class CustomArgumentParser(argparse.ArgumentParser):
 def create_argument_parser():
     """Create and configure the main argument parser"""
     parser = CustomArgumentParser(
-        description="vLLM Quadlet Manager with Rich UI",
+        description="Quadlet Manager with Rich UI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         add_help=False,
     )
 
     parser.add_argument("-h", "--help", action="store_true", help="Show help message")
-    parser.add_argument(
-        "--mode",
-        choices=["compose", "quadlet", "auto"],
-        default="auto",
-        help="Manager mode (default: auto-detect)",
-    )
-    parser.add_argument(
-        "--debug-detection",
-        action="store_true",
-        help="Show project type detection details",
-    )
     parser.add_argument(
         "--verbose",
         "-v",
@@ -215,7 +177,7 @@ def _add_status_commands(subparsers):
     """Add status and information commands"""
     # List command
     list_parser = subparsers.add_parser(
-        "list", help="List quadlet services and compose stacks with running status"
+        "list", help="List quadlet services with running status"
     )
     list_parser.add_argument(
         "target",
@@ -227,22 +189,6 @@ def _add_status_commands(subparsers):
         "--verbose",
         action="store_true",
         help="Show detailed command execution (exec lines)",
-    )
-
-    # Status command
-    status_parser = subparsers.add_parser(
-        "status", help="Show service status tree with running status"
-    )
-    status_parser.add_argument(
-        "target",
-        nargs="?",
-        help="Stack or service name (optional - shows all if not specified)",
-    )
-    status_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show verbose status information with additional details",
     )
 
     # PS command
@@ -303,19 +249,9 @@ def _add_status_commands(subparsers):
         help="Show detailed command execution (exec lines)",
     )
 
-    # Events command
-    events_parser = subparsers.add_parser("events", help="Show container events")
-    events_parser.add_argument("--since", help="Show events since timestamp")
-    events_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show detailed command execution (exec lines)",
-    )
-
     # Targets command
     targets_parser = subparsers.add_parser(
-        "targets", help="Show available targets by type (quadlet/compose)"
+        "targets", help="Show available quadlet targets"
     )
     targets_parser.add_argument(
         "-v",
@@ -608,13 +544,6 @@ def _add_resource_commands(subparsers):
     logs_parser.add_argument("target", help="Stack or service name")
     logs_parser.add_argument(
         "-f", "--follow", action="store_true", help="Follow log output"
-    )
-    logs_parser.add_argument(
-        "-n",
-        "--tail",
-        type=int,
-        default=100,
-        help="Number of lines to show from end of logs (default: 100)",
     )
     logs_parser.add_argument(
         "-v",

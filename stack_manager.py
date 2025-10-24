@@ -223,9 +223,7 @@ class StackManager:
             )
         return success
 
-    def _show_stack_logs(
-        self, project: str, follow: bool = False, tail: int = 100
-    ) -> None:
+    def _show_stack_logs(self, project: str, follow: bool = False) -> None:
         """Show logs for all services in a project stack"""
         services = self._get_stack_services(project)
         if not services:
@@ -241,23 +239,19 @@ class StackManager:
             # For follow mode, show logs for all services in parallel (simplified approach)
             for service in services:
                 console.print(f"\n[bold cyan]=== {service} ===[/bold cyan]")
-                self.manager.show_logs(
-                    service, follow=False, lines=tail // len(services)
-                )
+                self.manager.show_logs(service, follow=False)
 
             # Then follow the first service (most common use case)
             if services:
                 console.print(
                     f"\n[bold cyan]=== Following {services[0]} ===[/bold cyan]"
                 )
-                self.manager.show_logs(services[0], follow=True, lines=tail)
+                self.manager.show_logs(services[0], follow=True)
         else:
             # For non-follow mode, show logs for each service
             for service in services:
                 console.print(f"\n[bold cyan]=== {service} ===[/bold cyan]")
-                self.manager.show_logs(
-                    service, follow=False, lines=tail // len(services)
-                )
+                self.manager.show_logs(service, follow=False)
 
     def _show_stack_status(self, project: str) -> None:
         """Show status for all services in a project stack"""
