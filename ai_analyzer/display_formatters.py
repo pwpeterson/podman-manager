@@ -4,7 +4,7 @@ import re
 import textwrap
 from abc import ABC, abstractmethod
 
-from config import console
+from core.config import console
 
 
 class DisplayFormatter(ABC):

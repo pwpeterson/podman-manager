@@ -8,7 +8,7 @@ import subprocess
 from rich.table import Table
 
 from ai_analyzer import ai_analyzer
-from config import console, set_verbose
+from core.config import console, set_verbose
 from utils.supabase_fixer import fix_supabase_environment_variables
 
 
@@ -107,7 +107,7 @@ class CommandRouter:
         ai_agent: str | None = None,
     ):
         """Automatically trigger AI analysis when Podman errors are detected"""
-        from config import _verbose_enabled
+        from core.config import _verbose_enabled
 
         try:
             # Show error detection message
@@ -245,6 +245,8 @@ class CommandRouter:
             return self._handle_targets(args)
         elif command == "ai-agents":
             return self._handle_ai_agents(args)
+        elif command == "set-default-ai":
+            return self._handle_set_default_ai(args)
 
         # Resource commands
         elif command == "logs":
@@ -492,7 +494,7 @@ class CommandRouter:
                 resolved_ai_agent = self._resolve_ai_agent_name(ai_agent)
 
                 # Trigger AI analysis directly for logs
-                from config import _verbose_enabled
+                from core.config import _verbose_enabled
 
                 result = ai_analyzer.ai_analyze(
                     analysis_type="logs",
@@ -654,10 +656,49 @@ class CommandRouter:
         """Show available AI agents for log analysis"""
         self.handle_command_verbose(args)
         try:
-            from ai_agents import ai_agent_manager
+            from ai_system.ai_agents import ai_agent_manager
 
             ai_agent_manager.show_agents_status()
             return True
         except ImportError:
             console.print("[red]AI agents system not available[/red]")
+            return False
+
+    def _handle_set_default_ai(self, args):
+        """Set the default AI agent"""
+        self.handle_command_verbose(args)
+        try:
+            from ai_analyzer.config import config
+            from ai_system.ai_agents import ai_agent_manager
+
+            # Resolve the agent name
+            resolved_agent = self._resolve_ai_agent_name(args.agent_name)
+
+            if not resolved_agent:
+                console.print(f"[red]✗ Invalid agent name: {args.agent_name}[/red]")
+                console.print("[dim]Run 'pm ai-agents' to see available agents[/dim]")
+                return False
+
+            # Set default in both places
+            success = ai_agent_manager.set_default_agent(resolved_agent, persist=True)
+            if success:
+                config.set_default_agent(resolved_agent)
+                console.print(
+                    f"[green]✓ Default AI agent set to: {resolved_agent}[/green]"
+                )
+                console.print(
+                    f"[dim]Config saved to: {ai_agent_manager.get_config_file_path()}[/dim]"
+                )
+                return True
+            else:
+                console.print(
+                    f"[red]✗ Failed to set default agent: {resolved_agent} not found[/red]"
+                )
+                console.print("[dim]Run 'pm ai-agents' to see available agents[/dim]")
+                return False
+        except ImportError:
+            console.print("[red]AI agents system not available[/red]")
+            return False
+        except Exception as e:
+            console.print(f"[red]Error setting default AI agent: {e}[/red]")
             return False

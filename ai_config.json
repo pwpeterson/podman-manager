@@ -1,0 +1,11 @@
+{
+  "default_agent": "vllm-qwen25",
+  "agent_preferences": {
+    "prefer_local": true,
+    "fallback_order": [
+      "vllm-qwen25",
+      "claude-sonnet",
+      "gpt-4"
+    ]
+  }
+}

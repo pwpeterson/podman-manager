@@ -8,7 +8,7 @@ from typing import List
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from config import console, verbose_print
+from core.config import console, verbose_print
 
 
 class StackManager:
@@ -319,7 +319,7 @@ class StackManager:
 
     def uninstall_stack(self, stack: str) -> bool:
         """Uninstall quadlet stack from systemd directory"""
-        from installer import QuadletInstaller
+        from operations.installer import QuadletInstaller
 
         console.print(f"[green]Uninstalling {stack} stack...[/green]")
 
@@ -356,7 +356,7 @@ class StackManager:
 
     def install_stack(self, stack: str) -> bool:
         """Install/build quadlet stack or service using integrated installer module"""
-        from installer import QuadletInstaller
+        from operations.installer import QuadletInstaller
 
         try:
             installer = QuadletInstaller()
@@ -421,7 +421,7 @@ class StackManager:
             return False
 
         # Show different messages for verbose vs non-verbose mode
-        from config import _verbose_enabled
+        from core.config import _verbose_enabled
 
         if _verbose_enabled:
             verbose_print(f"[green]Stopping all {project} services...[/green]")
@@ -465,7 +465,7 @@ class StackManager:
                 console.print(
                     f"[green]Building {project} images (podman build)...[/green]"
                 )
-                from container_builder import ContainerBuilder
+                from operations.container_builder import ContainerBuilder
 
                 builder = ContainerBuilder(self.manager)
                 build_success = builder.build_stack_podman(project, services)
@@ -473,7 +473,7 @@ class StackManager:
                 console.print(
                     f"[green]Building {project} images (quadlet build)...[/green]"
                 )
-                from container_builder import ContainerBuilder
+                from operations.container_builder import ContainerBuilder
 
                 builder = ContainerBuilder(self.manager)
                 build_success = builder._build_stack(project, services)
@@ -509,7 +509,7 @@ class StackManager:
                 time.sleep(1)  # Brief pause after reload
 
         # Restart all services
-        from config import _verbose_enabled
+        from core.config import _verbose_enabled
 
         if _verbose_enabled:
             verbose_print(f"[green]Starting all {project} services...[/green]")
@@ -519,7 +519,7 @@ class StackManager:
 
         start_success = True
         for service in services:
-            from config import _verbose_enabled
+            from core.config import _verbose_enabled
 
             service_name = self.manager._find_service_name(service)
             if service_name:
@@ -947,7 +947,7 @@ class StackManager:
 
     def _show_startup_failure_logs(self, target: str, service_name: str) -> None:
         """Show recent logs when service fails to start properly"""
-        from log_analyzer import LogAnalyzer
+        from ai_system.log_analyzer import LogAnalyzer
 
         analyzer = LogAnalyzer(self.manager)
         analyzer.show_startup_failure_logs(target, service_name)

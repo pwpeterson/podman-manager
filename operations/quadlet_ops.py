@@ -2,14 +2,14 @@
 
 from typing import List
 
-from ai_diagnostics import AIDiagnostics
-from config import console
-from container_builder import ContainerBuilder
-from log_analyzer import LogAnalyzer
-from reinit_manager import ReinitManager
-from service_lifecycle import ServiceLifecycle
-from stack_manager import StackManager
-from system_monitor import SystemMonitor
+from ai_system.ai_diagnostics import AIDiagnostics
+from ai_system.log_analyzer import LogAnalyzer
+from core.config import console
+from managers.reinit_manager import ReinitManager
+from managers.service_lifecycle import ServiceLifecycle
+from managers.stack_manager import StackManager
+from operations.container_builder import ContainerBuilder
+from operations.system_monitor import SystemMonitor
 
 
 class QuadletOperations:

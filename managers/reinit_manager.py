@@ -15,7 +15,7 @@ else:
     except ImportError:
         requests = None
 
-from config import console, verbose_print
+from core.config import console, verbose_print
 
 
 class ReinitManager:
@@ -104,7 +104,7 @@ class ReinitManager:
         self, target: str, service_name: str, build_type: str | None = None
     ) -> bool:
         """Reinit a single service using already-resolved service name"""
-        from config import _verbose_enabled
+        from core.config import _verbose_enabled
 
         # Use the actual service name for display (remove .service suffix if present)
         display_name = (
@@ -132,7 +132,7 @@ class ReinitManager:
         # Build if requested
         if build_type == "podman":
             console.print(f"[green]Building {target} (podman)...[/green]")
-            from container_builder import ContainerBuilder
+            from operations.container_builder import ContainerBuilder
 
             builder = ContainerBuilder(self.manager)
             build_success = builder.build_service_podman(target)
@@ -141,7 +141,7 @@ class ReinitManager:
                 return False
         elif build_type in ["legacy", "quadlet"]:
             console.print(f"[green]Building {target} (quadlet)...[/green]")
-            from container_builder import ContainerBuilder
+            from operations.container_builder import ContainerBuilder
 
             builder = ContainerBuilder(self.manager)
             build_success = builder.build_service(target)
@@ -228,7 +228,7 @@ class ReinitManager:
                 verbose_print("  [cyan]exec: ai_analyze(type=reinit_failure)[/cyan]")
                 try:
                     from ai_analyzer import ai_analyzer
-                    from config import _verbose_enabled
+                    from core.config import _verbose_enabled
 
                     # Initialize ai_analyzer with manager if not already done
                     if ai_analyzer.manager is None:
@@ -275,7 +275,7 @@ class ReinitManager:
             error_message = start_result.stderr.strip() if start_result.stderr else ""
             try:
                 from ai_analyzer import ai_analyzer
-                from config import _verbose_enabled
+                from core.config import _verbose_enabled
 
                 # Initialize ai_analyzer with manager if not already done
                 if ai_analyzer.manager is None:
@@ -306,7 +306,7 @@ class ReinitManager:
 
     def _handle_start_failure(self, target: str, start_result) -> None:
         """Handle service start failure with detailed error reporting"""
-        from config import _verbose_enabled
+        from core.config import _verbose_enabled
 
         # Extract and summarize the error message
         error_msg = start_result.stderr.strip()
@@ -1006,7 +1006,7 @@ Keep the response brief and actionable. Focus on the most critical issues first.
         ai_agent: Optional[str] = None,
     ) -> None:
         """Run AI analysis on reinit failure using unified AI analyzer."""
-        from config import _verbose_enabled
+        from core.config import _verbose_enabled
 
         try:
             from ai_analyzer import ai_analyzer

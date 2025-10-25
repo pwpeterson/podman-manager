@@ -104,6 +104,10 @@ class AIAnalyzerConfig:
 
         return self.agent_mapping.agent_mapping.get(short_name.lower(), short_name)
 
+    def set_default_agent(self, agent_name: str) -> None:
+        """Set the default AI agent"""
+        self.analysis.default_ai_agent = agent_name
+
     def get_quadlet_patterns(self, service_name: str) -> List[str]:
         """Get container file patterns for a service name"""
         patterns = []

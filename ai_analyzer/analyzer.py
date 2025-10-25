@@ -1,10 +1,10 @@
 """Refactored AI Analyzer - main coordinator class"""
 
 from datetime import datetime
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
-from ai_agents import ai_agent_manager
-from config import console, verbose_print
+from ai_system.ai_agents import ai_agent_manager
+from core.config import console, verbose_print
 
 from .config import config
 from .data_collectors import (

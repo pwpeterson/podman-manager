@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from config import verbose_print
+from core.config import verbose_print
 
 
 class DataCollector(ABC):

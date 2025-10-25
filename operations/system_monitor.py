@@ -6,7 +6,7 @@ from typing import List
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from config import console
+from core.config import console
 
 
 class SystemMonitor:

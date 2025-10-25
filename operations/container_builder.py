@@ -7,7 +7,7 @@ from typing import List, Optional, Union
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from config import console, verbose_print
+from core.config import console, verbose_print
 
 
 class ContainerBuilder:
@@ -386,7 +386,7 @@ class ContainerBuilder:
             ]
             verbose_print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
 
-            from config import _verbose_enabled
+            from core.config import _verbose_enabled
 
             if _verbose_enabled:
                 # In verbose mode, show build output with indentation and capture for AI analysis
@@ -453,7 +453,7 @@ class ContainerBuilder:
                         build_output = build_result.stdout.strip()
 
                 # Trigger AI analysis for build failure
-                from config import _verbose_enabled
+                from core.config import _verbose_enabled
 
                 self._trigger_build_ai_analysis(
                     target=service_name,
@@ -647,7 +647,7 @@ class ContainerBuilder:
                         )
 
                         # Trigger AI analysis for build failure
-                        from config import _verbose_enabled
+                        from core.config import _verbose_enabled
 
                         self._trigger_build_ai_analysis(
                             target=target,
@@ -681,7 +681,7 @@ class ContainerBuilder:
             return False
 
         # Step 2: Reload systemd daemon
-        from config import _verbose_enabled
+        from core.config import _verbose_enabled
 
         if _verbose_enabled:
             console.print("[green]Reloading systemd user daemon[/green]")
@@ -1052,7 +1052,7 @@ class ContainerBuilder:
                 console.print(result.stdout)
 
             # Restart the service to use updated images
-            from service_lifecycle import ServiceLifecycle
+            from managers.service_lifecycle import ServiceLifecycle
 
             lifecycle = ServiceLifecycle(self.manager)
             return lifecycle.restart(target)

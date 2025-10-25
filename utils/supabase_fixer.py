@@ -7,7 +7,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from config import console
+from core.config import console
 
 
 def fix_supabase_environment_variables():

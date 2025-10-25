@@ -5,7 +5,7 @@ import subprocess
 from collections import Counter
 from typing import List
 
-from config import console, verbose_print
+from core.config import console, verbose_print
 
 
 class LogAnalyzer:
@@ -404,7 +404,7 @@ class LogAnalyzer:
 
     def diagnose_container_failure(self, target: str) -> None:
         """Diagnose why a container is failing to start"""
-        from config import _verbose_enabled
+        from core.config import _verbose_enabled
 
         self.manager._clear_auto_match_cache()
         service_name = self.manager._find_service_name(target)
@@ -572,7 +572,7 @@ class LogAnalyzer:
 
     def show_startup_failure_logs(self, target: str, service_name: str) -> None:
         """Show recent logs when service fails to start properly"""
-        from config import _verbose_enabled
+        from core.config import _verbose_enabled
 
         # Keep track of messages to avoid duplicates (empty set since no initial section)
         shown_messages = set()
@@ -619,7 +619,7 @@ class LogAnalyzer:
                     end_indices.append(i)
 
             # Always extract the most recent complete section, but in verbose mode show all messages in that section
-            from config import _verbose_enabled
+            from core.config import _verbose_enabled
 
             # Extract the most recent complete section (both verbose and non-verbose modes)
             section_lines = []

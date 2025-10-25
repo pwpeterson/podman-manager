@@ -2,7 +2,7 @@
 
 import subprocess
 
-from config import console, verbose_print
+from core.config import console, verbose_print
 
 
 class ServiceLifecycle:
@@ -93,7 +93,7 @@ class ServiceLifecycle:
                 # Stop first
                 self.manager.stop_service(target, quiet=True)
                 # Build - delegate to container_builder
-                from container_builder import ContainerBuilder
+                from operations.container_builder import ContainerBuilder
 
                 builder = ContainerBuilder(self.manager)
                 if not builder.build_service(target):
@@ -256,7 +256,7 @@ class ServiceLifecycle:
             return
 
         # Use systemctl status for detailed output
-        from config import _verbose_enabled
+        from core.config import _verbose_enabled
 
         cmd = ["systemctl", "--user", "status", service_name]
         if _verbose_enabled:
@@ -492,7 +492,7 @@ class ServiceLifecycle:
     def _start_service_with_build(self, target: str, build: bool = False) -> bool:
         """Start a service with optional build"""
         if build:
-            from container_builder import ContainerBuilder
+            from operations.container_builder import ContainerBuilder
 
             builder = ContainerBuilder(self.manager)
             if not builder.build_service(target):
@@ -505,7 +505,7 @@ class ServiceLifecycle:
         """Trigger automatic AI analysis when restart fails"""
         try:
             from ai_analyzer import ai_analyzer
-            from config import _verbose_enabled
+            from core.config import _verbose_enabled
 
             # Initialize AI analyzer with manager if not already done
             if ai_analyzer.manager is None:

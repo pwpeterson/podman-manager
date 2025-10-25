@@ -7,8 +7,11 @@ from typing import Dict, List, Optional
 
 from loguru import logger
 
-from config import console, verbose_print  # pyright: ignore[reportAttributeAccessIssue]
-from fuzzy_matcher import FuzzyMatcher
+from core.config import (  # pyright: ignore[reportAttributeAccessIssue]
+    console,
+    verbose_print,
+)
+from core.fuzzy_matcher import FuzzyMatcher
 
 
 class QuadletManager:
@@ -497,7 +500,7 @@ class QuadletManager:
         quiet: bool = False,
     ) -> subprocess.CompletedProcess:
         """Execute a systemctl command and return the result"""
-        from config import _verbose_enabled
+        from core.config import _verbose_enabled
 
         # Display command in a subtle way (unless quiet)
         if not quiet:

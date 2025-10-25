@@ -20,8 +20,8 @@ else:
     except ImportError:
         requests = None
 
-from config import console, is_verbose, verbose_print
-from fuzzy_matcher import FuzzyMatcher
+from core.config import console, is_verbose, verbose_print
+from core.fuzzy_matcher import FuzzyMatcher
 
 
 class EnvironmentManager:

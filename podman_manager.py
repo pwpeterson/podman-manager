@@ -9,10 +9,10 @@ import sys
 from cli.command_router import CommandRouter
 from cli.help_formatter import show_rich_help
 from cli.parser import create_argument_parser
-from config import console, set_verbose
-from quadlet_display import QuadletDisplayManager
-from quadlet_manager import QuadletManager
-from quadlet_ops import QuadletOperations
+from core.config import console, set_verbose
+from managers.quadlet_manager import QuadletManager
+from operations.quadlet_display import QuadletDisplayManager
+from operations.quadlet_ops import QuadletOperations
 
 
 def main():

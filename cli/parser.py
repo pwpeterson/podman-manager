@@ -7,7 +7,7 @@ import argparse
 import sys
 from typing import NoReturn
 
-from config import console
+from core.config import console
 
 
 class CustomArgumentParser(argparse.ArgumentParser):
@@ -58,7 +58,7 @@ class CustomArgumentParser(argparse.ArgumentParser):
 
         # Try quadlet manager first
         try:
-            from quadlet_manager import QuadletManager
+            from managers.quadlet_manager import QuadletManager
 
             quadlet_manager = QuadletManager()
             stacks.update(quadlet_manager.stack_services.keys())
@@ -80,8 +80,8 @@ class CustomArgumentParser(argparse.ArgumentParser):
         # Try to get the full hierarchy from display managers with status
         try:
             # Try quadlet display first - use the enhanced show_status method
-            from quadlet_display import QuadletDisplayManager
-            from quadlet_manager import QuadletManager
+            from managers.quadlet_manager import QuadletManager
+            from operations.quadlet_display import QuadletDisplayManager
 
             quadlet_manager = QuadletManager()
             display = QuadletDisplayManager(quadlet_manager)
@@ -265,6 +265,31 @@ def _add_status_commands(subparsers):
         "ai-agents", help="Show available AI agents for log analysis"
     )
     ai_agents_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    # Set Default AI Agent command
+    set_default_ai_parser = subparsers.add_parser(
+        "set-default-ai", help="Set the default AI agent for analysis"
+    )
+    set_default_ai_parser.add_argument(
+        "agent_name",
+        choices=[
+            "qwen25",
+            "glm46",
+            "claude",
+            "gpt4",
+            "vllm-qwen25",
+            "vllm-glm46",
+            "claude-sonnet",
+            "gpt-4",
+        ],
+        help="AI agent name to set as default",
+    )
+    set_default_ai_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",

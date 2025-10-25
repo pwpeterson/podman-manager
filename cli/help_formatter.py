@@ -5,7 +5,7 @@ Rich-formatted help display for podman manager
 
 from rich.table import Table
 
-from config import console
+from core.config import console
 
 
 def show_rich_help():

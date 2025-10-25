@@ -1,8 +1,10 @@
 """AI Agent Configuration and Management System"""
 
+import json
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional
 
 try:
@@ -12,7 +14,7 @@ except ImportError:
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from config import console, verbose_print
+from core.config import console, verbose_print
 
 
 @dataclass
@@ -216,10 +218,12 @@ class OpenAIAgent(AIAgent):
 class AIAgentManager:
     """Manages AI agents and provides selection interface"""
 
-    def __init__(self):
+    def __init__(self, config_file: str = "ai_config.json"):
         self.agents: Dict[str, AIAgent] = {}
         self.default_agent = None
+        self.config_file = Path(config_file)
         self._load_default_configs()
+        self._load_persistent_config()
 
     def _load_default_configs(self):
         """Load default agent configurations"""
@@ -311,6 +315,58 @@ class AIAgentManager:
             return cloud_agents[0]
 
         return None
+
+    def set_default_agent(self, agent_name: str, persist: bool = True) -> bool:
+        """Set a specific agent as the default"""
+        if agent_name in self.agents:
+            self.default_agent = agent_name
+            if persist:
+                self._save_persistent_config()
+            return True
+        return False
+
+    def refresh_default_agent(self) -> Optional[str]:
+        """Re-evaluate and set the default agent based on availability"""
+        self.default_agent = self._find_default_agent()
+        return self.default_agent
+
+    def _load_persistent_config(self) -> None:
+        """Load persistent configuration from file"""
+        if self.config_file.exists():
+            try:
+                with open(self.config_file, "r") as f:
+                    config_data = json.load(f)
+
+                # Load default agent if specified and available
+                saved_default = config_data.get("default_agent")
+                if saved_default and saved_default in self.agents:
+                    self.default_agent = saved_default
+
+            except (json.JSONDecodeError, IOError) as e:
+                console.print(
+                    f"[yellow]Warning: Could not load AI config: {e}[/yellow]"
+                )
+
+    def _save_persistent_config(self) -> None:
+        """Save persistent configuration to file"""
+        try:
+            config_data = {
+                "default_agent": self.default_agent,
+                "agent_preferences": {
+                    "prefer_local": True,
+                    "fallback_order": ["vllm-qwen25", "claude-sonnet", "gpt-4"],
+                },
+            }
+
+            with open(self.config_file, "w") as f:
+                json.dump(config_data, f, indent=2)
+
+        except IOError as e:
+            console.print(f"[yellow]Warning: Could not save AI config: {e}[/yellow]")
+
+    def get_config_file_path(self) -> str:
+        """Get the path to the configuration file"""
+        return str(self.config_file.absolute())
 
     def get_agent(self, agent_name: Optional[str] = None) -> Optional[AIAgent]:
         """Get an agent by name, or return default agent"""

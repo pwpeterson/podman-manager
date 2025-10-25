@@ -7,7 +7,7 @@ from typing import Optional
 from rich.table import Table
 from rich.tree import Tree
 
-from config import console
+from core.config import console
 
 
 class QuadletDisplayManager:
