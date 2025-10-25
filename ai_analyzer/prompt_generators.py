@@ -50,11 +50,17 @@ IMPORTANT: This is a Podman Quadlet managed by systemd. Consider quadlet-specifi
 """
         )
 
-        # Add service information
+        # Add service information - use resolved service name for both Service and Target
+        service_name = data.get("service_name", "Unknown")
+        target_name = data.get("target", "Unknown")
+
+        # If we have a resolved service name, use it as the target display name too
+        display_target = service_name if service_name != "Unknown" else target_name
+
         prompt_parts.append(
             f"""
-Service: {data.get('service_name', 'Unknown')}
-Target: {data.get('target', 'Unknown')}
+Service: {service_name}
+Target: {display_target}
 Log Lines Analyzed: {data.get('log_lines_count', 'Unknown')}
 """
         )
@@ -289,11 +295,17 @@ Provide a concise analysis with:
 """
         )
 
-        # Add service information
+        # Add service information - use resolved service name for both Service and Target
+        service_name = data.get("service_name", "Unknown")
+        target_name = data.get("target", "Unknown")
+
+        # If we have a resolved service name, use it as the target display name too
+        display_target = service_name if service_name != "Unknown" else target_name
+
         prompt_parts.append(
             f"""
-Service: {data.get('service_name', 'Unknown')}
-Target: {data.get('target', 'Unknown')}
+Service: {service_name}
+Target: {display_target}
 Operation: {data.get('operation', 'restart')}
 Error: {data.get('restart_error', 'Service failed to restart')}
 """
@@ -536,11 +548,17 @@ Provide a focused analysis with:
 """
         )
 
-        # Add service information
+        # Add service information - use resolved service name for both Service and Target
+        service_name = data.get("service_name", "Unknown")
+        target_name = data.get("target", "Unknown")
+
+        # If we have a resolved service name, use it as the target display name too
+        display_target = service_name if service_name != "Unknown" else target_name
+
         prompt_parts.append(
             f"""
-Service: {data.get('service_name', 'Unknown')}
-Target: {data.get('target', 'Unknown')}
+Service: {service_name}
+Target: {display_target}
 Start Command: {data.get('start_command', 'systemctl --user start <service>')}
 Error Code: {data.get('error_code', 'Unknown')}
 """
