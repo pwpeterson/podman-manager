@@ -130,6 +130,9 @@ class AIAnalyzer:
                 self._original_analysis_result = result
                 self.interactive_handler.set_context(prompt, result)
 
+                # Pass collected data to formatter so it can use resolved service names
+                self.markdown_formatter.set_collected_data(collected_data)
+
                 # Display the results
                 self.markdown_formatter.display(analysis_type, target, result, verbose)
 
@@ -141,7 +144,8 @@ class AIAnalyzer:
                 if verbose:
                     verbose_print("  [cyan]exec: No AI analysis result returned[/cyan]")
 
-                # Show basic troubleshooting guide when AI analysis fails
+                # Pass collected data to formatter and show basic troubleshooting guide when AI analysis fails
+                self.basic_formatter.set_collected_data(collected_data)
                 self.basic_formatter.display(
                     analysis_type, target, str(collected_data), verbose
                 )

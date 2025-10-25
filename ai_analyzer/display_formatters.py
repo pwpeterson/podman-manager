@@ -21,6 +21,9 @@ class DisplayFormatter(ABC):
 class MarkdownDisplayFormatter(DisplayFormatter):
     """Formats and displays analysis results as markdown"""
 
+    def __init__(self):
+        self._collected_data = None
+
     def display(
         self, analysis_type: str, target: str, result: str, verbose: bool = False
     ) -> None:
@@ -31,6 +34,10 @@ class MarkdownDisplayFormatter(DisplayFormatter):
 
         self._render_markdown(result)
         self._show_analysis_menu(analysis_type, target, verbose)
+
+    def set_collected_data(self, data: dict) -> None:
+        """Set the collected data for use in display methods"""
+        self._collected_data = data
 
     def _get_title(self, analysis_type: str) -> str:
         """Get display title for analysis type"""
@@ -254,8 +261,13 @@ class MarkdownDisplayFormatter(DisplayFormatter):
             "status",
             "service_start_failure",
         ]:
-            # Get service name - we need to extract it from the target or use target as fallback
-            service_name = f"{target}.service"
+            # Get the resolved service name from collected data, fallback to target.service
+            service_name = target
+            if self._collected_data and self._collected_data.get("service_name"):
+                service_name = self._collected_data["service_name"]
+            elif not service_name.endswith(".service"):
+                service_name = f"{target}.service"
+
             console.print(
                 f"[green]  View service logs:[/green] [white]journalctl --user -u {service_name} -n 100[/white]"
             )
@@ -295,6 +307,9 @@ class MarkdownDisplayFormatter(DisplayFormatter):
 class BasicTroubleshootingFormatter(DisplayFormatter):
     """Formats and displays basic troubleshooting guide when AI analysis fails"""
 
+    def __init__(self):
+        self._collected_data = None
+
     def display(
         self, analysis_type: str, target: str, result: str, verbose: bool = False
     ) -> None:
@@ -308,6 +323,10 @@ class BasicTroubleshootingFormatter(DisplayFormatter):
             self._show_build_troubleshooting(target, result)
         else:
             self._show_service_troubleshooting(target, result, analysis_type)
+
+    def set_collected_data(self, data: dict) -> None:
+        """Set the collected data for use in display methods"""
+        self._collected_data = data
 
     def _show_build_troubleshooting(self, target: str, data: str) -> None:
         """Show build-specific troubleshooting"""
@@ -347,12 +366,19 @@ class BasicTroubleshootingFormatter(DisplayFormatter):
         self, target: str, data: str, analysis_type: str
     ) -> None:
         """Show service-specific troubleshooting"""
+        # Get the resolved service name from collected data, fallback to target.service
+        service_name = target
+        if self._collected_data and self._collected_data.get("service_name"):
+            service_name = self._collected_data["service_name"]
+        elif not service_name.endswith(".service"):
+            service_name = f"{target}.service"
+
         console.print("[bold cyan]Common Issues to Check:[/bold cyan]")
         console.print(
-            f"    1. [white]Check service status:[/white] [cyan]systemctl --user status {target}.service[/cyan]"
+            f"    1. [white]Check service status:[/white] [cyan]systemctl --user status {service_name}[/cyan]"
         )
         console.print(
-            f"    2. [white]View recent logs:[/white] [cyan]journalctl --user -u {target}.service -n 100[/cyan]"
+            f"    2. [white]View recent logs:[/white] [cyan]journalctl --user -u {service_name} -n 100[/cyan]"
         )
         console.print("    3. [white]Check disk space:[/white] [cyan]df -h[/cyan]")
         console.print(
