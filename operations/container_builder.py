@@ -787,6 +787,7 @@ class ContainerBuilder:
                 progress.remove_task(task)
 
         if start_success:
+            console.print()
             console.print(f"[green]Successfully built {target}[/green]")
             console.print()
             return True
