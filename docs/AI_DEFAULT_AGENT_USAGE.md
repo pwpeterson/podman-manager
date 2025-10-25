@@ -41,7 +41,7 @@ This shows all available agents with the current default marked as `(default)`.
 - `AnalysisConfig.default_ai_agent` - Config override
 
 ### Persistent (File)
-- `ai_config.json` - JSON configuration file
+- `ai_agents_config.json` - JSON configuration file
 - Automatically loaded on startup
 - Automatically saved when changed
 
@@ -50,7 +50,7 @@ This shows all available agents with the current default marked as `(default)`.
 1. **Command Processing**: `pm set-default-ai claude`
 2. **Name Resolution**: `claude` → `claude-sonnet`
 3. **Validation**: Check if agent exists and is available
-4. **Storage**: Save to both memory and `ai_config.json`
+4. **Storage**: Save to both memory and `ai_agents_config.json`
 5. **Confirmation**: Display success message with file path
 
 ## Integration

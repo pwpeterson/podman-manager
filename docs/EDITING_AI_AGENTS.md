@@ -195,7 +195,7 @@ Set `"enabled": false` to temporarily disable an agent without removing it:
 ## File Locations
 
 - **Complete configuration**: [`ai_agents_config.json`](../ai_agents_config.json) (root directory)
-- **Legacy files** (deprecated): [`ai_config.json`](../ai_config.json), [`agents_config.json`](../agents_config.json)
+- **Legacy files** (deprecated): [`agents_config.json`](../agents_config.json)
 
 ## Usage After Editing
 
