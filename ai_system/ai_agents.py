@@ -221,7 +221,15 @@ class AIAgentManager:
     def __init__(self, config_file: str = "ai_agents_config.json"):
         self.agents: Dict[str, AIAgent] = {}
         self.default_agent = None
-        self.config_file = Path(config_file)
+
+        # If config_file is relative, make it relative to this module's directory
+        if not Path(config_file).is_absolute():
+            # Get the directory where this script is located
+            script_dir = Path(__file__).parent.parent
+            self.config_file = script_dir / config_file
+        else:
+            self.config_file = Path(config_file)
+
         self._load_default_configs()
         self._load_persistent_config()
 
