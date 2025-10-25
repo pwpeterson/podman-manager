@@ -5,6 +5,19 @@ Quadlet-only version with clean separation of concerns
 """
 
 import sys
+from pathlib import Path
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+
+    # Load .env file from the current directory
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    # python-dotenv not installed, skip loading
+    pass
 
 from cli.command_router import CommandRouter
 from cli.help_formatter import show_rich_help

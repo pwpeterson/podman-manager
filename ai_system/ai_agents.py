@@ -218,69 +218,159 @@ class OpenAIAgent(AIAgent):
 class AIAgentManager:
     """Manages AI agents and provides selection interface"""
 
-    def __init__(self, config_file: str = "ai_config.json"):
+    def __init__(self, config_file: str = "ai_agents_config.json"):
         self.agents: Dict[str, AIAgent] = {}
         self.default_agent = None
         self.config_file = Path(config_file)
         self._load_default_configs()
         self._load_persistent_config()
 
+    def _load_agents_config(self) -> Optional[List[AIAgentConfig]]:
+        """Load agent configurations from ai_agents_config.json file"""
+        if not self.config_file.exists():
+            return None
+
+        try:
+            with open(self.config_file, "r") as f:
+                config_data = json.load(f)
+
+            agents = []
+            for agent_data in config_data.get("agents", []):
+                # Convert dict to AIAgentConfig
+                config = AIAgentConfig(
+                    name=agent_data["name"],
+                    display_name=agent_data["display_name"],
+                    agent_type=agent_data["agent_type"],
+                    endpoint=agent_data.get("endpoint"),
+                    model_name=agent_data.get("model_name"),
+                    api_key_env=agent_data.get("api_key_env"),
+                    max_tokens=agent_data.get("max_tokens", 2048),
+                    temperature=agent_data.get("temperature", 0.1),
+                    timeout=agent_data.get("timeout", 60),
+                    enabled=agent_data.get("enabled", True),
+                    description=agent_data.get("description", ""),
+                )
+                agents.append(config)
+
+            return agents
+
+        except (json.JSONDecodeError, IOError, KeyError) as e:
+            console.print(
+                f"[yellow]Warning: Could not load agents config: {e}[/yellow]"
+            )
+            return None
+
+    def _save_agents_config(self, agents: List[AIAgentConfig]) -> None:
+        """Save agent configurations to ai_agents_config.json file"""
+        try:
+            # Load existing config to preserve default_agent and preferences
+            existing_config = {}
+            if self.config_file.exists():
+                try:
+                    with open(self.config_file, "r") as f:
+                        existing_config = json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    pass
+
+            config_data = {
+                "default_agent": existing_config.get(
+                    "default_agent", self.default_agent
+                ),
+                "agent_preferences": existing_config.get(
+                    "agent_preferences",
+                    {
+                        "prefer_local": True,
+                        "fallback_order": ["vllm-qwen25", "claude-sonnet", "gpt-4"],
+                    },
+                ),
+                "agents": [
+                    {
+                        "name": agent.name,
+                        "display_name": agent.display_name,
+                        "agent_type": agent.agent_type,
+                        "endpoint": agent.endpoint,
+                        "model_name": agent.model_name,
+                        "api_key_env": agent.api_key_env,
+                        "max_tokens": agent.max_tokens,
+                        "temperature": agent.temperature,
+                        "timeout": agent.timeout,
+                        "enabled": agent.enabled,
+                        "description": agent.description,
+                    }
+                    for agent in agents
+                ],
+            }
+
+            with open(self.config_file, "w") as f:
+                json.dump(config_data, f, indent=2)
+
+        except IOError as e:
+            console.print(
+                f"[yellow]Warning: Could not save agents config: {e}[/yellow]"
+            )
+
     def _load_default_configs(self):
         """Load default agent configurations"""
-        default_configs = [
-            # Local vLLM agents
-            AIAgentConfig(
-                name="vllm-qwen25",
-                display_name="Qwen2.5 Coder 32B (Local)",
-                agent_type="local_vllm",
-                endpoint="http://localhost:8002",
-                model_name="vllm-qwen25-coder-32b-instruct-awq",
-                description="Local Qwen2.5 Coder 32B model via vllm-proxy",
-            ),
-            AIAgentConfig(
-                name="vllm-glm46",
-                display_name="GLM-4-6B (Local)",
-                agent_type="local_vllm",
-                endpoint="http://localhost:8003",  # Assuming different port
-                model_name="vllm-glm46",
-                description="Local GLM-4-6B model",
-            ),
-            # Cloud agents
-            AIAgentConfig(
-                name="claude-sonnet",
-                display_name="Claude 3 Sonnet",
-                agent_type="claude",
-                model_name="claude-3-sonnet-20240229",
-                api_key_env="ANTHROPIC_API_KEY",
-                description="Anthropic Claude 3 Sonnet",
-            ),
-            AIAgentConfig(
-                name="claude-haiku",
-                display_name="Claude 3 Haiku",
-                agent_type="claude",
-                model_name="claude-3-haiku-20240307",
-                api_key_env="ANTHROPIC_API_KEY",
-                max_tokens=1024,
-                description="Anthropic Claude 3 Haiku (faster, cheaper)",
-            ),
-            AIAgentConfig(
-                name="gpt-4",
-                display_name="GPT-4",
-                agent_type="openai",
-                model_name="gpt-4",
-                api_key_env="OPENAI_API_KEY",
-                description="OpenAI GPT-4",
-            ),
-            AIAgentConfig(
-                name="gpt-3.5-turbo",
-                display_name="GPT-3.5 Turbo",
-                agent_type="openai",
-                model_name="gpt-3.5-turbo",
-                api_key_env="OPENAI_API_KEY",
-                max_tokens=1024,
-                description="OpenAI GPT-3.5 Turbo (faster, cheaper)",
-            ),
-        ]
+        # Load agents from config file if it exists, otherwise use defaults
+        agents_config = self._load_agents_config()
+        default_configs = (
+            agents_config
+            if agents_config
+            else [
+                # Local vLLM agents
+                AIAgentConfig(
+                    name="vllm-qwen25",
+                    display_name="Qwen2.5 Coder 32B (Local)",
+                    agent_type="local_vllm",
+                    endpoint="http://localhost:8002",
+                    model_name="vllm-qwen25-coder-32b-instruct-awq",
+                    description="Local Qwen2.5 Coder 32B model via vllm-proxy",
+                ),
+                AIAgentConfig(
+                    name="vllm-glm46",
+                    display_name="GLM-4-6B (Local)",
+                    agent_type="local_vllm",
+                    endpoint="http://localhost:8003",  # Assuming different port
+                    model_name="vllm-glm46",
+                    description="Local GLM-4-6B model",
+                ),
+                # Cloud agents
+                AIAgentConfig(
+                    name="claude-sonnet",
+                    display_name="Claude 3 Sonnet",
+                    agent_type="claude",
+                    model_name="claude-3-sonnet-20240229",
+                    api_key_env="ANTHROPIC_API_KEY",
+                    description="Anthropic Claude 3 Sonnet",
+                ),
+                AIAgentConfig(
+                    name="claude-haiku",
+                    display_name="Claude 3 Haiku",
+                    agent_type="claude",
+                    model_name="claude-3-haiku-20240307",
+                    api_key_env="ANTHROPIC_API_KEY",
+                    max_tokens=1024,
+                    description="Anthropic Claude 3 Haiku (faster, cheaper)",
+                ),
+                AIAgentConfig(
+                    name="gpt-4",
+                    display_name="GPT-4",
+                    agent_type="openai",
+                    model_name="gpt-4",
+                    api_key_env="OPENAI_API_KEY",
+                    description="OpenAI GPT-4",
+                ),
+                AIAgentConfig(
+                    name="gpt-3.5-turbo",
+                    display_name="GPT-3.5 Turbo",
+                    agent_type="openai",
+                    model_name="gpt-3.5-turbo",
+                    api_key_env="OPENAI_API_KEY",
+                    max_tokens=1024,
+                    description="OpenAI GPT-3.5 Turbo (faster, cheaper)",
+                ),
+            ]
+        )
 
         # Create agent instances
         for config in default_configs:
@@ -296,7 +386,30 @@ class AIAgentManager:
 
     def _find_default_agent(self) -> Optional[str]:
         """Find the best default agent"""
-        # Prefer local agents first
+        # Try to load fallback order from config file
+        fallback_order = [
+            "vllm-qwen25",
+            "claude-sonnet",
+            "gpt-4",
+        ]  # Default fallback order
+
+        if self.config_file.exists():
+            try:
+                with open(self.config_file, "r") as f:
+                    config_data = json.load(f)
+                    agent_preferences = config_data.get("agent_preferences", {})
+                    fallback_order = agent_preferences.get(
+                        "fallback_order", fallback_order
+                    )
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        # Check agents in fallback order
+        for agent_name in fallback_order:
+            if agent_name in self.agents and self.agents[agent_name].is_available():
+                return agent_name
+
+        # If none from fallback order are available, prefer local agents first
         local_agents = [
             name
             for name, agent in self.agents.items()
@@ -341,6 +454,9 @@ class AIAgentManager:
                 saved_default = config_data.get("default_agent")
                 if saved_default and saved_default in self.agents:
                     self.default_agent = saved_default
+                    # If saved default is not available, fall back to auto-selection
+                    if not self.agents[saved_default].is_available():
+                        self.default_agent = self._find_default_agent()
 
             except (json.JSONDecodeError, IOError) as e:
                 console.print(
@@ -350,12 +466,25 @@ class AIAgentManager:
     def _save_persistent_config(self) -> None:
         """Save persistent configuration to file"""
         try:
+            # Load existing config to preserve agents list
+            existing_config = {}
+            if self.config_file.exists():
+                try:
+                    with open(self.config_file, "r") as f:
+                        existing_config = json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    pass
+
             config_data = {
                 "default_agent": self.default_agent,
-                "agent_preferences": {
-                    "prefer_local": True,
-                    "fallback_order": ["vllm-qwen25", "claude-sonnet", "gpt-4"],
-                },
+                "agent_preferences": existing_config.get(
+                    "agent_preferences",
+                    {
+                        "prefer_local": True,
+                        "fallback_order": ["vllm-qwen25", "claude-sonnet", "gpt-4"],
+                    },
+                ),
+                "agents": existing_config.get("agents", []),
             }
 
             with open(self.config_file, "w") as f:
@@ -406,7 +535,9 @@ class AIAgentManager:
             for name, agent in local_agents:
                 status = "✅" if agent.is_available() else "❌"
                 default_marker = (
-                    " [dim](default)[/dim]" if name == self.default_agent else ""
+                    " [bright_yellow](default)[/bright_yellow]"
+                    if name == self.default_agent
+                    else ""
                 )
                 console.print(
                     f"  {status} [cyan]{name}[/cyan] - {agent.config.display_name}{default_marker}"
@@ -418,7 +549,9 @@ class AIAgentManager:
             for name, agent in cloud_agents:
                 status = "✅" if agent.is_available() else "❌"
                 default_marker = (
-                    " [dim](default)[/dim]" if name == self.default_agent else ""
+                    " [bright_yellow](default)[/bright_yellow]"
+                    if name == self.default_agent
+                    else ""
                 )
                 console.print(
                     f"  {status} [cyan]{name}[/cyan] - {agent.config.display_name}{default_marker}"
@@ -467,6 +600,94 @@ class AIAgentManager:
                 if verbose:
                     verbose_print(f"  [cyan]exec: Agent analysis failed: {e}[/cyan]")
                 return None
+
+    def add_agent(self, config: AIAgentConfig) -> bool:
+        """Add a new agent configuration"""
+        if config.name in self.agents:
+            return False  # Agent already exists
+
+        # Create agent instance
+        if config.agent_type == "local_vllm":
+            self.agents[config.name] = LocalVLLMAgent(config)
+        elif config.agent_type == "claude":
+            self.agents[config.name] = ClaudeAgent(config)
+        elif config.agent_type == "openai":
+            self.agents[config.name] = OpenAIAgent(config)
+        else:
+            return False  # Unknown agent type
+
+        # Save to config file
+        self._save_current_agents_config()
+        return True
+
+    def remove_agent(self, agent_name: str) -> bool:
+        """Remove an agent configuration"""
+        if agent_name not in self.agents:
+            return False
+
+        # Don't allow removing the default agent
+        if agent_name == self.default_agent:
+            return False
+
+        del self.agents[agent_name]
+        self._save_current_agents_config()
+        return True
+
+    def update_agent(self, agent_name: str, config: AIAgentConfig) -> bool:
+        """Update an existing agent configuration"""
+        if agent_name not in self.agents:
+            return False
+
+        # Create new agent instance with updated config
+        if config.agent_type == "local_vllm":
+            self.agents[agent_name] = LocalVLLMAgent(config)
+        elif config.agent_type == "claude":
+            self.agents[agent_name] = ClaudeAgent(config)
+        elif config.agent_type == "openai":
+            self.agents[agent_name] = OpenAIAgent(config)
+        else:
+            return False
+
+        self._save_current_agents_config()
+        return True
+
+    def _save_current_agents_config(self) -> None:
+        """Save current agents to config file"""
+        configs = [agent.config for agent in self.agents.values()]
+        self._save_agents_config(configs)
+
+    def export_agents_config(self, filename: str = "agents_config.json") -> bool:
+        """Export current agent configurations to a file"""
+        try:
+            configs = [agent.config for agent in self.agents.values()]
+            config_data = {
+                "agents": [
+                    {
+                        "name": agent.name,
+                        "display_name": agent.display_name,
+                        "agent_type": agent.agent_type,
+                        "endpoint": agent.endpoint,
+                        "model_name": agent.model_name,
+                        "api_key_env": agent.api_key_env,
+                        "max_tokens": agent.max_tokens,
+                        "temperature": agent.temperature,
+                        "timeout": agent.timeout,
+                        "enabled": agent.enabled,
+                        "description": agent.description,
+                    }
+                    for agent in configs
+                ]
+            }
+
+            with open(filename, "w") as f:
+                json.dump(config_data, f, indent=2)
+
+            console.print(f"[green]Agents configuration exported to {filename}[/green]")
+            return True
+
+        except IOError as e:
+            console.print(f"[red]Error exporting agents config: {e}[/red]")
+            return False
 
 
 # Global instance
