@@ -99,8 +99,26 @@ class SystemdDataCollector(DataCollector):
         if not manager:
             return target
 
+        # Try to use the manager's fuzzy matcher for proper service resolution
+        if hasattr(manager, "fuzzy_matcher"):
+            try:
+                resolved = manager.fuzzy_matcher.fuzzy_match_service_or_stack(
+                    target, "logs"
+                )
+                if (
+                    resolved
+                    and not resolved.startswith("STACK:")
+                    and resolved != "CANCELLED"
+                ):
+                    return resolved
+            except Exception:
+                pass
+
+        # Fallback to manager methods
         if hasattr(manager, "get_matched_service_name"):
             return manager.get_matched_service_name(target)
+        elif hasattr(manager, "_find_service_name"):
+            return manager._find_service_name(target, "logs")
         elif hasattr(manager, "_find_service_project"):
             project = manager._find_service_project(target)
             return target if project else None
