@@ -660,6 +660,8 @@ class CommandRouter:
         try:
             from ai_system.ai_agents import ai_agent_manager
 
+            # Reload configuration to pick up any changes
+            ai_agent_manager.reload_config()
             ai_agent_manager.show_agents_status()
             return True
         except ImportError:

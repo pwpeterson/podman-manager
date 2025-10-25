@@ -689,6 +689,13 @@ class AIAgentManager:
             console.print(f"[red]Error exporting agents config: {e}[/red]")
             return False
 
+    def reload_config(self) -> None:
+        """Reload configuration from file"""
+        self.agents.clear()
+        self.default_agent = None
+        self._load_default_configs()
+        self._load_persistent_config()
+
 
 # Global instance
 ai_agent_manager = AIAgentManager()
