@@ -296,6 +296,20 @@ def _add_status_commands(subparsers):
         help="Show detailed command execution (exec lines)",
     )
 
+    # Colors command
+    colors_parser = subparsers.add_parser(
+        "colors", help="Show available Rich text colors and styles"
+    )
+    colors_parser.add_argument(
+        "-c", "--compact", action="store_true", help="Show compact color examples"
+    )
+    colors_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
 
 def _add_lifecycle_commands(subparsers):
     """Add service lifecycle commands"""

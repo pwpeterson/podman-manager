@@ -498,6 +498,108 @@ Provide analysis and recommendations for the following:
 Provide relevant insights and actionable recommendations based on the available information."""
 
 
+class ServiceStartFailurePromptGenerator(PromptGenerator):
+    """Generates prompts for service start failure analysis"""
+
+    def generate(self, target: str, data: Dict[str, Any]) -> str:
+        """Generate comprehensive prompt for service start failure analysis"""
+        prompt_parts = [
+            self._create_base_context("service_start_failure", target, data)
+        ]
+
+        prompt_parts.append(
+            """
+Analyze the following systemd service start failure and provide:
+
+1. **Root Cause Analysis**: Identify why the service failed to start
+2. **Immediate Solutions**: Specific, actionable steps to resolve the issue
+3. **Systemd-Specific Issues**: Check for common systemd service problems
+4. **Container Issues**: Identify container-related problems (if applicable)
+
+IMPORTANT: This is a systemd-managed service that failed to start. Consider:
+- Service configuration errors
+- Container image issues
+- Port conflicts
+- Resource constraints
+- Permission problems
+- Dependency failures
+
+Provide a focused analysis with:
+- **Primary Issue**: What prevented the service from starting?
+- **Quick Fix**: Immediate commands to try
+- **Verification**: How to confirm the fix worked
+"""
+        )
+
+        # Add service information
+        prompt_parts.append(
+            f"""
+Service: {data.get('service_name', 'Unknown')}
+Target: {data.get('target', 'Unknown')}
+Start Command: {data.get('start_command', 'systemctl --user start <service>')}
+Error Code: {data.get('error_code', 'Unknown')}
+"""
+        )
+
+        # Add systemd error output if available
+        if data.get("systemd_error"):
+            prompt_parts.append(
+                f"""
+=== SYSTEMD START ERROR ===
+{data['systemd_error']}
+=== END ERROR ===
+"""
+            )
+
+        # Add service status information
+        if data.get("service_status"):
+            prompt_parts.append(
+                f"""
+=== SERVICE STATUS ===
+{data['service_status']}
+=== END STATUS ===
+"""
+            )
+
+        # Add recent logs if available
+        if data.get("recent_logs"):
+            prompt_parts.append(
+                f"""
+=== RECENT SERVICE LOGS ===
+{data['recent_logs']}
+=== END LOGS ===
+"""
+            )
+
+        # Add container information if available
+        if data.get("container_info"):
+            prompt_parts.append(
+                f"""
+=== CONTAINER INFORMATION ===
+{data['container_info']}
+=== END CONTAINER INFO ===
+"""
+            )
+
+        # Add system resource information
+        if data.get("system_resources"):
+            prompt_parts.append(
+                f"""
+=== SYSTEM RESOURCES ===
+{data['system_resources']}
+=== END RESOURCES ===
+"""
+            )
+
+        prompt_parts.append(
+            """
+Provide specific, actionable solutions using systemctl and podman commands. Focus on the most likely causes first.
+"""
+        )
+
+        return "\n".join(prompt_parts)
+
+
 class FollowupPromptGenerator(PromptGenerator):
     """Generates prompts for follow-up questions"""
 
@@ -543,6 +645,7 @@ class PromptGeneratorFactory:
         "reinit_failure": ReinitFailurePromptGenerator,
         "status": StatusPromptGenerator,
         "build_failure": BuildFailurePromptGenerator,
+        "service_start_failure": ServiceStartFailurePromptGenerator,
         "performance": PerformancePromptGenerator,
         "security": SecurityPromptGenerator,
         "followup": FollowupPromptGenerator,

@@ -243,6 +243,14 @@ class AIAnalyzer:
                     )
                 # No additional collection needed for build failures
 
+            elif analysis_type == "service_start_failure":
+                # Service start failure context is already provided in context_data
+                if verbose:
+                    verbose_print(
+                        f"  [cyan]exec: Using provided service start failure information for {target}[/cyan]"
+                    )
+                # No additional collection needed for service start failures
+
             elif analysis_type == "performance":
                 # Collect performance metrics
                 if verbose:

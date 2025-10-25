@@ -247,6 +247,8 @@ class CommandRouter:
             return self._handle_ai_agents(args)
         elif command == "set-default-ai":
             return self._handle_set_default_ai(args)
+        elif command == "colors":
+            return self._handle_colors(args)
 
         # Resource commands
         elif command == "logs":
@@ -701,4 +703,25 @@ class CommandRouter:
             return False
         except Exception as e:
             console.print(f"[red]Error setting default AI agent: {e}[/red]")
+            return False
+
+    def _handle_colors(self, args):
+        """Show available Rich text colors and styles"""
+        self.handle_command_verbose(args)
+        try:
+            from modules.rich_colors_styles import (
+                print_colors_and_styles,
+                print_compact_color_examples,
+            )
+
+            if getattr(args, "compact", False):
+                print_compact_color_examples(console)
+            else:
+                print_colors_and_styles(console)
+            return True
+        except ImportError as e:
+            console.print(f"[red]Error importing color module: {e}[/red]")
+            return False
+        except Exception as e:
+            console.print(f"[red]Error displaying colors: {e}[/red]")
             return False

@@ -405,7 +405,7 @@ class QuadletManager:
             if status.get("installed", False):
                 info_parts.append("[green](installed)[/green]")
             elif status.get("source", False):
-                info_parts.append("[yellow](available)[/yellow]")
+                info_parts.append("[bright_yellow](available)[/bright_yellow]")
         else:
             # Check if service file exists in systemd directory
             container_file = self.quadlets_dir / f"{service_name}.container"
@@ -482,7 +482,7 @@ class QuadletManager:
     def _show_install_suggestion(self, target: str) -> None:
         """Show suggestion to install the missing container file"""
         console.print(
-            f"[yellow]Required container file is missing, run pm install {target}[/yellow]"
+            f"[bright_yellow]Required container file is missing, run pm install {target}[/bright_yellow]"
         )
 
     def _command_exists(self, command: str) -> bool:
@@ -491,6 +491,121 @@ class QuadletManager:
         exists = result.returncode == 0
         logger.debug("Command '{}' exists: {}", command, exists)
         return exists
+
+    def _trigger_service_start_ai_analysis(
+        self,
+        target: str,
+        service_name: str,
+        start_command: str,
+        error_code: int,
+        systemd_error: Optional[str] = None,
+    ) -> None:
+        """Trigger automatic AI analysis for service start failures"""
+        try:
+            from ai_analyzer import ai_analyzer
+            from core.config import _verbose_enabled
+
+            # Initialize AI analyzer with manager if not already done
+            if ai_analyzer.manager is None:
+                ai_analyzer.manager = self
+
+            # Collect additional diagnostic information
+            context_data = {
+                "service_name": service_name,
+                "target": target,
+                "start_command": start_command,
+                "error_code": error_code,
+            }
+
+            # Add systemd error if available
+            if systemd_error:
+                context_data["systemd_error"] = systemd_error
+
+            # Get service status for additional context
+            try:
+                status = self.get_service_status(target)
+                status_info = []
+                for key, value in status.items():
+                    status_info.append(f"{key}={value}")
+                context_data["service_status"] = "\n".join(status_info)
+            except Exception:
+                pass  # Ignore status collection errors
+
+            # Try to get recent logs for context
+            try:
+                log_cmd = [
+                    "journalctl",
+                    "--user",
+                    "-u",
+                    service_name,
+                    "--lines=20",
+                    "--no-pager",
+                ]
+                log_result = subprocess.run(
+                    log_cmd, capture_output=True, text=True, timeout=10
+                )
+                if log_result.returncode == 0 and log_result.stdout.strip():
+                    context_data["recent_logs"] = log_result.stdout.strip()
+            except Exception:
+                pass  # Ignore log collection errors
+
+            # Try to get container information if it's a container service
+            try:
+                container_name = target  # Use target as container name
+                container_cmd = [
+                    "podman",
+                    "ps",
+                    "-a",
+                    "--filter",
+                    f"name={container_name}",
+                    "--format",
+                    "table",
+                ]
+                container_result = subprocess.run(
+                    container_cmd, capture_output=True, text=True, timeout=10
+                )
+                if container_result.returncode == 0 and container_result.stdout.strip():
+                    context_data["container_info"] = container_result.stdout.strip()
+            except Exception:
+                pass  # Ignore container info collection errors
+
+            # Get basic system resource information
+            try:
+                df_result = subprocess.run(
+                    ["df", "-h", "/"], capture_output=True, text=True, timeout=5
+                )
+                free_result = subprocess.run(
+                    ["free", "-h"], capture_output=True, text=True, timeout=5
+                )
+                resource_info = []
+                if df_result.returncode == 0:
+                    resource_info.append("DISK SPACE:")
+                    resource_info.append(df_result.stdout.strip())
+                if free_result.returncode == 0:
+                    resource_info.append("\nMEMORY:")
+                    resource_info.append(free_result.stdout.strip())
+                if resource_info:
+                    context_data["system_resources"] = "\n".join(resource_info)
+            except Exception:
+                pass  # Ignore resource collection errors
+
+            # Run AI analysis with service start failure type
+            result = ai_analyzer.ai_analyze(
+                analysis_type="service_start_failure",
+                target=target,
+                context_data=context_data,
+                ai_agent=None,  # Use default agent
+                verbose=_verbose_enabled,
+            )
+
+            if not result:
+                console.print(
+                    "[bright_yellow]⚠ Unable to analyze service start failure[/bright_yellow]"
+                )
+
+        except Exception:
+            # Silently fail - don't let AI analysis errors break the service management
+            pass
 
     def _run_systemctl_command(
         self,
@@ -933,6 +1048,16 @@ class QuadletManager:
             return True
         else:
             console.print(f"[red]Failed to start {service_name}[/red]")
+
+            # Trigger AI analysis for service start failure
+            self._trigger_service_start_ai_analysis(
+                target=target,
+                service_name=service_name,
+                start_command=" ".join(cmd),
+                error_code=result.returncode,
+                systemd_error=result.stderr.strip() if result.stderr else None,
+            )
+
             return False
 
     def stop_service(

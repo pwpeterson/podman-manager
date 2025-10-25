@@ -1,9 +1,10 @@
 """Container building and image management operations."""
 
+import json
 import os
 import subprocess
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -16,6 +17,22 @@ class ContainerBuilder:
     def __init__(self, manager):
         self.manager = manager
         self._build_context = {}  # Store build context for AI analysis
+
+    def _check_config_sys(self, stack_dir: Path) -> Optional[Dict[str, Any]]:
+        """Check for config.sys file in stack directory and parse it."""
+        config_sys_path = stack_dir / "config.sys"
+        if config_sys_path.exists():
+            try:
+                with open(config_sys_path, "r") as f:
+                    config_data = json.load(f)
+                verbose_print(f"[cyan]Found config.sys in {stack_dir}[/cyan]")
+                return config_data
+            except (json.JSONDecodeError, IOError) as e:
+                verbose_print(
+                    f"[yellow]Warning: Could not parse config.sys: {e}[/yellow]"
+                )
+                return None
+        return None
 
     def _find_stack_for_service(self, service_name: str) -> Optional[str]:
         """Find which stack directory contains the given service."""
@@ -177,7 +194,7 @@ class ContainerBuilder:
                 return image_name
             else:
                 verbose_print(
-                    f"[dim]No running container found for {container_name}[/dim]"
+                    f"    [cyan]No running container found for {container_name}[/cyan]"
                 )
                 return None
 
@@ -258,7 +275,12 @@ class ContainerBuilder:
             verbose_print(f"[cyan]exec: Checking directory {quadlets_dir}[/cyan]")
 
             source_path = Path(quadlets_dir)
+            config_sys_data = None
+
             if source_path.exists():
+                # Check for config.sys file first
+                config_sys_data = self._check_config_sys(source_path)
+
                 # Search recursively for the Dockerfile
                 for dockerfile in source_path.rglob(dockerfile_name):
                     dockerfile_path = dockerfile
@@ -286,21 +308,31 @@ class ContainerBuilder:
                 return False
 
             # Build the container image
-            return self._build_with_dockerfile(target, build_dir, dockerfile_name)  # type: ignore
+            return self._build_with_dockerfile(target, build_dir, dockerfile_name, config_sys_data)  # type: ignore
 
         except Exception as e:
             console.print(f"[red]Error building {target}: {e}[/red]")
             return False
 
     def _build_with_dockerfile(
-        self, target: str, build_dir: Path, dockerfile_name: str
+        self,
+        target: str,
+        build_dir: Path,
+        dockerfile_name: str,
+        config_sys_data: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """Build container image using the specified Dockerfile"""
         original_cwd = os.getcwd()
         # Initialize service_name for error handling
         service_name = target
         try:
-            os.chdir(build_dir)
+            # Only change directory if not using config.sys format
+            if not (
+                config_sys_data
+                and "dockerfile_directory" in config_sys_data
+                and "context_directory" in config_sys_data
+            ):
+                os.chdir(build_dir)
 
             # Store build context for AI analysis
             self._store_build_context(
@@ -374,16 +406,43 @@ class ContainerBuilder:
                 )
 
             # Build new image using target image name
-            build_cmd = [
-                "podman",
-                "build",
-                "--no-cache",
-                "-f",
-                dockerfile_name,
-                "-t",
-                target_image_name,
-                ".",
-            ]
+            # Check if we should use config.sys build format
+            if (
+                config_sys_data
+                and "dockerfile_directory" in config_sys_data
+                and "context_directory" in config_sys_data
+            ):
+                dockerfile_directory = config_sys_data["dockerfile_directory"]
+                context_directory = config_sys_data["context_directory"].strip()
+                dockerfile_path = f"{dockerfile_directory}Dockerfile.{target}"
+
+                verbose_print("[cyan]Using config.sys build format[/cyan]")
+                verbose_print(
+                    f"[cyan]Dockerfile directory: {dockerfile_directory}[/cyan]"
+                )
+                verbose_print(f"[cyan]Context directory: {context_directory}[/cyan]")
+
+                build_cmd = [
+                    "podman",
+                    "build",
+                    "-t",
+                    target,  # Use service name without localhost/ prefix as per user requirement
+                    "-f",
+                    dockerfile_path,
+                    context_directory,
+                ]
+            else:
+                # Use original build format
+                build_cmd = [
+                    "podman",
+                    "build",
+                    "--no-cache",
+                    "-f",
+                    dockerfile_name,
+                    "-t",
+                    target_image_name,
+                    ".",
+                ]
             verbose_print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
 
             from core.config import _verbose_enabled
@@ -477,8 +536,18 @@ class ContainerBuilder:
                         if line.strip():
                             console.print(line)
 
+            # Determine the final image name for success message
+            if (
+                config_sys_data
+                and "dockerfile_directory" in config_sys_data
+                and "context_directory" in config_sys_data
+            ):
+                final_image_name = target
+            else:
+                final_image_name = target_image_name
+
             console.print(
-                f"[green]✅ Image {target_image_name} built successfully[/green]"
+                f"[green]✅ Image {final_image_name} built successfully[/green]"
             )
 
             return True
@@ -723,6 +792,7 @@ class ContainerBuilder:
             return True
         else:
             console.print(f"[red]Failed to start {target} after build[/red]")
+            console.print()
             return False
 
     def rebuild_stack(self, project: str) -> bool:
