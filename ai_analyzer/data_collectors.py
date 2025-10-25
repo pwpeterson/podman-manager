@@ -357,6 +357,11 @@ class QuadletDataCollector(DataCollector):
         data = {}
         service_name = kwargs.get("service_name", target)
 
+        # Strip .service suffix if present to get the base name for .container file
+        base_name = service_name
+        if base_name.endswith(".service"):
+            base_name = base_name[:-8]  # Remove ".service"
+
         # Common locations for Quadlet .container files
         quadlet_dirs = [
             Path.home() / ".config" / "containers" / "systemd",
@@ -364,11 +369,14 @@ class QuadletDataCollector(DataCollector):
             Path("/usr/share/containers/systemd"),
         ]
 
-        # Try different naming patterns
+        # Try different naming patterns using the base name
         container_file_patterns = [
-            f"{service_name}.container",
-            f"{service_name.replace('-', '_')}.container",
-            f"{service_name.replace('_', '-')}.container",
+            f"{base_name}.container",
+            f"{base_name.replace('-', '_')}.container",
+            f"{base_name.replace('_', '-')}.container",
+            f"{target}.container",  # Also try the original target name as fallback
+            f"{target.replace('-', '_')}.container",
+            f"{target.replace('_', '-')}.container",
         ]
 
         container_file_found = False
