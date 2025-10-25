@@ -523,9 +523,6 @@ class ReinitManager:
         """Show optional next steps after successful reinit"""
         console.print("[green]Optional actions:[/green]")
         console.print(
-            f"[green] Check service status:[/green] [white]pm status {target}[/white]"
-        )
-        console.print(
             f"  [green] View detailed logs:[/green] [white]pm logs {target}[/white]"
         )
         console.print(
