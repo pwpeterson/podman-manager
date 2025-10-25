@@ -29,54 +29,43 @@ class EnvironmentManager:
 
     def __init__(self):
         self.env_file_path = Path("/home/pwp/srv/local-ai-packaged/.env")
-        self.system_env_target = "/etc/environment.d/10-app.conf"
+        self.system_env_target = Path.home() / ".config/containers/systemd/.env"
 
     def load_and_clean_env_file(self) -> bool:
-        """Load and clean .env file to system environment directory."""
+        """Copy .env file directly to systemd containers directory."""
         if not self.env_file_path.exists():
             self._print_warning(f"Environment file not found: {self.env_file_path}")
             return False
 
         console.print()
-        self._print_success("Processing the .env file.")
+        self._print_success("Copying .env file to systemd containers directory.")
         if not is_verbose():
             console.print()
         verbose_print(
-            "  [cyan]exec: Remove comments from master and copy .env file.[/cyan]"
+            "  [cyan]exec: Copy .env file to ~/.config/containers/systemd/[/cyan]"
         )
 
-        cleaned_lines = self._clean_env_file()
-        if not cleaned_lines:
-            self._print_warning("No valid environment variables found in .env file")
-            self._show_env_preview()
-            return False
+        return self._copy_env_file_directly()
 
-        return self._create_system_env_file(cleaned_lines)
-
-    def _create_system_env_file(self, cleaned_lines: List[str]) -> bool:
-        """Create the system environment file with proper permissions."""
+    def _copy_env_file_directly(self) -> bool:
+        """Copy .env file directly to systemd containers directory."""
         try:
-            subprocess.run(["sudo", "mkdir", "-p", "/etc/environment.d"], check=True)
+            # Create the systemd directory if it doesn't exist
+            self.system_env_target.parent.mkdir(parents=True, exist_ok=True)
 
-            temp_file = "/tmp/10-app.conf"
-            with open(temp_file, "w", encoding="utf-8") as f:
-                for line in cleaned_lines:
-                    f.write(f"{line}\n")
+            # Copy the .env file directly to systemd containers directory (no sudo needed!)
+            import shutil
 
-            subprocess.run(
-                ["sudo", "cp", temp_file, self.system_env_target], check=True
-            )
-            subprocess.run(["sudo", "chmod", "600", self.system_env_target], check=True)
-            subprocess.run(
-                ["sudo", "chown", "root:root", self.system_env_target], check=True
-            )
-            Path(temp_file).unlink(missing_ok=True)
+            shutil.copy2(self.env_file_path, self.system_env_target)
+
+            # Set appropriate permissions
+            self.system_env_target.chmod(0o644)
 
             verbose_print(
-                f"  [cyan]exec: Update with {self.system_env_target} with {len(cleaned_lines)} variables[/cyan]"
+                f"  [cyan]exec: Copied {self.env_file_path} to {self.system_env_target}[/cyan]"
             )
 
-            if Path(self.system_env_target).exists():
+            if self.system_env_target.exists():
                 return True
             else:
                 self._print_error(
@@ -84,115 +73,9 @@ class EnvironmentManager:
                 )
                 return False
 
-        except subprocess.CalledProcessError as e:
-            if "sudo" in str(e.cmd):
-                self._show_sudoers_error()
-            else:
-                self._print_error(f"Failed to create environment file: {e}")
-            return False
         except Exception as e:
-            self._print_error(f"Unexpected error creating environment file: {e}")
+            self._print_error(f"Failed to copy environment file: {e}")
             return False
-
-    def _clean_env_file(self) -> List[str]:
-        """Clean .env file content for /etc/environment.d/ format compliance."""
-        cleaned_lines = []
-
-        try:
-            with open(self.env_file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-        except Exception as e:
-            self._print_error(f"Failed to read .env file: {e}")
-            return []
-
-        lines = content.split("\n")
-
-        for line_num, line in enumerate(lines, 1):
-            if not line.strip() or line.strip().startswith("#"):
-                continue
-
-            if line.count("=") > 1:
-                # Handle multiple variables on one line
-                import re
-
-                pattern = r"([A-Z_][A-Z0-9_]*)\s*=\s*([^\s]+(?:\s+[^\s=]+)*?)(?=\s+[A-Z_][A-Z0-9_]*\s*=|\s*$)"
-                matches = re.findall(pattern, line)
-
-                if matches:
-                    for key, value in matches:
-                        cleaned_var = self._clean_env_variable(f"{key}={value}")
-                        if cleaned_var:
-                            cleaned_lines.append(cleaned_var)
-                else:
-                    # Fallback: split by spaces
-                    parts = line.split()
-                    for part in parts:
-                        if "=" in part and not part.startswith("#"):
-                            cleaned_var = self._clean_env_variable(part)
-                            if cleaned_var:
-                                cleaned_lines.append(cleaned_var)
-            else:
-                # Single variable per line
-                if "=" in line:
-                    cleaned_var = self._clean_env_variable(line)
-                    if cleaned_var:
-                        cleaned_lines.append(cleaned_var)
-
-        return cleaned_lines
-
-    def _clean_env_variable(self, var_line: str) -> Optional[str]:
-        """Clean a single environment variable line."""
-        if "#" in var_line:
-            var_line = var_line.split("#")[0]
-
-        var_line = var_line.strip()
-        if not var_line or "=" not in var_line:
-            return None
-
-        key, value = var_line.split("=", 1)
-        key = key.strip()
-        value = value.strip().rstrip(">")
-
-        if not value:
-            value = '""'
-        elif " " in value or "," in value or "@" in value:
-            if not (value.startswith('"') and value.endswith('"')):
-                value = f'"{value}"'
-
-        return f"{key}={value}"
-
-    def _show_env_preview(self):
-        """Show preview of source file content for debugging."""
-        verbose_print(
-            f"  [cyan]Source file content preview: {self.env_file_path}[/cyan]"
-        )
-        try:
-            with open(self.env_file_path, "r") as f:
-                preview = f.read()[:200]
-                verbose_print(f"  [dim]{preview}...[/dim]")
-        except Exception:
-            verbose_print("  [dim]Could not read source file[/dim]")
-
-    def _show_sudoers_error(self):
-        """Show detailed sudoers configuration error."""
-        self._print_error(
-            "Error: Add the following rules to /etc/sudoers.d/user_pwp_rules:"
-        )
-        console.print(
-            "  [yellow]Cmnd_Alias ENV_DIR_MGMT = /bin/mkdir -p /etc/environment.d, \\[/yellow]"
-        )
-        console.print(
-            "  [yellow]    /bin/cp /tmp/10-app.conf /etc/environment.d/10-app.conf, \\[/yellow]"
-        )
-        console.print(
-            "  [yellow]    /bin/chmod 600 /etc/environment.d/10-app.conf, \\[/yellow]"
-        )
-        console.print(
-            "  [yellow]    /usr/bin/chown root\\:root /etc/environment.d/10-app.conf[/yellow]"
-        )
-        console.print(
-            "  [yellow]pwp ALL=(root) NOPASSWD: /home/pwp/.local/bin/pm, ENV_DIR_MGMT[/yellow]"
-        )
 
     def _print_success(self, message: str) -> None:
         console.print(f"[green]{message}[/green]")
@@ -1192,7 +1075,7 @@ class FileManager:
                     ]
                 ):
                     console.print(
-                        f"[yellow]Validation warning for {container_file}:[/yellow]"
+                        f"[bright_yellow]Validation warning for {container_file}:[/bright_yellow]"
                     )
                     for line in grep_output.strip().split("\n"):
                         console.print(f"  [dim]{line.strip()}[/dim]")
@@ -1597,7 +1480,7 @@ class QuadletInstaller:
             f"          [green]View logs:[/green]{journal_cmd} -u {service_name} -f"
         )
         console.print(
-            f" [green]Show service file:[/green]{systemctl_cmd} cat {service_name}"
+            f"  [green]Show service file:[/green]{systemctl_cmd} cat {service_name}"
         )
         console.print(
             f"  [green]Enable auto-start:[/green]{systemctl_cmd} enable {service_name}"

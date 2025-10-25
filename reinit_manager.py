@@ -222,7 +222,7 @@ class ReinitManager:
                 time.sleep(0.1)
 
                 # Show error detection message and start AI analysis
-                console.print("\n[red]Error found in reinit command[/red]")
+                console.print("\n[red]Error found in reinit command[/red]\n")
                 console.print("[green]Starting AI analysis and diagnostics...[/green]")
 
                 verbose_print("  [cyan]exec: ai_analyze(type=reinit_failure)[/cyan]")
@@ -245,9 +245,8 @@ class ReinitManager:
                         verbose=_verbose_enabled,
                     )
 
-                    if result:
-                        console.print("[green]✓ AI analysis completed[/green]")
-                    else:
+                    if not result:
+                        console.print()
                         console.print(
                             "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
                         )
@@ -267,7 +266,7 @@ class ReinitManager:
             time.sleep(0.1)
 
             # Show error detection message and start AI analysis
-            console.print("\n[red]Error found in reinit command[/red]")
+            console.print("\n[red]Error found in reinit command[/red]\n")
             console.print("[green]Starting AI analysis and diagnostics...[/green]")
 
             verbose_print(
@@ -291,9 +290,8 @@ class ReinitManager:
                     verbose=_verbose_enabled,
                 )
 
-                if result:
-                    console.print("[green]✓ AI analysis completed[/green]")
-                else:
+                if not result:
+                    console.print()
                     console.print(
                         "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
                     )

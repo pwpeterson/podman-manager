@@ -90,16 +90,8 @@ class StackManager:
         failed_services = []
 
         for service in services:
-            # Show service stopping with spinner and yellow color
-            with Progress(
-                SpinnerColumn(),
-                TextColumn(f"[green]Stopping {service}[/green]"),
-                console=console,
-                transient=True,
-            ) as progress:
-                task = progress.add_task("stopping", total=None)
-                service_stopped = self.manager.stop_service(service, quiet=True)
-                progress.remove_task(task)
+            # Show service stopping without spinner
+            service_stopped = self.manager.stop_service(service, quiet=True)
 
             if service_stopped:
                 stopped_services.append(service)
@@ -163,11 +155,13 @@ class StackManager:
             console.print(f"[red]No services found for {project} stack[/red]")
             return False
 
-        console.print(f"[yellow]Restarting {project} stack...[/yellow]")
+        console.print()
+        console.print(f"[green]Restarting {project} stack...[/green]")
+        console.print()
 
         success = True
         for service in services:
-            console.print(f"[dim]  Restarting {service}...[/dim]")
+            console.print(f"[green]Restarting {service}...[/green]")
             if not self.manager.restart_service(service):
                 success = False
 
@@ -431,6 +425,7 @@ class StackManager:
 
         if _verbose_enabled:
             verbose_print(f"[green]Stopping all {project} services...[/green]")
+            verbose_print("")
         else:
             console.print(f"[green]Stopping all {project} services...[/green]")
             console.print()
@@ -438,26 +433,22 @@ class StackManager:
         stop_success = True
         for service in services:
             if _verbose_enabled:
-                verbose_print(f"  Stopping {service}...")
-                if not self.manager.stop_service(service, quiet=False):
+                verbose_print(f"  [green]Stopping {service}...[/green]")
+                if not self.manager.stop_service(service, quiet=True):
                     stop_success = False
             else:
-                # Show individual service stopping with spinner for non-verbose
-                with Progress(  # type: ignore
-                    SpinnerColumn(),
-                    TextColumn(f"[green]Stopping {service}[/green]"),
-                    console=console,
-                    transient=True,
-                ) as progress:
-                    task = progress.add_task("stopping", total=None)
-                    service_stopped = self.manager.stop_service(service, quiet=True)
-                    progress.remove_task(task)
+                # Show individual service stopping without spinner for non-verbose
+                console.print(f"    [green]Stopping {service}...[/green]")
+                service_stopped = self.manager.stop_service(service, quiet=True)
 
-                if not service_stopped:
+                if service_stopped:
+                    console.print(f"      [green]Stopped {service}[/green]")
+                else:
                     console.print(
-                        f"    [yellow]{service} was not running or failed to stop[/yellow]"
+                        f"      [yellow]{service} was not running or failed to stop[/yellow]"
                     )
                     stop_success = False
+                console.print()
 
         if not stop_success:
             console.print(
@@ -524,6 +515,7 @@ class StackManager:
             verbose_print(f"[green]Starting all {project} services...[/green]")
         else:
             console.print(f"[green]Starting all {project} services...[/green]")
+            console.print()
 
         start_success = True
         for service in services:
@@ -535,8 +527,11 @@ class StackManager:
                     verbose_print(f"[green]  Starting {service}...[/green]")
                     restart_cmd = ["systemctl", "--user", "restart", service_name]
                     verbose_print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
-                    restart_result = subprocess.run(
-                        restart_cmd, capture_output=True, text=True
+                    restart_result = self.manager._run_systemctl_command(
+                        restart_cmd,
+                        f"restart_{service}",
+                        suppress_errors=True,
+                        quiet=True,
                     )
 
                     # Verbose mode continues with original logic
@@ -558,42 +553,41 @@ class StackManager:
 
                         if not service_success:
                             start_success = False
-                            # Show detailed error logs after spinner disappears
+                            # Show clean error message without detailed systemd output
                             clean_service_name = service.replace(
                                 ".service", ""
                             ).replace(".target", "")
-                            console.print(
+                            verbose_print(
                                 f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
                             )
                     else:
                         start_success = False
-                        self._handle_service_start_failure(service, restart_result)
-                else:
-                    # Non-verbose mode: show spinner for starting
-                    with Progress(  # type: ignore
-                        SpinnerColumn(),
-                        TextColumn(f"[green]Starting {service}[/green]"),
-                        console=console,
-                        transient=True,
-                    ) as progress:
-                        task = progress.add_task("starting", total=None)
-                        restart_cmd = ["systemctl", "--user", "restart", service_name]
-                        restart_result = subprocess.run(
-                            restart_cmd, capture_output=True, text=True
+                        # Show clean failure message without detailed error output
+                        clean_service_name = service.replace(".service", "").replace(
+                            ".target", ""
                         )
+                        verbose_print(
+                            f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
+                        )
+                else:
+                    # Non-verbose mode: simple starting message without spinner
+                    console.print(f"    [green]Starting {service}...[/green]")
+                    restart_cmd = ["systemctl", "--user", "restart", service_name]
+                    restart_result = subprocess.run(
+                        restart_cmd, capture_output=True, text=True
+                    )
 
-                        if restart_result.returncode == 0:
-                            # Monitor service startup
-                            service_success = self._monitor_service_startup(
-                                service, service_name
-                            )
-                        else:
-                            service_success = False
-
-                        progress.remove_task(task)
+                    if restart_result.returncode == 0:
+                        # Monitor service startup
+                        service_success = self._monitor_service_startup(
+                            service, service_name
+                        )
+                    else:
+                        service_success = False
 
                     if restart_result.returncode == 0 and service_success:
-                        console.print(f"    [green]{service} started[/green]")
+                        console.print(f"      [green]Started {service}[/green]")
+                        console.print()
                     elif restart_result.returncode != 0:
                         start_success = False
                         self._handle_service_start_failure(service, restart_result)
@@ -603,8 +597,9 @@ class StackManager:
                             ".target", ""
                         )
                         console.print(
-                            f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
+                            f"      [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
                         )
+                        console.print()
             else:
                 console.print(f"[red]Could not find service for {service}[/red]")
                 start_success = False
@@ -616,7 +611,6 @@ class StackManager:
             self._show_stack_next_steps(project)
             return True
         else:
-            console.print()
             console.print(
                 f"[red]Failed to start some services in {project} stack[/red]"
             )
@@ -683,7 +677,7 @@ class StackManager:
         # Even if logs are unclear, if service is stable for 10+ seconds, assume success
         if log_result or True:  # Always return True if stable
             verbose_print(
-                f"[green]Service {target} is stable and appears healthy[/green]"
+                f"    [green]Service {target} is stable and appears healthy[/green]"
             )
             return True
 
@@ -947,7 +941,7 @@ class StackManager:
 
         # If service is active and no critical errors found, be more optimistic
         verbose_print(
-            f"[green]Service {target} is active and stable (assuming success)[/green]"
+            f"    [green]Service {target} is active and stable (assuming success)[/green]"
         )
         return True
 
@@ -965,8 +959,9 @@ class StackManager:
 
         # Show clean failure message with AI analysis suggestion
         console.print(
-            f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
+            f"      [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
         )
+        console.print()
 
     def _show_stack_next_steps(self, project: str) -> None:
         """Show optional next steps for the stack"""

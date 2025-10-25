@@ -10,6 +10,8 @@ try:
 except ImportError:
     requests = None
 
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
 from config import console, verbose_print
 
 
@@ -386,17 +388,29 @@ class AIAgentManager:
                 )
             return None
 
-        if verbose:
-            verbose_print(
-                f"  [cyan]exec: Using AI agent: {agent.config.display_name}[/cyan]"
-            )
+        # Show spinner before starting AI analysis
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[green]Analyzing error data...[/green]"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("analyzing", total=None)
 
-        try:
-            return agent.analyze_logs(prompt)
-        except Exception as e:
             if verbose:
-                verbose_print(f"  [cyan]exec: Agent analysis failed: {e}[/cyan]")
-            return None
+                verbose_print(
+                    f"  [cyan]exec: Using AI agent: {agent.config.display_name}[/cyan]"
+                )
+
+            try:
+                result = agent.analyze_logs(prompt)
+                progress.remove_task(task)
+                return result
+            except Exception as e:
+                progress.remove_task(task)
+                if verbose:
+                    verbose_print(f"  [cyan]exec: Agent analysis failed: {e}[/cyan]")
+                return None
 
 
 # Global instance

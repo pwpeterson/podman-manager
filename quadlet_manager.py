@@ -561,30 +561,18 @@ class QuadletManager:
                         if result.stderr:
                             logger.error("Error output: {}", result.stderr)
 
-                            # Only show error details in verbose mode to avoid duplication
-                            if _verbose_enabled:
-                                console.print("[red]❌ Complete command error:[/red]")
-                                console.print("[dim]" + "─" * 60 + "[/dim]")
-                                for line in result.stderr.strip().split("\n"):
-                                    if line.strip():
-                                        console.print(f"[red]{line}[/red]")
-                                console.print("[dim]" + "─" * 60 + "[/dim]")
-                            # Remove the brief error display here to avoid duplication
-                            # The calling method will handle user-facing error messages
+                            # Don't show error details to avoid cluttering output
+                            # The calling method will handle user-facing error messages if needed
                 else:
+                    # Suppressed errors - only log, don't show to user
                     logger.debug(
                         "Command failed with code {} in {:.2f}s (suppressed)",
                         result.returncode,
                         execution_time,
                     )
-                    # Even in suppressed mode, show detailed error if verbose
-                    if _verbose_enabled and result.stderr:
-                        console.print("[yellow]Suppressed error details:[/yellow]")
-                        console.print("[dim]" + "─" * 60 + "[/dim]")
-                        for line in result.stderr.strip().split("\n"):
-                            if line.strip():
-                                console.print(f"[yellow]{line}[/yellow]")
-                        console.print("[dim]" + "─" * 60 + "[/dim]")
+                    if result.stderr:
+                        logger.debug("Suppressed error output: {}", result.stderr)
+                    # Don't show any console output when errors are suppressed
 
             return result
 
@@ -1149,13 +1137,14 @@ class QuadletManager:
             return False
 
         cmd = ["systemctl", "--user", "restart", service_name]
-        result = self._run_systemctl_command(cmd, f"restart_{target}")
+        result = self._run_systemctl_command(
+            cmd, f"restart_{target}", suppress_errors=True
+        )
 
         if result.returncode == 0:
             console.print(f"[green]Restarted {service_name}[/green]")
             return True
         else:
-            console.print(f"[red]Failed to restart {service_name}[/red]")
             return False
 
     def enable_service(self, target: str) -> bool:

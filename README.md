@@ -16,6 +16,7 @@ A comprehensive Python-based container management tool for Podman with rich term
 - **YAML Validation** - Comprehensive compose file validation
 - **Safety Checks** - Confirmations for destructive operations
 - **AI-Powered Analysis** - Intelligent log analysis with comprehensive diagnostic data collection
+- **Build AI Analysis** - Automatic AI-powered troubleshooting for container build failures
 - **Verbose Diagnostics** - Detailed command execution tracking for transparency
 
 ## Prerequisites

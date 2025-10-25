@@ -111,7 +111,7 @@ class CommandRouter:
 
         try:
             # Show error detection message
-            console.print(f"\n[red]Error found in {command_type} command[/red]")
+            console.print(f"\n[red]Error found in {command_type} command[/red]\n")
             console.print("[green]Starting AI analysis and diagnostics...[/green]")
 
             # Initialize AI analyzer with manager if not already done
@@ -152,6 +152,7 @@ class CommandRouter:
             if result:
                 console.print("[green]✓ AI analysis completed[/green]")
             else:
+                console.print()
                 console.print(
                     "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
                 )
@@ -472,11 +473,51 @@ class CommandRouter:
     # Resource command handlers
     def _handle_logs(self, args):
         try:
-            # Show logs - AI analysis will be triggered automatically if errors are detected
-            self.container_ops.show_logs(args.target, follow=args.follow)
+            # Store AI agent from command-specific argument if provided, otherwise use global
+            ai_agent = getattr(args, "ai_agent", None) or self.ai_agent
+
+            # If AI agent is specified, trigger AI analysis directly
+            if ai_agent:
+                console.print()
+                console.print(
+                    f"[green]Performing AI log analysis with {ai_agent}...[/green]"
+                )
+                console.print()
+
+                # Initialize AI analyzer with manager if not already done
+                if ai_analyzer.manager is None:
+                    ai_analyzer.manager = self.manager
+
+                # Resolve AI agent name
+                resolved_ai_agent = self._resolve_ai_agent_name(ai_agent)
+
+                # Trigger AI analysis directly for logs
+                from config import _verbose_enabled
+
+                result = ai_analyzer.ai_analyze(
+                    analysis_type="logs",
+                    target=args.target,
+                    context_data={"lines": 100},  # Use 100 lines as requested
+                    ai_agent=resolved_ai_agent,
+                    verbose=_verbose_enabled or getattr(args, "verbose", False),
+                )
+
+                if result:
+                    console.print("[green]✓ AI log analysis completed[/green]")
+                else:
+                    console.print(
+                        "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
+                    )
+            else:
+                # Show logs normally without AI analysis
+                self.container_ops.show_logs(args.target, follow=args.follow)
+
             return True
         except Exception as e:
             console.print(f"[red]Error showing logs: {e}[/red]")
+
+            # Use command-specific AI agent if provided, otherwise fall back to global
+            ai_agent = getattr(args, "ai_agent", None) or self.ai_agent
 
             # Trigger automatic AI analysis for log viewing errors
             self._trigger_automatic_ai_analysis(
@@ -487,7 +528,7 @@ class CommandRouter:
                     "exception": str(e),
                     "follow": args.follow,
                 },
-                ai_agent=self.ai_agent,
+                ai_agent=ai_agent,
             )
 
             return False

@@ -310,7 +310,8 @@ def _add_lifecycle_commands(subparsers):
 
     # Build command
     build_parser = subparsers.add_parser(
-        "build", help="Build container image and restart service"
+        "build",
+        help="Build container image and restart service with automatic AI analysis on failures",
     )
     build_parser.add_argument(
         "target",
@@ -550,6 +551,13 @@ def _add_resource_commands(subparsers):
         "--verbose",
         action="store_true",
         help="Show detailed command execution and comprehensive diagnostic data collection",
+    )
+    logs_parser.add_argument(
+        "--ai-agent",
+        "-ai",
+        choices=["qwen25", "glm46", "claude", "gpt4"],
+        default="qwen25",
+        help="AI agent for analysis (default: qwen25)",
     )
 
     # Diagnose command

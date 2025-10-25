@@ -101,15 +101,25 @@ class ServiceLifecycle:
                 # Reload daemon
                 self.manager.reload_daemon()
 
-            # Call systemctl restart directly since we already resolved the service name
+            # Show restarting message and call systemctl restart directly since we already resolved the service name
+            console.print()
+            console.print(f"[green]Restarting {target}...[/green]")
+            verbose_print(
+                f"  [cyan]exec: systemctl --user restart {service_name}[/cyan]"
+            )
+
             cmd = ["systemctl", "--user", "restart", service_name]
-            result = self.manager._run_systemctl_command(cmd, f"restart_{target}")
+            result = self.manager._run_systemctl_command(
+                cmd, f"restart_{target}", suppress_errors=True, quiet=True
+            )
 
             if result.returncode == 0:
-                console.print(f"[green]Restarted {service_name}[/green]")
+                console.print(f"  [green]Restarted {service_name}[/green]")
+                console.print()  # Add newline after successful restart
                 return True
             else:
-                console.print(f"[red]Failed to restart {service_name}[/red]")
+                # Trigger automatic AI analysis for restart failures
+                self._trigger_restart_failure_analysis(target, service_name, result)
                 return False
         else:
             console.print(f"[red]Service '{target}' not found[/red]")
@@ -350,20 +360,55 @@ class ServiceLifecycle:
             console.print(f"[red]No services found for {project} stack[/red]")
             return False
 
-        console.print(f"[yellow]Restarting {project} stack...[/yellow]")
+        console.print()
+        console.print(f"[green]Restarting {project} stack...[/green]")
+        console.print()
 
         success = True
+        failed_services = []
+
         for service in services:
-            console.print(f"[dim]  Restarting {service}...[/dim]")
-            if not self.manager.restart_service(service):
-                success = False
+            console.print(f"[green]Restarting {service}...[/green]")
+            verbose_print(f"  [cyan]exec: systemctl --user restart {service}[/cyan]")
+
+            # Get the service name for direct systemctl call to capture errors
+            service_name = self.manager._find_service_name(service, "restart")
+            if service_name and not service_name.startswith("STACK:"):
+                cmd = ["systemctl", "--user", "restart", service_name]
+                result = self.manager._run_systemctl_command(
+                    cmd, f"restart_{service}", suppress_errors=True, quiet=True
+                )
+
+                if result.returncode == 0:
+                    console.print(f"  [green]Restarted {service_name}[/green]")
+                    console.print()
+                else:
+                    success = False
+                    failed_services.append(service)
+                    # Show concise error message with troubleshooting guidance
+                    console.print(
+                        f"  [red]Failed to restart {service}. Use [/red][white]pm restart {service}[/white][red] to troubleshoot.[/red]"
+                    )
+                    console.print()
+            else:
+                # Fallback to original method if service name resolution fails
+                if not self.manager.restart_service(service):
+                    success = False
+                    failed_services.append(service)
+                    console.print(
+                        f"  [red]Failed to restart {service}. Use [/red][white]pm restart {service}[/white][red] to troubleshoot.[/red]"
+                    )
+                    console.print()
 
         if success:
             console.print(f"[green]Successfully restarted {project} stack[/green]")
+            console.print()  # Add newline after successful stack restart
         else:
             console.print(
                 f"[yellow]Some services in {project} stack failed to restart[/yellow]"
             )
+            console.print()
+            # No AI analysis for stack restarts - just show the troubleshooting messages above
         return success
 
     def _enable_stack(self, project: str) -> bool:
@@ -453,3 +498,42 @@ class ServiceLifecycle:
             if not builder.build_service(target):
                 return False
         return self.manager.start_service(target)
+
+    def _trigger_restart_failure_analysis(
+        self, target: str, service_name: str, result
+    ) -> None:
+        """Trigger automatic AI analysis when restart fails"""
+        try:
+            from ai_analyzer import ai_analyzer
+            from config import _verbose_enabled
+
+            # Initialize AI analyzer with manager if not already done
+            if ai_analyzer.manager is None:
+                ai_analyzer.manager = self.manager
+
+            # Prepare context data for restart failure analysis
+            context_data = {
+                "operation": "restart",
+                "service_name": service_name,
+                "target": target,
+                "restart_error": "Service failed to restart",
+                "error_output": (
+                    result.stderr if hasattr(result, "stderr") and result.stderr else ""
+                ),
+                "return_code": (
+                    result.returncode if hasattr(result, "returncode") else 1
+                ),
+            }
+
+            # Run AI analysis with verbose mode from global config
+            ai_analyzer.ai_analyze(
+                analysis_type="reinit_failure",
+                target=target,
+                context_data=context_data,
+                ai_agent=None,  # Use default agent
+                verbose=_verbose_enabled,
+            )
+
+        except Exception:
+            # Silently handle AI analysis failures
+            pass

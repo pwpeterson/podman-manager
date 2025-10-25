@@ -15,6 +15,7 @@ class ContainerBuilder:
 
     def __init__(self, manager):
         self.manager = manager
+        self._build_context = {}  # Store build context for AI analysis
 
     def _find_stack_for_service(self, service_name: str) -> Optional[str]:
         """Find which stack directory contains the given service."""
@@ -94,6 +95,59 @@ class ContainerBuilder:
         # For now, just print the output directly
         # Rich console should handle ANSI codes properly
         console.print(output)
+
+    def _trigger_build_ai_analysis(
+        self,
+        target: str,
+        build_error: str,
+        build_output: str = "",
+        build_command: str = "",
+        verbose: bool = False,
+    ) -> None:
+        """Trigger automatic AI analysis for build failures"""
+        try:
+            from ai_analyzer import ai_analyzer
+
+            # Initialize AI analyzer with manager if not already done
+            if ai_analyzer.manager is None:
+                ai_analyzer.manager = self.manager
+
+            # Get build context for this target
+            build_context = self._build_context.get(target, {})
+
+            # Prepare focused build failure context - just Dockerfile and errors
+            context_data = {
+                "build_error": build_error,
+                "build_output": build_output,
+                "dockerfile_path": build_context.get("dockerfile_path", ""),
+                "target": target,
+            }
+
+            # Run AI analysis with default agent
+            result = ai_analyzer.ai_analyze(
+                analysis_type="build_failure",
+                target=target,
+                context_data=context_data,
+                ai_agent=None,  # Always use default agent
+                verbose=verbose,
+            )
+
+            if result:
+                pass  # Analysis completed, no message needed
+            else:
+                console.print("[yellow]⚠ Unable to analyze build failure[/yellow]")
+
+        except Exception:
+            # Silently fail - don't let AI analysis errors break the build process
+            pass
+
+    def _store_build_context(self, target: str, **context) -> None:
+        """Store build context for AI analysis"""
+        self._build_context[target] = context
+
+    def _get_build_context(self, target: str) -> dict:
+        """Get stored build context for AI analysis"""
+        return self._build_context.get(target, {})
 
     def _get_container_image(self, container_name: str) -> Optional[str]:
         """Get the image name used by a container using podman ps command."""
@@ -248,6 +302,14 @@ class ContainerBuilder:
         try:
             os.chdir(build_dir)
 
+            # Store build context for AI analysis
+            self._store_build_context(
+                target,
+                dockerfile_path=str(build_dir / dockerfile_name),
+                build_dir=str(build_dir),
+                service_type="quadlet_container",
+            )
+
             # Determine service names
             service_name = target  # Full service name (e.g., "local-ai-ollama")
             stack_name = self._find_stack_for_service(
@@ -278,6 +340,9 @@ class ContainerBuilder:
 
             # Determine target image name for building (what we want to build)
             target_image_name = f"localhost/{service_name}:latest"
+
+            # Update build context with image name
+            self._build_context[target]["image_name"] = target_image_name
 
             # Service information (hidden in normal output)
             # verbose_print(f"[dim]Service name: {service_name}[/dim]")
@@ -324,7 +389,7 @@ class ContainerBuilder:
             from config import _verbose_enabled
 
             if _verbose_enabled:
-                # In verbose mode, show build output with indentation
+                # In verbose mode, show build output with indentation and capture for AI analysis
                 console.print(f"[green]Building image: {target_image_name}[/green]")
 
                 process = subprocess.Popen(
@@ -335,12 +400,26 @@ class ContainerBuilder:
                     bufsize=1,
                     universal_newlines=True,
                 )
+
+                # Capture output while displaying it live
+                captured_output = []
                 if process.stdout:
                     for line in iter(process.stdout.readline, ""):  # type: ignore
                         if line.strip():
                             console.print(f"  {line.rstrip()}")
+                            captured_output.append(line.rstrip())
                 process.wait()
-                build_result = process
+
+                # Create a mock result object with captured output for AI analysis
+                class MockResult:
+                    def __init__(self, returncode, stdout):
+                        self.returncode = returncode
+                        self.stdout = stdout
+                        self.stderr = None  # stderr is merged with stdout
+
+                build_result = MockResult(
+                    process.returncode, "\n".join(captured_output)
+                )
             else:
                 # In non-verbose mode, use spinner and capture output
                 with Progress(
@@ -356,24 +435,47 @@ class ContainerBuilder:
                     progress.remove_task(task)
 
             if build_result.returncode != 0:
-                console.print("[red]❌ Build failed![/red]")
+                console.print(f"[red]Failed to build {target} image.[/red]")
+
+                # Collect error information for AI analysis
+                build_error = ""
+                build_output = ""
+                build_command = " ".join(build_cmd)
+
                 # Handle both Popen and CompletedProcess objects
                 if hasattr(build_result, "stderr") and build_result.stderr:
                     if isinstance(build_result.stderr, str):
-                        console.print(f"[red]{build_result.stderr.strip()}[/red]")  # type: ignore
+                        build_error = build_result.stderr.strip()
+                        console.print(f"[red]{build_error}[/red]")
+
+                if hasattr(build_result, "stdout") and build_result.stdout:
+                    if isinstance(build_result.stdout, str):
+                        build_output = build_result.stdout.strip()
+
+                # Trigger AI analysis for build failure
+                from config import _verbose_enabled
+
+                self._trigger_build_ai_analysis(
+                    target=service_name,
+                    build_error=build_error,
+                    build_output=build_output,
+                    build_command=build_command,
+                    verbose=_verbose_enabled,
+                )
+
                 return False
 
-            # Show build output in verbose mode (only if captured)
+            # Show build output in non-verbose mode (only if captured and build failed)
             if (
                 not _verbose_enabled
+                and build_result.returncode != 0
                 and hasattr(build_result, "stdout")
                 and build_result.stdout
             ):
-                console.print("Build output:")
                 if isinstance(build_result.stdout, str):
                     for line in build_result.stdout.strip().split("\n"):  # type: ignore
                         if line.strip():
-                            console.print(f"  {line}")
+                            console.print(line)
 
             console.print(
                 f"[green]✅ Image {target_image_name} built successfully[/green]"
@@ -522,8 +624,39 @@ class ContainerBuilder:
                         return True
                     else:
                         console.print(f"[red]Podman build failed for {target}[/red]")
+
+                        # Collect error information for AI analysis
+                        build_error = (
+                            result.stderr.strip()
+                            if result.stderr
+                            else "Build failed with unknown error"
+                        )
+                        build_output = result.stdout.strip() if result.stdout else ""
+                        build_command = " ".join(build_cmd)
+
                         if result.stderr:
-                            console.print(f"[red]{result.stderr.strip()}[/red]")
+                            console.print(f"[red]{build_error}[/red]")
+
+                        # Store build context for AI analysis
+                        self._store_build_context(
+                            target,
+                            dockerfile_path=str(Path(build_dir) / dockerfile),
+                            build_dir=build_dir,
+                            image_name=image_name,
+                            service_type="podman_container",
+                        )
+
+                        # Trigger AI analysis for build failure
+                        from config import _verbose_enabled
+
+                        self._trigger_build_ai_analysis(
+                            target=target,
+                            build_error=build_error,
+                            build_output=build_output,
+                            build_command=build_command,
+                            verbose=_verbose_enabled,
+                        )
+
                         return False
 
                 finally:
@@ -544,7 +677,6 @@ class ContainerBuilder:
         build_success = self.build_service(target)
 
         if not build_success:
-            console.print(f"[red]Failed to build {target} image.[/red]")
             console.print()
             return False
 
@@ -778,7 +910,7 @@ class ContainerBuilder:
             build_result = subprocess.run(build_cmd, capture_output=True, text=True)
 
             if build_result.returncode != 0:
-                console.print("[red]❌ Build failed![/red]")
+                console.print(f"[red]Failed to build {CONTAINER_NAME} image.[/red]")
                 if build_result.stderr:
                     console.print(f"[red]{build_result.stderr.strip()}[/red]")
                 return False
@@ -880,7 +1012,7 @@ class ContainerBuilder:
             build_result = subprocess.run(build_cmd, capture_output=True, text=True)
 
             if build_result.returncode != 0:
-                console.print("[red]❌ Build failed![/red]")
+                console.print(f"[red]Failed to build {CONTAINER_NAME} image.[/red]")
                 if build_result.stderr:
                     console.print(f"[red]{build_result.stderr.strip()}[/red]")
                 return False
