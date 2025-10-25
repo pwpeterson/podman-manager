@@ -1044,7 +1044,7 @@ class QuadletManager:
         result = self._run_systemctl_command(cmd, f"start_{target}")
 
         if result.returncode == 0:
-            console.print(f"[green]Started {service_name}[/green]")
+            console.print(f"[green]  Started {service_name}[/green]")
             return True
         else:
             console.print(f"[red]Failed to start {service_name}[/red]")
