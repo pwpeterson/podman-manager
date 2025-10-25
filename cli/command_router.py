@@ -658,11 +658,11 @@ class CommandRouter:
         """Show available AI agents for log analysis"""
         self.handle_command_verbose(args)
         try:
-            from ai_system.ai_agents import ai_agent_manager
+            from ai_system.ai_agents import AIAgentManager
 
-            # Reload configuration to pick up any changes
-            ai_agent_manager.reload_config()
-            ai_agent_manager.show_agents_status()
+            # Create a fresh instance to avoid any caching issues
+            fresh_manager = AIAgentManager()
+            fresh_manager.show_agents_status()
             return True
         except ImportError:
             console.print("[red]AI agents system not available[/red]")

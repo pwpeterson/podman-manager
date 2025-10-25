@@ -691,8 +691,18 @@ class AIAgentManager:
 
     def reload_config(self) -> None:
         """Reload configuration from file"""
+        import importlib
+        import sys
+
+        # Clear current state
         self.agents.clear()
         self.default_agent = None
+
+        # Force reload of this module to clear any cached imports
+        if "ai_system.ai_agents" in sys.modules:
+            importlib.reload(sys.modules["ai_system.ai_agents"])
+
+        # Reload configuration
         self._load_default_configs()
         self._load_persistent_config()
 
