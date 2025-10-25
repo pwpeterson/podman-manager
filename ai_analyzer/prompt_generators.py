@@ -86,11 +86,16 @@ Use podman commands (not docker) in all recommendations. Consider quadlet-specif
         self, prompt_parts: list, data: Dict[str, Any]
     ) -> None:
         """Add systemd logs section to prompt"""
-        if data.get("systemd_logs"):
+        # Use extended logs if available, otherwise fall back to regular logs
+        logs_data = data.get("extended_systemd_logs") or data.get("systemd_logs")
+        if logs_data:
+            log_lines_count = data.get("extended_log_lines_count") or data.get(
+                "log_lines_count", "Unknown"
+            )
             prompt_parts.append(
                 f"""
-=== SYSTEMD SERVICE LOGS ===
-{data['systemd_logs']}
+=== SYSTEMD SERVICE LOGS (Last {log_lines_count} lines) ===
+{logs_data}
 === END SYSTEMD LOGS ===
 """
             )

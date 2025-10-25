@@ -247,6 +247,19 @@ class MarkdownDisplayFormatter(DisplayFormatter):
             f"[green]   View detailed logs:[/green] [white]pm logs {target}[/white]"
         )
 
+        # Add journalctl command for service-related analysis
+        if analysis_type in [
+            "logs",
+            "reinit_failure",
+            "status",
+            "service_start_failure",
+        ]:
+            # Get service name - we need to extract it from the target or use target as fallback
+            service_name = f"{target}.service"
+            console.print(
+                f"[green]  View service logs:[/green] [white]journalctl --user -u {service_name} -n 100[/white]"
+            )
+
         if analysis_type == "reinit_failure":
             console.print(
                 f"[green]         Retry reinit:[/green] [white]pm reinit {target} -v[/white]"
@@ -339,7 +352,7 @@ class BasicTroubleshootingFormatter(DisplayFormatter):
             f"    1. [white]Check service status:[/white] [cyan]systemctl --user status {target}.service[/cyan]"
         )
         console.print(
-            f"    2. [white]View recent logs:[/white] [cyan]journalctl --user -u {target}.service -n 20[/cyan]"
+            f"    2. [white]View recent logs:[/white] [cyan]journalctl --user -u {target}.service -n 100[/cyan]"
         )
         console.print("    3. [white]Check disk space:[/white] [cyan]df -h[/cyan]")
         console.print(

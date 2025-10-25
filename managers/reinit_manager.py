@@ -521,12 +521,15 @@ class ReinitManager:
 
     def _show_next_steps(self, target: str) -> None:
         """Show optional next steps after successful reinit"""
-        console.print("[green]Optional: commands:[/green]")
+        console.print("[green]Optional actions:[/green]")
         console.print(
             f"[green] Check service status:[/green] [white]pm status {target}[/white]"
         )
         console.print(
             f"  [green] View detailed logs:[/green] [white]pm logs {target}[/white]"
+        )
+        console.print(
+            f"  [green] View service logs:[/green] [white]journalctl --user -u {target}.service -n 100[/white]"
         )
         console.print(
             f"  [green] Diagnose the issue:[/green] [white]pm diagnose {target}[/white]"
@@ -914,6 +917,9 @@ Keep the response brief and actionable. Focus on the most critical issues first.
         )
         console.print(
             f"[green]     Check service logs:[/green] [white]pm logs {target}[/white]"
+        )
+        console.print(
+            f"[green]     View service logs:[/green] [white]journalctl --user -u {service_name} -n 100[/white]"
         )
         console.print(
             f"[green]    Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
