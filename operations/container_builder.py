@@ -547,7 +547,7 @@ class ContainerBuilder:
                 final_image_name = target_image_name
 
             console.print(
-                f"[green]✅ Image {final_image_name} built successfully[/green]"
+                f"[green]  Image {final_image_name} built successfully[/green]"
             )
 
             return True
