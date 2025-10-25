@@ -483,6 +483,7 @@ class CommandRouter:
 
             # If AI agent is specified, trigger AI analysis directly
             if ai_agent:
+                console.print()
                 console.print(
                     f"[green]Performing AI log analysis with {ai_agent}...[/green]"
                 )
