@@ -210,7 +210,9 @@ class AIAnalyzer:
                 data.update(logs_data)
 
                 # Collect container details
-                container_data = self.collectors["container"].collect(target)
+                container_data = self.collectors["container"].collect(
+                    target, service_name=service_name
+                )
                 data.update(container_data)
 
                 # Collect Quadlet configuration
@@ -278,7 +280,15 @@ class AIAnalyzer:
                 )
                 data.update(systemd_data)
 
-                container_data = self.collectors["container"].collect(target)
+                # Get service name for container collection
+                systemd_data = self.collectors["systemd"].collect(
+                    target, manager=self.manager
+                )
+                service_name = systemd_data.get("service_name", target)
+
+                container_data = self.collectors["container"].collect(
+                    target, service_name=service_name
+                )
                 data.update(container_data)
 
             if verbose:

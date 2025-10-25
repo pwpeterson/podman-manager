@@ -56,7 +56,7 @@ class SystemdDataCollector(DataCollector):
 
         data = {"service_name": service_name, "target": target}
 
-        # Get service status
+        # Get service status - use resolved service name
         status_result = self._run_command(
             ["systemctl", "--user", "status", service_name, "--no-pager", "-l"],
             timeout=15,
@@ -68,7 +68,7 @@ class SystemdDataCollector(DataCollector):
             )
             data["unit_status_code"] = status_result["returncode"]
 
-        # Get unit file content
+        # Get unit file content - use resolved service name
         cat_result = self._run_command(
             ["systemctl", "--user", "cat", service_name], timeout=10
         )
@@ -76,7 +76,7 @@ class SystemdDataCollector(DataCollector):
         if cat_result["success"]:
             data["unit_file_content"] = cat_result["stdout"].strip()
 
-        # Get unit properties
+        # Get unit properties - use resolved service name
         show_result = self._run_command(
             [
                 "systemctl",
@@ -205,6 +205,11 @@ class ContainerDataCollector(DataCollector):
     def collect(self, target: str, **kwargs) -> Dict[str, Any]:
         """Collect container information"""
         data = {}
+        # Get the resolved service name, strip .service suffix for container name
+        service_name = kwargs.get("service_name", target)
+        container_base_name = service_name
+        if container_base_name.endswith(".service"):
+            container_base_name = container_base_name[:-8]
 
         # List all containers
         ps_result = self._run_command(
@@ -220,7 +225,14 @@ class ContainerDataCollector(DataCollector):
 
         if ps_result["success"]:
             data["container_list"] = ps_result["stdout"].strip()
-            container_name = self._find_matching_container(target, ps_result["stdout"])
+            # Try to find container using resolved service name first, then target
+            container_name = self._find_matching_container(
+                container_base_name, ps_result["stdout"]
+            )
+            if not container_name:
+                container_name = self._find_matching_container(
+                    target, ps_result["stdout"]
+                )
 
             if container_name:
                 # Get container logs
@@ -249,12 +261,12 @@ class ContainerDataCollector(DataCollector):
                 if inspect_result["success"]:
                     data["container_inspect"] = inspect_result["stdout"].strip()
             else:
-                # Try direct service-based log collection
+                # Try direct service-based log collection using resolved service name first
                 direct_logs_result = self._run_command(
                     [
                         "podman",
                         "logs",
-                        target,
+                        container_base_name,
                         "--since",
                         "2h",
                         "--timestamps",
@@ -266,6 +278,24 @@ class ContainerDataCollector(DataCollector):
 
                 if direct_logs_result["success"]:
                     data["container_logs"] = direct_logs_result["stdout"].strip()
+                else:
+                    # Fallback to original target name
+                    fallback_logs_result = self._run_command(
+                        [
+                            "podman",
+                            "logs",
+                            target,
+                            "--since",
+                            "2h",
+                            "--timestamps",
+                            "--tail",
+                            "100",
+                        ],
+                        timeout=15,
+                    )
+
+                    if fallback_logs_result["success"]:
+                        data["container_logs"] = fallback_logs_result["stdout"].strip()
 
         # Check for pods
         pod_result = self._run_command(
