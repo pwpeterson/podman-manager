@@ -150,7 +150,8 @@ class CommandRouter:
             )
 
             if result:
-                console.print("[green]✓ AI analysis completed[/green]")
+                console.print("[green]AI analysis completed.[/green]")
+                console.print()
             else:
                 console.print()
                 console.print(
@@ -507,7 +508,8 @@ class CommandRouter:
                 )
 
                 if result:
-                    console.print("[green]✓ AI log analysis completed[/green]")
+                    console.print("[green]AI log analysis completed.[/green]")
+                    console.print()
                 else:
                     console.print(
                         "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
