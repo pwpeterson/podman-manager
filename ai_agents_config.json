@@ -36,17 +36,17 @@
       "description": "Local GLM-4-6B model"
     },
     {
-      "name": "claude-sonnet",
-      "display_name": "Claude 3 Sonnet",
+      "name": "claude-sonnet-4.5",
+      "display_name": "Claude 4.5 Sonnet",
       "agent_type": "claude",
       "endpoint": null,
-      "model_name": "claude-3-sonnet-20240229",
+      "model_name": "claude-sonnet-4.5",
       "api_key_env": "ANTHROPIC_API_KEY",
       "max_tokens": 2048,
       "temperature": 0.1,
       "timeout": 60,
       "enabled": true,
-      "description": "Anthropic Claude 3 Sonnet"
+      "description": "Anthropic Claude 4.5 Sonnet"
     },
     {
       "name": "claude-haiku",
