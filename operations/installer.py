@@ -1510,57 +1510,41 @@ class QuadletInstaller:
 
     def _show_service_next_steps(self, service_name: str, use_sudo: bool) -> None:
         """Show next steps after single service installation."""
-        systemctl_cmd = "systemctl" if use_sudo else "systemctl --user"
-        journal_cmd = "journalctl" if use_sudo else "journalctl --user"
+        from operations.common_actions import CommonActionsFormatter
 
+        formatter = CommonActionsFormatter()
+
+        # Show installation-specific actions
         console.print()
-        console.print("[green]Optional:[/green]")
-        console.print(
-            f"       [green]Check status:[/green]{systemctl_cmd} status {service_name}"
+        console.print("[green]Installation completed successfully![/green]")
+
+        # Show common actions with appropriate categories for installation
+        formatter.show_common_actions(
+            target=service_name,
+            service_name=f"{service_name}.service",
+            categories=["service_management", "service_status", "logs_diagnostics"],
+            compact=False,
         )
-        console.print(
-            f"          [green]View logs:[/green]{journal_cmd} -u {service_name} -f"
-        )
-        console.print(
-            f"  [green]Show service file:[/green]{systemctl_cmd} cat {service_name}"
-        )
-        console.print(
-            f"  [green]Enable auto-start:[/green]{systemctl_cmd} enable {service_name}"
-        )
-        console.print(
-            f" [green]Disable auto-start:[/green]{systemctl_cmd} disable {service_name}"
-        )
-        console.print()
 
     def _show_stack_next_steps(self, stack_name: str, use_sudo: bool) -> None:
         """Show next steps after stack installation."""
+        from operations.common_actions import CommonActionsFormatter
+
         services = self.get_service_names(stack_name)
-        systemctl_cmd = "systemctl" if use_sudo else "systemctl --user"
-        journal_cmd = "journalctl" if use_sudo else "journalctl --user"
+        formatter = CommonActionsFormatter()
 
         if services:
             console.print()
-            console.print("[green]Optional:[/green]")
-            example_service = (
-                services[0] if len(services) == 1 else f"{services[0]} (example)"
-            )
+            console.print("[green]Stack installation completed successfully![/green]")
+            example_service = services[0] if services else stack_name
 
-            console.print(
-                f"       [green]Check status:[/green]{systemctl_cmd} status {example_service}"
+            # Show common actions for the example service
+            formatter.show_common_actions(
+                target=example_service,
+                service_name=f"{example_service}.service",
+                categories=["service_management", "service_status", "logs_diagnostics"],
+                compact=False,
             )
-            console.print(
-                f"          [green]View logs:[/green]{journal_cmd} -u {example_service} -f"
-            )
-            console.print(
-                f"  [green]Show service file:[/green]{systemctl_cmd} cat {example_service}"
-            )
-            console.print(
-                f"  [green]Enable auto-start:[/green]{systemctl_cmd} enable {example_service}"
-            )
-            console.print(
-                f" [green]Disable auto-start:[/green]{systemctl_cmd} disable {example_service}"
-            )
-            console.print()
 
     def list_stacks(self) -> None:
         """List all available stacks."""

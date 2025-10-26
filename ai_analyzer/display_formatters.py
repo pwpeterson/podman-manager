@@ -259,30 +259,19 @@ class MarkdownDisplayFormatter(DisplayFormatter):
         self, analysis_type: str, target: str, verbose: bool = False
     ) -> None:
         """Show recommended actions after AI analysis"""
-        console.print("\n  [bold green]Optional actions:[/bold green]")
+        from operations.common_actions import CommonActionsFormatter
 
-        # Common actions
-        console.print(
-            f"[green]   View detailed logs:[/green] [white]pm logs {target}[/white]"
-        )
+        # Get the resolved service name from collected data, fallback to target.service
+        service_name = target
+        if self._collected_data and self._collected_data.get("service_name"):
+            service_name = self._collected_data["service_name"]
+        elif not service_name.endswith(".service"):
+            service_name = f"{target}.service"
 
-        # Add journalctl command for service-related analysis
-        if analysis_type in [
-            "logs",
-            "reinit_failure",
-            "status",
-            "service_start_failure",
-        ]:
-            # Get the resolved service name from collected data, fallback to target.service
-            service_name = target
-            if self._collected_data and self._collected_data.get("service_name"):
-                service_name = self._collected_data["service_name"]
-            elif not service_name.endswith(".service"):
-                service_name = f"{target}.service"
+        formatter = CommonActionsFormatter()
 
-            console.print(
-                f"[green]    View service logs:[/green] [white]journalctl --user -u {service_name} -n 100[/white]"
-            )
+        # Show analysis-type specific actions first
+        console.print("\n  [bold green]Recommended actions:[/bold green]")
 
         if analysis_type == "reinit_failure":
             console.print(
@@ -306,12 +295,12 @@ class MarkdownDisplayFormatter(DisplayFormatter):
                 f"[green]   Monitor live logs:[/green] [white]pm logs {target} --f[/white]"
             )
 
-        # Universal actions
-        console.print(
-            f"[green]   Diagnose the issue:[/green] [white]pm diagnose {target}[/white]"
-        )
-        console.print(
-            f"[green]   Re-run AI analysis:[/green] [white]pm logs {target}[/white]"
+        # Show common actions in compact format
+        formatter.show_common_actions(
+            target=target,
+            service_name=service_name,
+            categories=["pm_shortcuts", "logs_diagnostics", "troubleshooting"],
+            compact=True,
         )
         console.print()
 
@@ -445,7 +434,7 @@ class InteractiveAnalysisHandler:
         """Start interactive AI analysis session"""
         console.print("\n[bold green]Interactive AI Analysis[/bold green]")
         console.print(
-            "[yellow]Ask follow-up questions about the analysis. Press Enter with empty input to exit.[/yellow]"
+            "[bright_yellow]Ask follow-up questions about the analysis. Press Enter with empty input to exit.[/bright_yellow]"
         )
 
         while True:

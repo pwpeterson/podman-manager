@@ -521,20 +521,9 @@ class ReinitManager:
 
     def _show_next_steps(self, target: str) -> None:
         """Show optional next steps after successful reinit"""
-        console.print("[green]Optional actions:[/green]")
-        console.print(
-            f"  [green] View detailed logs:[/green] [white]pm logs {target}[/white]"
-        )
-        console.print(
-            f"     [green]View service logs:[/green] [white]journalctl --user -u {target}.service -n 100[/white]"
-        )
-        console.print(
-            f"  [green] Diagnose the issue:[/green] [white]pm diagnose {target}[/white]"
-        )
-        console.print(
-            f"[green] Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
-        )
-        console.print()
+        from operations.common_actions import show_essential_actions
+
+        show_essential_actions(target)
 
     def _filter_error_warning_lines(self, stdout: str, stderr: str) -> str:
         """Filter output to extract only lines containing errors or warnings."""
