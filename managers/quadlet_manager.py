@@ -1040,6 +1040,14 @@ class QuadletManager:
         elif service_name == "CANCELLED":
             return False
 
+        # Handle stack targets by delegating to stack manager
+        if service_name.startswith("STACK:"):
+            from managers.stack_manager import StackManager
+
+            stack_manager = StackManager(self)
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            return stack_manager._start_stack(stack_name.replace("-stack", ""))
+
         cmd = ["systemctl", "--user", "start", service_name]
         result = self._run_systemctl_command(cmd, f"start_{target}")
 
@@ -1081,6 +1089,14 @@ class QuadletManager:
             return False
         elif service_name == "CANCELLED":
             return False
+
+        # Handle stack targets by delegating to stack manager
+        if service_name.startswith("STACK:"):
+            from managers.stack_manager import StackManager
+
+            stack_manager = StackManager(self)
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            return stack_manager.down(stack_name)
 
         # First try normal stop
         cmd = ["systemctl", "--user", "stop", service_name]
@@ -1264,6 +1280,14 @@ class QuadletManager:
         elif service_name == "CANCELLED":
             return False
 
+        # Handle stack targets by delegating to stack manager
+        if service_name.startswith("STACK:"):
+            from managers.stack_manager import StackManager
+
+            stack_manager = StackManager(self)
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            return stack_manager._restart_stack(stack_name.replace("-stack", ""))
+
         cmd = ["systemctl", "--user", "restart", service_name]
         result = self._run_systemctl_command(
             cmd, f"restart_{target}", suppress_errors=True
@@ -1293,6 +1317,14 @@ class QuadletManager:
         elif service_name == "CANCELLED":
             return False
 
+        # Handle stack targets by delegating to stack manager
+        if service_name.startswith("STACK:"):
+            from managers.stack_manager import StackManager
+
+            stack_manager = StackManager(self)
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            return stack_manager._enable_stack(stack_name.replace("-stack", ""))
+
         cmd = ["systemctl", "--user", "enable", service_name]
         result = self._run_systemctl_command(cmd, f"enable_{target}")
 
@@ -1320,6 +1352,14 @@ class QuadletManager:
             return False
         elif service_name == "CANCELLED":
             return False
+
+        # Handle stack targets by delegating to stack manager
+        if service_name.startswith("STACK:"):
+            from managers.stack_manager import StackManager
+
+            stack_manager = StackManager(self)
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            return stack_manager._disable_stack(stack_name.replace("-stack", ""))
 
         cmd = ["systemctl", "--user", "disable", service_name]
         result = self._run_systemctl_command(cmd, f"disable_{target}")

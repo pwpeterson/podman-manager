@@ -963,8 +963,24 @@ class FileManager:
             if not any(f.endswith(ext) for ext in [".container", ".network", ".volume"])
         ]
 
-        # Process files in order: containers, networks, volumes, others
-        all_files_ordered = container_files + network_files + volume_files + other_files
+        # Check for network dependencies in container files and show message if networks will be processed
+        network_dependencies = self._get_network_dependencies_from_containers(
+            stack_dir, container_files
+        )
+        if network_files or network_dependencies:
+            if network_files:
+                console.print("[green]Copying share networks to systemd[/green]")
+                if not is_verbose():
+                    console.print()
+            if network_dependencies and not network_files:
+                console.print(
+                    "[green]Network dependencies detected in container files[/green]"
+                )
+                if not is_verbose():
+                    console.print()
+
+        # Process files in order: networks first (volumes may depend on them), then containers, volumes, others
+        all_files_ordered = network_files + container_files + volume_files + other_files
 
         for file in all_files_ordered:
             if file.endswith(".container"):
@@ -975,17 +991,12 @@ class FileManager:
                 if not is_verbose():
                     console.print()
             elif file.endswith(".network"):
-                # Extract stack name from network file for consistent messaging
-                stack_name = self._extract_stack_name_from_network_file(file)
-                console.print(
-                    f"[green]Copying {stack_name} networks to systemd[/green]"
-                )
-                if not is_verbose():
-                    console.print()
+                # Network files are processed but message is shown once at the beginning
+                pass
             elif file.endswith(".volume"):
                 service_name = self._extract_service_name_from_file(file)
                 console.print(
-                    f"[green]Copying {service_name} volumes to systemd[/green]"
+                    f"[green]Copying {service_name} volumes & shared networks to systemd[/green]"
                 )
                 if not is_verbose():
                     console.print()
@@ -994,7 +1005,14 @@ class FileManager:
                 if not is_verbose():
                     console.print()
 
-            source_file = stack_dir / file
+            # Determine source file location - shared network files are in root directory
+            if file.endswith(".network") and not (stack_dir / file).exists():
+                # This is a shared network file in the root quadlets directory
+                source_file = stack_dir.parent / file
+            else:
+                # Regular file in the stack directory
+                source_file = stack_dir / file
+
             target_file = target_dir / file
 
             # Copy the file
@@ -1101,6 +1119,34 @@ class FileManager:
 
         return base_name
 
+    def _get_network_dependencies_from_containers(
+        self, stack_dir: Path, container_files: List[str]
+    ) -> List[str]:
+        """Get network dependencies from container files."""
+        networks = []
+
+        for container_file in container_files:
+            try:
+                container_path = stack_dir / container_file
+                if container_path.exists():
+                    with open(container_path, "r") as f:
+                        content = f.read()
+
+                    # Look for Network= lines
+                    for line in content.split("\n"):
+                        line = line.strip()
+                        if line.startswith("Network="):
+                            network_name = line.split("=", 1)[1].strip()
+                            if network_name and network_name not in networks:
+                                networks.append(network_name)
+
+            except Exception as e:
+                verbose_print(
+                    f"[yellow]Warning: Could not parse {container_file}: {e}[/yellow]"
+                )
+
+        return networks
+
     def _extract_stack_name_from_network_file(self, file: str) -> str:
         """Extract stack name from network file for consistent messaging."""
         # Remove .network extension
@@ -1183,7 +1229,7 @@ class QuadletInstaller:
         return False
 
     def get_stack_files(self, stack_name: str) -> List[str]:
-        """Get quadlet files for a stack."""
+        """Get quadlet files for a stack, including shared network files."""
         stack_dir = self.quadlet_base_dir / stack_name
         if not stack_dir.exists():
             return []
@@ -1194,7 +1240,35 @@ class QuadletInstaller:
             for file in stack_dir.glob(f"*{ext}"):
                 if not file.name.endswith(".disabled"):
                     files.append(file.name)
+
+        # Add shared network files from root quadlets directory
+        # These are network files that are shared across multiple stacks
+        shared_network_files = self._get_shared_network_files_for_stack(stack_name)
+        files.extend(shared_network_files)
+
         return sorted(files)
+
+    def _get_shared_network_files_for_stack(self, stack_name: str) -> List[str]:
+        """Get shared network files that should be included for a specific stack."""
+        shared_networks = []
+
+        # Map stack names to their corresponding shared network files
+        stack_network_mapping = {
+            "local-ai-stack": ["local-ai-network.network"],
+            "supabase-stack": ["supabase-network.network"],
+            # Add more mappings as needed for other stacks
+        }
+
+        # Get the network files for this stack
+        network_files = stack_network_mapping.get(stack_name, [])
+
+        # Verify the files actually exist in the root quadlets directory
+        for network_file in network_files:
+            network_path = self.quadlet_base_dir / network_file
+            if network_path.exists() and not network_file.endswith(".disabled"):
+                shared_networks.append(network_file)
+
+        return shared_networks
 
     def get_service_names(self, stack_name: str) -> List[str]:
         """Get service names from quadlet files."""

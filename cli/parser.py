@@ -25,11 +25,11 @@ class CustomArgumentParser(argparse.ArgumentParser):
                     break
 
         # Determine if this is a stack-only or service command
-        stack_only_commands = ["down", "uninstall"]
+        stack_only_commands = ["down", "remove", "uninstall"]
         service_commands = [
             "logs",
             "exec",
-            "diagnose",
+            "diag",
             "reset-failed",
             "show-service-file",
             "build",
@@ -392,6 +392,21 @@ def _add_lifecycle_commands(subparsers):
         help="Show detailed command execution (exec lines)",
     )
 
+    # Remove command
+    remove_parser = subparsers.add_parser(
+        "remove",
+        help="Stop systemd services and remove podman containers for stack or service",
+    )
+    remove_parser.add_argument(
+        "target", help="Stack or service name (e.g., supabase-stack, vllm-qwen25)"
+    )
+    remove_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
     # Down command
     down_parser = subparsers.add_parser("down", help="Stop all services in stack")
     down_parser.add_argument(
@@ -574,12 +589,56 @@ def _add_image_commands(subparsers):
         help="Show detailed command execution (exec lines)",
     )
 
+    # Volume management commands
+    copy_volumes_parser = subparsers.add_parser(
+        "copy-volumes",
+        help="Copy volumes from source stack to target stack, including share networks",
+    )
+    copy_volumes_parser.add_argument(
+        "source_stack", help="Source stack name to copy volumes from"
+    )
+    copy_volumes_parser.add_argument(
+        "target_stack", help="Target stack name to copy volumes to"
+    )
+    copy_volumes_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    list_volumes_parser = subparsers.add_parser(
+        "list-volumes", help="List volumes and networks for a stack"
+    )
+    list_volumes_parser.add_argument(
+        "target", help="Stack name to list volumes and networks for"
+    )
+    list_volumes_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    cleanup_volumes_parser = subparsers.add_parser(
+        "cleanup-volumes", help="Clean up orphaned volumes for a stack"
+    )
+    cleanup_volumes_parser.add_argument(
+        "target", help="Stack name to clean up orphaned volumes for"
+    )
+    cleanup_volumes_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
 
 def _add_resource_commands(subparsers):
     """Add resource and log commands"""
     # Logs command
     logs_parser = subparsers.add_parser(
-        "logs", help="Show service logs with automatic AI analysis on errors"
+        "logs", help="Diagnose container startup failures"
     )
     logs_parser.add_argument("target", help="Stack or service name")
     logs_parser.add_argument(
@@ -599,12 +658,12 @@ def _add_resource_commands(subparsers):
         help="AI agent for analysis (default: qwen25)",
     )
 
-    # Diagnose command
-    diagnose_parser = subparsers.add_parser(
-        "diagnose", help="Diagnose container startup failures"
+    # Diag command (renamed from diagnose)
+    diag_parser = subparsers.add_parser(
+        "diag", help="Show service logs with automatic AI analysis on errors"
     )
-    diagnose_parser.add_argument("target", help="Service name to diagnose")
-    diagnose_parser.add_argument(
+    diag_parser.add_argument("target", help="Service name to diagnose")
+    diag_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",

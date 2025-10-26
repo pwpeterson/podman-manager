@@ -89,6 +89,11 @@ def show_rich_help():
                     "pm down vllm-stack",
                 ),
                 (
+                    "remove [cyan]<stack|service>[/cyan]",
+                    "Stop systemd services and remove podman containers",
+                    "pm remove supabase-stack",
+                ),
+                (
                     "restart [cyan]<stack|service>[/cyan] [-b]",
                     "Restart stack or service",
                     "pm restart vllm-proxy -b",
@@ -150,13 +155,13 @@ def show_rich_help():
                 ("networks", "List networks", "pm networks"),
                 (
                     "logs [cyan]<stack|service>[/cyan]",
-                    "Show service logs with automatic AI analysis on errors",
-                    "pm logs vllm-qwen25",
+                    "Diagnose container startup failures",
+                    "pm logs vllm-delegator",
                 ),
                 (
-                    "diagnose [cyan]<service>[/cyan]",
-                    "Diagnose container startup failures",
-                    "pm diagnose vllm-delegator",
+                    "diag [cyan]<service>[/cyan]",
+                    "Show service logs with automatic AI analysis on errors",
+                    "pm diag vllm-qwen25",
                 ),
                 (
                     "exec [cyan]<service>[/cyan] COMMAND",

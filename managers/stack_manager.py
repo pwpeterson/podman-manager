@@ -44,6 +44,9 @@ class StackManager:
 
         # For quadlet mode, we primarily work with the vllm-stack
         if target in ["vllm-stack", "stack", "vllm"]:
+            console.print()
+            console.print("[green]Stopping and removing vllm-stack...[/green]")
+
             # Try to stop the stack target first (suppress errors since it may not exist)
             service_name = self.manager._find_service_name("vllm-stack")
             if service_name:
@@ -83,7 +86,8 @@ class StackManager:
             console.print(f"[red]No services found for {project} stack[/red]")
             return False
 
-        console.print(f"[green]Stopping {project}-stack...[/green]")
+        console.print()
+        console.print(f"[green]Stopping and removing {project}-stack...[/green]")
 
         success = True
         stopped_services = []
@@ -967,15 +971,15 @@ class StackManager:
         """Show optional next steps for the stack"""
         console.print("[green]Optional:[/green]")
         console.print(
-            f"[green] Check service status:[/green] [white]pm status {project}[/white]"
+            f"[green] Check emojie service status:[/green] [white]pm status {project}[/white]"
         )
         console.print(
-            f"  [green] View detailed logs:[/green] [white]pm logs {project}[/white]"
+            f"    [green] View detailed logs:[/green] [white]pm logs {project}[/white]"
         )
         console.print(
             f"  [green] Diagnose the issue:[/green] [white]pm diagnose {project}[/white]"
         )
         console.print(
-            f"  [green] Reset failed state:[/green] [white]pm reset-failed {project}[/white]"
+            f"[green] Reset failed state:[/green] [white]pm reset-failed {project}[/white]"
         )
         console.print()

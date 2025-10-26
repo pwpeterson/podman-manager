@@ -38,19 +38,19 @@ class ReinitManager:
         # PRIORITY 1: Check for stack names first (before trying service name resolution)
         # Handle legacy stack targets
         if target in ["vllm", "vllm-stack", "stack"]:
-            from stack_manager import StackManager
+            from managers.stack_manager import StackManager
 
             stack_mgr = StackManager(self.manager)
             return stack_mgr.reinit_stack("vllm", build_type=build_type)
         elif target == "taskflow-stack":
-            from stack_manager import StackManager
+            from managers.stack_manager import StackManager
 
             stack_mgr = StackManager(self.manager)
             return stack_mgr.reinit_stack("taskflow", build_type=build_type)
         elif target.endswith("-stack"):
             # Generic stack target
             project_name = target[:-6]  # Remove "-stack" suffix
-            from stack_manager import StackManager
+            from managers.stack_manager import StackManager
 
             stack_mgr = StackManager(self.manager)
             return stack_mgr.reinit_stack(project_name, build_type=build_type)
@@ -62,7 +62,7 @@ class ReinitManager:
             hasattr(self.manager, "stack_services")
             and stack_variant in self.manager.stack_services
         ):
-            from stack_manager import StackManager
+            from managers.stack_manager import StackManager
 
             stack_mgr = StackManager(self.manager)
             return stack_mgr.reinit_stack(target, build_type=build_type)
@@ -83,7 +83,7 @@ class ReinitManager:
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
             stack_name = service_name[6:]  # Remove "STACK:" prefix
-            from stack_manager import StackManager
+            from managers.stack_manager import StackManager
 
             stack_mgr = StackManager(self.manager)
             return stack_mgr.reinit_stack(stack_name, build_type=build_type)

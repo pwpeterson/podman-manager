@@ -61,6 +61,31 @@ class ServiceLifecycle:
 
         return self.manager.stop_service(target)
 
+    def remove(self, target: str) -> bool:
+        """Stop and remove a service or stack"""
+        # PRIORITY 1: Check for stack names first
+        if target.endswith("-stack"):
+            project_name = target[:-6]  # Remove "-stack" suffix
+            return self._remove_stack(project_name)
+
+        # PRIORITY 2: Check if target might be a stack name without -stack suffix
+        stack_variant = f"{target}-stack"
+        if (
+            hasattr(self.manager, "stack_services")
+            and stack_variant in self.manager.stack_services
+        ):
+            return self._remove_stack(target)
+
+        # PRIORITY 3: Try service name resolution
+        service_name = self.manager._find_service_name(target, "remove")
+
+        # Handle stack operations (STACK: prefix)
+        if service_name and service_name.startswith("STACK:"):
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            return self._remove_stack(stack_name)
+
+        return self._remove_service(target)
+
     def restart(self, target: str, build: bool = False) -> bool:
         """Restart a service or stack"""
         # Clear cache at the start of the operation
@@ -103,7 +128,9 @@ class ServiceLifecycle:
 
             # Show restarting message and call systemctl restart directly since we already resolved the service name
             console.print()
-            console.print(f"[green]Restarting {target}...[/green]")
+            console.print(
+                f"[green]Restarting {service_name.replace('.service', '')}...[/green]"
+            )
             verbose_print(
                 f"  [cyan]exec: systemctl --user restart {service_name}[/cyan]"
             )
@@ -537,3 +564,110 @@ class ServiceLifecycle:
         except Exception:
             # Silently handle AI analysis failures
             pass
+
+    def _remove_stack(self, project: str) -> bool:
+        """Stop and remove all services in a project stack"""
+        services = self._get_stack_services(project)
+        if not services:
+            console.print(f"[red]No services found for {project} stack[/red]")
+            return False
+
+        console.print()
+        console.print(f"[green]Stopping and removing {project}-stack...[/green]")
+
+        success = True
+        removed_services = []
+        failed_services = []
+
+        for service in services:
+            console.print(f"  Stopping and removing {service}...")
+            if self._remove_service(service, quiet=True):
+                removed_services.append(service)
+            else:
+                failed_services.append(service)
+                success = False
+
+        if success:
+            console.print(
+                f"[green]Successfully removed {project} stack ({len(removed_services)} services)[/green]"
+            )
+        else:
+            if removed_services:
+                console.print(
+                    f"[yellow]Partially removed {project} stack: {len(removed_services)} succeeded, {len(failed_services)} failed[/yellow]"
+                )
+                console.print(f"[dim]  Removed: {', '.join(removed_services)}[/dim]")
+                console.print(f"[dim]  Failed: {', '.join(failed_services)}[/dim]")
+            else:
+                console.print(
+                    f"[yellow]No services in {project} stack could be removed[/yellow]"
+                )
+        return success
+
+    def _remove_service(self, target: str, quiet: bool = False) -> bool:
+        """Stop and remove a single service"""
+        if not quiet:
+            console.print()
+            console.print(f"[green]Stopping and removing {target}...[/green]")
+            console.print()
+
+        # First stop the service
+        if not self.manager.stop_service(target, force=True, quiet=quiet):
+            if not quiet:
+                console.print(f"[yellow]Warning: Could not stop {target}[/yellow]")
+
+        # Get the service name for container operations
+        service_name = self.manager._find_service_name(target, "remove")
+        if not service_name or service_name.startswith("STACK:"):
+            if not quiet:
+                console.print(f"[red]Could not resolve service name for {target}[/red]")
+            return False
+
+        # Extract container name (remove .service suffix if present)
+        container_name = (
+            service_name.replace(".service", "")
+            if service_name.endswith(".service")
+            else service_name
+        )
+
+        # Try to remove the container
+        try:
+            import subprocess
+
+            # First try to stop the container if it's still running
+            stop_cmd = ["podman", "stop", container_name]
+            subprocess.run(stop_cmd, capture_output=True, text=True, timeout=10)
+
+            # Remove the container
+            remove_cmd = ["podman", "rm", "-f", container_name]
+            result = subprocess.run(
+                remove_cmd, capture_output=True, text=True, timeout=10
+            )
+
+            if result.returncode == 0:
+                if not quiet:
+                    console.print(f"[green]Removed container {container_name}[/green]")
+                return True
+            else:
+                if not quiet:
+                    # Only show error if container actually exists
+                    if "no such container" not in result.stderr.lower():
+                        console.print(
+                            f"[yellow]Could not remove container {container_name}: {result.stderr.strip()}[/yellow]"
+                        )
+                    else:
+                        console.print(
+                            f"[green]Container {container_name} already removed[/green]"
+                        )
+                return True  # Consider it success if container doesn't exist
+
+        except subprocess.TimeoutExpired:
+            if not quiet:
+                console.print(f"[red]Timeout removing container {container_name}[/red]")
+            return False
+        except Exception as e:
+            if not quiet:
+                console.print(
+                    f"[red]Error removing container {container_name}: {e}[/red]"
+                )
+            return False

@@ -10,6 +10,7 @@ from managers.service_lifecycle import ServiceLifecycle
 from managers.stack_manager import StackManager
 from operations.container_builder import ContainerBuilder
 from operations.system_monitor import SystemMonitor
+from operations.volume_manager import VolumeNetworkManager
 
 
 class QuadletOperations:
@@ -37,6 +38,7 @@ class QuadletOperations:
         self.stack_manager = StackManager(manager)
         self.system_monitor = SystemMonitor(manager)
         self.reinit_manager = ReinitManager(manager)
+        self.volume_manager = VolumeNetworkManager(manager)
 
     def _resolve_service_name(
         self, target: str, strip_service_suffix: bool = False
@@ -70,6 +72,10 @@ class QuadletOperations:
     def stop(self, target: str) -> bool:
         """Stop a service or stack"""
         return self.service_lifecycle.stop(target)
+
+    def remove(self, target: str) -> bool:
+        """Stop and remove a service or stack"""
+        return self.service_lifecycle.remove(target)
 
     def restart(self, target: str, build: bool = False) -> bool:
         """Restart a service or stack"""
@@ -211,6 +217,19 @@ class QuadletOperations:
     def system_info(self) -> None:
         """Display comprehensive system information"""
         self.system_monitor.system_info()
+
+    # Volume and Network Management Operations
+    def copy_stack_volumes(self, source_stack: str, target_stack: str) -> bool:
+        """Copy all volumes from source stack to target stack, including share networks"""
+        return self.volume_manager.copy_stack_volumes(source_stack, target_stack)
+
+    def list_stack_volumes_and_networks(self, stack_name: str) -> None:
+        """List all volumes and networks for a stack"""
+        self.volume_manager.list_stack_volumes_and_networks(stack_name)
+
+    def cleanup_orphaned_volumes(self, stack_name: str) -> bool:
+        """Clean up volumes that are no longer used by any containers in the stack"""
+        return self.volume_manager.cleanup_orphaned_volumes(stack_name)
 
     # Complex Reinit Operations
     def reinit(

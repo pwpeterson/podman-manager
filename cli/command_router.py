@@ -3,6 +3,7 @@
 Command routing and execution logic
 """
 
+import re
 import subprocess
 
 from rich.table import Table
@@ -254,8 +255,8 @@ class CommandRouter:
         # Resource commands
         elif command == "logs":
             return self._handle_logs(args)
-        elif command == "diagnose":
-            return self._handle_diagnose(args)
+        elif command == "diag":
+            return self._handle_diag(args)
         elif command == "exec":
             return self._handle_exec(args)
         elif command == "volumes":
@@ -276,6 +277,8 @@ class CommandRouter:
             return self._handle_start(args)
         elif command == "stop":
             return self._handle_stop(args)
+        elif command == "remove":
+            return self._handle_remove(args)
         elif command == "down":
             return self._handle_down(args)
         elif command == "restart":
@@ -304,6 +307,12 @@ class CommandRouter:
             return self._handle_refresh(args)
         elif command == "fix-supabase-env":
             return self._handle_fix_supabase_env(args)
+        elif command == "copy-volumes":
+            return self._handle_copy_volumes(args)
+        elif command == "list-volumes":
+            return self._handle_list_volumes(args)
+        elif command == "cleanup-volumes":
+            return self._handle_cleanup_volumes(args)
 
         else:
             console.print(f"[red]Unknown command: {command}[/red]")
@@ -476,7 +485,126 @@ class CommandRouter:
         return True
 
     # Resource command handlers
+    def _strip_ansi_colors(self, text: str) -> str:
+        """Remove ANSI color codes from text using multiple patterns"""
+        # Remove all ANSI escape sequences
+        # Pattern 1: Standard ANSI escape sequences
+        text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
+        # Pattern 2: More specific color codes
+        text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+        # Pattern 3: Cursor and other control sequences
+        text = re.sub(r"\x1b\[[0-9;]*[ABCDEFGHIJKLMNOPQRSTUVWXYZ]", "", text)
+        # Pattern 4: Alternative format
+        text = re.sub(r"\033\[[0-9;]*[a-zA-Z]", "", text)
+        # Pattern 5: Remove any remaining escape sequences
+        text = re.sub(r"\x1b\[.*?[a-zA-Z]", "", text)
+        return text
+
     def _handle_logs(self, args):
+        # Display comprehensive logs using multiple commands
+        target = args.target
+
+        # Resolve service name for commands
+        service_name = self.manager._find_service_name(target)
+        if not service_name:
+            console.print(f"[red]Service '{target}' not found[/red]")
+            return False
+
+        # Extract short container name for podman command
+        container_name = (
+            service_name.replace(".service", "")
+            if service_name.endswith(".service")
+            else service_name
+        )
+        # Further shorten the name by extracting the last part after the last dash
+        # e.g., 'local-ai-open-webui' -> 'open-webui'
+        if "-" in container_name:
+            parts = container_name.split("-")
+            if len(parts) > 2:  # Only shorten if there are multiple parts
+                container_name = "-".join(parts[-2:])  # Take last 2 parts
+
+        # Commands to run with their descriptions - using shell=True to force plain text
+        commands = [
+            {
+                "name": "Podman Container Logs",
+                "cmd": f"podman logs {container_name} 2>&1 | cat",
+                "description": f"podman logs {container_name}",
+                "shell": True,
+            },
+            {
+                "name": "Systemd Service Status",
+                "cmd": f"SYSTEMD_COLORS=0 systemctl --user status {service_name} --no-pager -l --plain --no-legend 2>&1 | cat",
+                "description": f"systemctl --user status {service_name} --no-pager -l --plain --no-legend",
+                "shell": True,
+            },
+            {
+                "name": "Systemd Service Logs",
+                "cmd": f"journalctl --user -u {service_name} -n 100 --no-pager --no-hostname --output=short-precise 2>&1 | cat",
+                "description": f"journalctl --user -u {service_name} -n 100 --no-pager --no-hostname --output=short-precise",
+                "shell": True,
+            },
+        ]
+
+        # Execute each command and display results
+        for cmd_info in commands:
+            console.print(f"\n[bold green]{cmd_info['name']}[/bold green]")
+            console.print(f"[cyan]Command: {cmd_info['description']}[/cyan]")
+            console.print("─" * 80)
+
+            try:
+                # Set environment to disable colors
+                import os
+
+                env = os.environ.copy()
+                env["NO_COLOR"] = "1"
+                env["SYSTEMD_COLORS"] = "0"
+                env["TERM"] = "dumb"  # Force non-interactive terminal
+                env["COLORTERM"] = ""  # Disable color terminal detection
+
+                if cmd_info.get("shell", False):
+                    result = subprocess.run(
+                        cmd_info["cmd"],
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        env=env,
+                    )
+                else:
+                    result = subprocess.run(
+                        cmd_info["cmd"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        env=env,
+                    )
+
+                if result.returncode == 0:
+                    if result.stdout.strip():
+                        # Strip ANSI color codes before displaying
+                        clean_output = self._strip_ansi_colors(result.stdout)
+                        console.print(clean_output, markup=False)
+                    else:
+                        console.print("[dim]No output[/dim]")
+                else:
+                    console.print(
+                        f"[red]Command failed (exit code {result.returncode})[/red]"
+                    )
+                    if result.stderr:
+                        clean_error = self._strip_ansi_colors(result.stderr.strip())
+                        console.print(f"[red]Error: {clean_error}[/red]")
+
+            except subprocess.TimeoutExpired:
+                console.print("[red]Command timed out after 30 seconds[/red]")
+            except FileNotFoundError:
+                console.print(f"[red]Command not found: {cmd_info['cmd'][0]}[/red]")
+            except Exception as e:
+                console.print(f"[red]Error running command: {e}[/red]")
+
+        return True
+
+    def _handle_diag(self, args):
+        # Perform comprehensive diagnostic analysis with optional AI assistance
         try:
             # Store AI agent from command-specific argument if provided, otherwise use global
             ai_agent = getattr(args, "ai_agent", None) or self.ai_agent
@@ -485,7 +613,7 @@ class CommandRouter:
             if ai_agent:
                 console.print()
                 console.print(
-                    f"[green]Performing AI log analysis with {ai_agent}...[/green]"
+                    f"[green]Performing AI diagnostic analysis with {ai_agent}...[/green]"
                 )
 
                 # Initialize AI analyzer with manager if not already done
@@ -495,52 +623,48 @@ class CommandRouter:
                 # Resolve AI agent name
                 resolved_ai_agent = self._resolve_ai_agent_name(ai_agent)
 
-                # Trigger AI analysis directly for logs
+                # Trigger AI analysis for diagnostics
                 from core.config import _verbose_enabled
 
                 result = ai_analyzer.ai_analyze(
                     analysis_type="logs",
                     target=args.target,
-                    context_data={"lines": 100},  # Use 100 lines as requested
+                    context_data={"lines": 100},  # Use 100 lines for analysis
                     ai_agent=resolved_ai_agent,
                     verbose=_verbose_enabled or getattr(args, "verbose", False),
                 )
 
                 if result:
-                    console.print("[green]AI log analysis completed.[/green]")
+                    console.print("[green]AI diagnostic analysis completed.[/green]")
                     console.print()
                 else:
                     console.print(
                         "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
                     )
             else:
-                # Show logs normally without AI analysis
-                self.container_ops.show_logs(args.target, follow=args.follow)
+                # Perform container failure diagnosis
+                self.container_ops.diagnose_container_failure(args.target)
 
             return True
         except Exception as e:
-            console.print(f"[red]Error showing logs: {e}[/red]")
+            console.print(f"[red]Error in diagnostic command: {e}[/red]")
 
             # Use command-specific AI agent if provided, otherwise fall back to global
             ai_agent = getattr(args, "ai_agent", None) or self.ai_agent
 
-            # Trigger automatic AI analysis for log viewing errors
+            # Trigger automatic AI analysis for diagnostic errors
             self._trigger_automatic_ai_analysis(
-                "logs",
+                "diag",
                 args.target,
                 {
-                    "operation": "show_logs",
+                    "operation": "diagnose_container_failure",
                     "exception": str(e),
-                    "follow": args.follow,
+                    "follow": getattr(args, "follow", False),
                 },
                 ai_agent=ai_agent,
             )
 
             return False
-
-    def _handle_diagnose(self, args):
-        self.container_ops.diagnose_container_failure(args.target)
-        return True
 
     def _handle_exec(self, args):
         self.container_ops.exec_command(args.target, args.cmd)
@@ -594,6 +718,10 @@ class CommandRouter:
     def _handle_stop(self, args):
         self.handle_command_verbose(args)
         return self.try_with_fallback(self.container_ops.stop, args.target)
+
+    def _handle_remove(self, args):
+        self.handle_command_verbose(args)
+        return self.try_with_fallback(self.container_ops.remove, args.target)
 
     def _handle_down(self, args):
         self.handle_command_verbose(args)
@@ -728,3 +856,23 @@ class CommandRouter:
         except Exception as e:
             console.print(f"[red]Error displaying colors: {e}[/red]")
             return False
+
+    def _handle_copy_volumes(self, args):
+        """Copy volumes from source stack to target stack, including share networks"""
+        self.handle_command_verbose(args)
+        return self.try_with_fallback(
+            self.container_ops.copy_stack_volumes, args.source_stack, args.target_stack
+        )
+
+    def _handle_list_volumes(self, args):
+        """List volumes and networks for a stack"""
+        self.handle_command_verbose(args)
+        self.container_ops.list_stack_volumes_and_networks(args.target)
+        return True
+
+    def _handle_cleanup_volumes(self, args):
+        """Clean up orphaned volumes for a stack"""
+        self.handle_command_verbose(args)
+        return self.try_with_fallback(
+            self.container_ops.cleanup_orphaned_volumes, args.target
+        )
