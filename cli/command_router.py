@@ -10,6 +10,7 @@ from rich.table import Table
 
 from ai_analyzer import ai_analyzer
 from core.config import console, set_verbose
+from operations.common_actions import CommonActionsFormatter
 from utils.supabase_fixer import fix_supabase_environment_variables
 
 
@@ -25,6 +26,9 @@ class CommandRouter:
         self.selected_mode = "quadlet"  # Always quadlet mode
         self.detector = detector  # Keep for compatibility but not used
         self.ai_agent = None  # Store AI agent selection
+        self.common_actions = (
+            CommonActionsFormatter()
+        )  # Initialize common actions formatter
 
     def handle_command_verbose(self, args):
         """Handle command-specific verbose flags"""
@@ -162,6 +166,65 @@ class CommandRouter:
         except Exception as e:
             console.print(f"[red]AI analysis failed: {e}[/red]")
 
+    def _show_common_actions_for_command(self, command_type: str, target: str):
+        """Show common actions after successful command completion"""
+        try:
+            # Resolve service name for placeholder substitution
+            service_name = self.manager._find_service_name(target)
+            if not service_name:
+                service_name = f"{target}.service"
+
+            # Extract container name from service name
+            container_name = (
+                service_name.replace(".service", "")
+                if service_name.endswith(".service")
+                else service_name
+            )
+
+            # Show essential actions based on command type
+            if command_type in [
+                "install",
+                "start",
+                "restart",
+                "enable",
+                "build",
+                "reinit",
+            ]:
+                self.common_actions.show_common_actions(
+                    target=target,
+                    service_name=service_name,
+                    container_name=container_name,
+                    categories=["pm_shortcuts", "service_status", "logs_diagnostics"],
+                    compact=True,
+                )
+            elif command_type in ["stop", "disable", "reset", "uninstall"]:
+                # For stop/disable commands, show different essential actions
+                self.common_actions.show_common_actions(
+                    target=target,
+                    service_name=service_name,
+                    container_name=container_name,
+                    categories=[
+                        "service_status",
+                        "logs_diagnostics",
+                        "troubleshooting",
+                    ],
+                    compact=True,
+                )
+            else:
+                # Default essential actions for other commands
+                self.common_actions.show_common_actions(
+                    target=target,
+                    service_name=service_name,
+                    container_name=container_name,
+                    categories=["pm_shortcuts", "service_status", "logs_diagnostics"],
+                    compact=True,
+                )
+        except Exception as e:
+            # Don't let common actions display errors break the main command
+            console.print(
+                f"[dim]Note: Could not display additional actions ({e})[/dim]"
+            )
+
     def try_with_fallback(self, operation_func, *operation_args, **operation_kwargs):
         """Execute operation in quadlet mode with AI analysis on Podman errors"""
         target = operation_kwargs.get(
@@ -187,6 +250,18 @@ class CommandRouter:
                 command_type = "build"
             elif "stop" in method_name:
                 command_type = "stop"
+            elif "install" in method_name:
+                command_type = "install"
+            elif "uninstall" in method_name:
+                command_type = "uninstall"
+            elif "enable" in method_name:
+                command_type = "enable"
+            elif "disable" in method_name:
+                command_type = "disable"
+            elif "reset" in method_name:
+                command_type = "reset"
+            elif "update" in method_name:
+                command_type = "update"
 
         try:
             result = operation_func(*operation_args, **operation_kwargs)
@@ -203,6 +278,11 @@ class CommandRouter:
                     },
                     ai_agent=self.ai_agent,
                 )
+            elif result is True or (
+                hasattr(result, "returncode") and result.returncode == 0
+            ):
+                # Operation was successful, show common actions
+                self._show_common_actions_for_command(command_type, target)
 
             return result
         except Exception as e:
@@ -600,6 +680,8 @@ class CommandRouter:
             except Exception as e:
                 console.print(f"[red]Error running command: {e}[/red]")
 
+        # Show common actions after successful logs display
+        self._show_common_actions_for_command("logs", args.target)
         return True
 
     def _handle_diag(self, args):
@@ -655,6 +737,8 @@ class CommandRouter:
                 # Perform container failure diagnosis
                 self.container_ops.diagnose_container_failure(args.target)
 
+            # Show common actions after successful diagnosis
+            self._show_common_actions_for_command("diag", args.target)
             return True
         except Exception as e:
             console.print(f"[red]Error in diagnostic command: {e}[/red]")
@@ -691,7 +775,12 @@ class CommandRouter:
     def _handle_prune(self, args):
         enhanced = not getattr(args, "basic", False)
         quick = getattr(args, "quick", False)
-        self.container_ops.prune(enhanced=enhanced, quick=quick)
+        result = self.container_ops.prune(enhanced=enhanced, quick=quick)
+
+        # Show common actions after successful prune
+        if result is not False:
+            self._show_common_actions_for_command("prune", "system")
+
         return True
 
     def _handle_system_df(self, args):
