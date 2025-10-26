@@ -118,7 +118,7 @@ class MarkdownDisplayFormatter(DisplayFormatter):
 
             # Handle content inside code blocks
             if in_code_block:
-                console.print(f"    [cyan]{line}[/cyan]")
+                console.print(f"    {line}", style="cyan")
                 continue
 
             # Handle numbered lists (1. item)
@@ -144,7 +144,7 @@ class MarkdownDisplayFormatter(DisplayFormatter):
             if self._is_long_command_line(line):
                 formatted_command = self._format_long_command_line(line)
                 for cmd_line in formatted_command:
-                    console.print(f"    [cyan]{cmd_line}[/cyan]")
+                    console.print(f"    {cmd_line}", style="cyan")
                 continue
 
             # Regular text - wrap at 120 characters with indentation
