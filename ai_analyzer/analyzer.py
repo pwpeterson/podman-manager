@@ -108,7 +108,9 @@ class AIAnalyzer:
                 console.print()
 
             # Show AI analysis start message for both verbose and non-verbose
-            console.print("[green]Starting AI analysis and diagnostics...[/green]")
+            console.print(
+                "[green]Collecting data for AI analysis and diagnostic...[/green]"
+            )
 
             # Get the actual agent name that will be used
             actual_agent = resolved_agent or ai_agent_manager.default_agent
