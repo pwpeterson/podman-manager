@@ -211,7 +211,7 @@ class CommonActionsFormatter:
                     command_template, target, service_name, container_name, port
                 )
                 console.print(
-                    f"        [green]✓ {label:20}:[/green] [white]{command}[/white]"
+                    f"    [green]✓ {label:20}:[/green] [white]{command}[/white]"
                 )
 
         # Add a newline after all categories are displayed
