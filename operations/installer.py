@@ -1477,55 +1477,23 @@ class QuadletInstaller:
             return False
 
     def _refresh_pm_discovery(self, display_name: str) -> None:
-        """Refresh PM service discovery."""
-        pm_locations = [
-            "/home/pwp/srv/apps/podman_manager/pm",
-            shutil.which("pm"),
-            Path.home() / "srv/apps/podman_manager/pm",
-            "./pm",
-        ]
-
-        pm_script = None
-        for location in pm_locations:
-            if location and Path(location).is_file() and os.access(location, os.X_OK):
-                pm_script = location
-                break
-
-        if pm_script:
-            console.print("[green]Refreshing PM service discovery...[/green]")
-            if not is_verbose():
-                console.print()
-            try:
-                cmd = [str(pm_script), "refresh"]
-                verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
-                if result.returncode == 0:
-                    console.print(
-                        "[green]Restarting podman service to load changes...[/green]"
-                    )
-                    restart_cmd = ["systemctl", "--user", "restart", "podman.service"]
-                    verbose_print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
-                    restart_result = subprocess.run(
-                        restart_cmd, capture_output=True, text=True, timeout=30
-                    )
-
-                    if restart_result.returncode != 0:
-                        console.print(
-                            "[yellow]Failed to restart podman service - you may need to run: systemctl --user restart podman.service[/yellow]"
-                        )
-                else:
-                    console.print(
-                        "[yellow]Failed to refresh PM service discovery (PM may not be available)[/yellow]"
-                    )
-            except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
-                console.print(
-                    f"[yellow]Failed to refresh PM service discovery: {e}[/yellow]"
-                )
-        else:
-            console.print(
-                "[blue]PM not found, skipping service discovery refresh[/blue]"
+        """Restart podman service to load changes (refresh functionality removed)."""
+        console.print("[green]Restarting podman service to load changes...[/green]")
+        if not is_verbose():
+            console.print()
+        try:
+            restart_cmd = ["systemctl", "--user", "restart", "podman.service"]
+            verbose_print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
+            restart_result = subprocess.run(
+                restart_cmd, capture_output=True, text=True, timeout=30
             )
+
+            if restart_result.returncode != 0:
+                console.print(
+                    "[yellow]Failed to restart podman service - you may need to run: systemctl --user restart podman.service[/yellow]"
+                )
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
+            console.print(f"[yellow]Failed to restart podman service: {e}[/yellow]")
 
     def _show_next_steps(
         self,
