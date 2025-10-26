@@ -185,15 +185,10 @@ class ReinitManager:
         if start_success:
             console.print(f"[green]    Started {display_name}.[/green]")
 
-        # Add detailed health monitoring in verbose mode
-        if _verbose_enabled and start_success:
-            self._verbose_health_monitoring(target, service_name, display_name)
+            # Add detailed health monitoring in verbose mode
+            if _verbose_enabled:
+                self._verbose_health_monitoring(target, service_name, display_name)
 
-        # Handle start failure - delegate to _handle_start_failure to avoid duplication
-        if not start_success:
-            self._handle_start_failure(target, start_result)
-
-        if start_success:
             # Monitor service logs to verify successful startup
             with Progress(
                 SpinnerColumn(),
@@ -214,96 +209,20 @@ class ReinitManager:
                 self._show_next_steps(target)
                 return True
             else:
-                # Service failed to start
-                pass
-                # Suggest service-specific journalctl command
-                # Error message removed - automatic AI analysis will handle diagnostics
-                pass
-
-                # Add a small delay to ensure any Rich displays are properly closed
-                time.sleep(0.1)
-
-                # Show error detection message and start AI analysis
-                console.print("\n[red]Error found in reinit command[/red]\n")
-                console.print("[green]Starting AI analysis and diagnostics...[/green]")
-
-                verbose_print("  [cyan]exec: ai_analyze(type=reinit_failure)[/cyan]")
-                try:
-                    from ai_analyzer import ai_analyzer
-                    from core.config import _verbose_enabled
-
-                    # Initialize ai_analyzer with manager if not already done
-                    if ai_analyzer.manager is None:
-                        ai_analyzer.manager = self.manager
-
-                    # Run unified AI analysis with verbose mode
-                    result = ai_analyzer.ai_analyze(
-                        analysis_type="reinit_failure",
-                        target=target,
-                        context_data={
-                            "start_error": "Service failed to start after reinit"
-                        },
-                        ai_agent=None,
-                        verbose=_verbose_enabled,
-                    )
-
-                    if not result:
-                        console.print()
-                        console.print(
-                            "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
-                        )
-
-                except Exception as e:
-                    verbose_print(
-                        f"  [cyan]exec: AI analysis failed with error: {e}[/cyan]"
-                    )
-                    console.print(f"[yellow]AI analysis failed: {e}[/yellow]")
-
+                # Service failed to start after monitoring - run AI analysis
+                self._run_reinit_failure_analysis(
+                    target, "Service failed to start after reinit"
+                )
                 return False
         else:
             console.print(f"[red]Failed to start {display_name} after reinit[/red]")
-            # Error details already handled by _handle_start_failure above
 
-            # Add a small delay to ensure any Rich displays are properly closed
-            time.sleep(0.1)
+            # Handle start failure - delegate to _handle_start_failure to avoid duplication
+            self._handle_start_failure(target, start_result)
 
-            # Show error detection message and start AI analysis
-            console.print("\n[red]Error found in reinit command[/red]\n")
-            console.print("[green]Starting AI analysis and diagnostics...[/green]")
-
-            verbose_print(
-                "  [cyan]exec: ai_analyze(type=reinit_failure, with_error)[/cyan]"
-            )
+            # Service failed to start immediately - run AI analysis
             error_message = start_result.stderr.strip() if start_result.stderr else ""
-            try:
-                from ai_analyzer import ai_analyzer
-                from core.config import _verbose_enabled
-
-                # Initialize ai_analyzer with manager if not already done
-                if ai_analyzer.manager is None:
-                    ai_analyzer.manager = self.manager
-
-                # Run unified AI analysis with error context and verbose mode
-                result = ai_analyzer.ai_analyze(
-                    analysis_type="reinit_failure",
-                    target=target,
-                    context_data={"start_error": error_message},
-                    ai_agent=None,
-                    verbose=_verbose_enabled,
-                )
-
-                if not result:
-                    console.print()
-                    console.print(
-                        "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
-                    )
-
-            except Exception as e:
-                verbose_print(
-                    f"  [cyan]exec: AI analysis failed with error: {e}[/cyan]"
-                )
-                console.print(f"[yellow]AI analysis failed: {e}[/yellow]")
-
+            self._run_reinit_failure_analysis(target, error_message)
             return False
 
     def _handle_start_failure(self, target: str, start_result) -> None:
@@ -979,6 +898,42 @@ Keep the response brief and actionable. Focus on the most critical issues first.
         verbose_print(
             f"    [cyan]No clear success/failure indicators in {service_name} logs[/cyan]"
         )
+
+    def _run_reinit_failure_analysis(self, target: str, error_message: str) -> None:
+        """Run AI analysis on reinit failure - consolidated method to avoid duplication."""
+        from core.config import _verbose_enabled
+
+        # Add a small delay to ensure any Rich displays are properly closed
+        time.sleep(0.1)
+
+        # Show error detection message and start AI analysis
+        console.print("\n[red]Error found in reinit command[/red]\n")
+
+        try:
+            from ai_analyzer import ai_analyzer
+
+            # Initialize ai_analyzer with manager if not already done
+            if ai_analyzer.manager is None:
+                ai_analyzer.manager = self.manager
+
+            # Run unified AI analysis with error context and verbose mode
+            result = ai_analyzer.ai_analyze(
+                analysis_type="reinit_failure",
+                target=target,
+                context_data={"start_error": error_message},
+                ai_agent=None,
+                verbose=_verbose_enabled,
+            )
+
+            if not result:
+                console.print()
+                console.print(
+                    "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
+                )
+
+        except Exception as e:
+            verbose_print(f"  [cyan]exec: AI analysis failed with error: {e}[/cyan]")
+            console.print(f"[yellow]AI analysis failed: {e}[/yellow]")
 
     def _ai_analyze_reinit_failure(
         self,

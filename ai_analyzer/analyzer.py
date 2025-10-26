@@ -84,6 +84,12 @@ class AIAnalyzer:
             )
 
         try:
+            # Show data collection message before starting collection
+            console.print(
+                "[green]Collecting data for AI analysis and diagnostic...[/green]"
+            )
+            console.print()
+
             # Collect context data for the analysis
             collected_data = self._collect_context_data(
                 analysis_type, target, context_data or {}, verbose
@@ -107,24 +113,26 @@ class AIAnalyzer:
                 console.print("[cyan]" + "─" * 80 + "[/cyan]")
                 console.print()
 
-            # Show AI analysis start message for both verbose and non-verbose
-            console.print("[green]Starting AI analysis and diagnostics...[/green]")
-
-            console.print(
-                "[green]Collecting data for AI analysis and diagnostic...[/green]"
-            )
-            console.print()
-
-            # Show analyzing spinner before AI agent call (non-verbose only)
-            if not verbose:
-                if analysis_type == "build_failure":
-                    console.print("[green]⠴ Analyzing build failure...[/green]", end="")
+            # Show AI analysis message for both verbose and non-verbose modes
+            if analysis_type == "build_failure":
+                if verbose:
+                    console.print(
+                        "[green]Starting AI analysis for build failure...[/green]"
+                    )
+                    console.print()
                 else:
-                    console.print("[green]Analyzing error data...[/green]", end="")
-                console.print(" ", end="")
+                    console.print("[green]⠴ Analyzing build failure...[/green]", end="")
+                    console.print(" ", end="")
+            else:
+                # Show "Starting AI analysis and diagnostics..." for both verbose and non-verbose
+                console.print("[green]Starting AI analysis and diagnostics...[/green]")
+                if verbose:
+                    console.print()
+                else:
+                    console.print(" ", end="")
 
-            # Get AI analysis using the agent system
-            result = ai_agent_manager.analyze_with_agent(
+            # Get AI analysis using the agent system with fallback logic
+            result = self._analyze_with_fallback(
                 prompt, resolved_agent, verbose=verbose, target=target
             )
 
@@ -317,3 +325,87 @@ class AIAnalyzer:
         """Generate appropriate prompt based on analysis type"""
         generator = PromptGeneratorFactory.create(analysis_type)
         return generator.generate(target, data)
+
+    def _analyze_with_fallback(
+        self,
+        prompt: str,
+        agent_name: Optional[str] = None,
+        verbose: bool = False,
+        target: Optional[str] = None,
+    ) -> Optional[str]:
+        """Analyze with agent fallback logic and user feedback"""
+        # Get the requested agent or default
+        agent = ai_agent_manager.get_agent(agent_name)
+        if not agent:
+            console.print("[red]No AI agents available[/red]")
+            return None
+
+        # Show which agent we're using
+        console.print(f"[green]Using AI agent: {agent.config.display_name}[/green]")
+        console.print()
+
+        # Check if the agent is available
+        if not agent.is_available():
+            console.print(
+                f"[yellow]{agent.config.display_name} is not available.[/yellow]"
+            )
+
+            # Try to find an available fallback agent
+            fallback_agent = self._find_fallback_agent(agent.config.name)
+            if fallback_agent:
+                console.print(
+                    f"[green]Trying {fallback_agent.config.display_name}...[/green]"
+                )
+                console.print()
+                agent = fallback_agent
+            else:
+                console.print("[red]No available AI agents found[/red]")
+                return None
+
+        # Use the agent (either original or fallback)
+        if verbose:
+            verbose_print(
+                f"  [cyan]exec: Using AI agent: {agent.config.display_name}[/cyan]"
+            )
+
+        try:
+            result = agent.analyze_logs(prompt)
+            return result
+        except Exception as e:
+            if verbose:
+                verbose_print(f"  [cyan]exec: Agent analysis failed: {e}[/cyan]")
+            console.print(f"[red]AI analysis failed: {e}[/red]")
+            return None
+
+    def _find_fallback_agent(self, failed_agent_name: str) -> Optional[Any]:
+        """Find an available fallback agent"""
+        # Get fallback order from config or use default
+        fallback_order = [
+            "vllm-qwen25",
+            "claude-sonnet",
+            "gpt-4",
+            "claude-haiku",
+            "gpt-3.5-turbo",
+        ]
+
+        # Remove the failed agent from fallback order
+        if failed_agent_name in fallback_order:
+            fallback_order.remove(failed_agent_name)
+
+        # Try each agent in fallback order
+        for agent_name in fallback_order:
+            agent = ai_agent_manager.get_agent(agent_name)
+            if agent and agent.is_available():
+                return agent
+
+        # If no specific fallback found, try any available agent
+        available_agents = ai_agent_manager.list_available_agents()
+        if available_agents:
+            # Filter out the failed agent
+            available_agents = [
+                name for name in available_agents if name != failed_agent_name
+            ]
+            if available_agents:
+                return ai_agent_manager.get_agent(available_agents[0])
+
+        return None
