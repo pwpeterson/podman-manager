@@ -373,19 +373,19 @@ class BasicTroubleshootingFormatter(DisplayFormatter):
         elif not service_name.endswith(".service"):
             service_name = f"{target}.service"
 
-        console.print("[bold cyan]Common Issues to Check:[/bold cyan]")
+        console.print("[bold green]Common Issues to Check:[/bold green]")
         console.print(
-            f"    1. [white]Check service status:[/white] [cyan]systemctl --user status {service_name}[/cyan]"
+            f"    [green]Check service status:[/green] [white]systemctl --user status {service_name}[/white]"
         )
         console.print(
-            f"    2. [white]View recent logs:[/white] [cyan]journalctl --user -u {service_name} -n 100[/cyan]"
+            f"    [green]View recent logs:[/green] [white]journalctl --user -u {service_name} -n 100[/white]"
         )
-        console.print("    3. [white]Check disk space:[/white] [cyan]df -h[/cyan]")
+        console.print("    [green]Check disk space:[/green] [white]df -h[/white]")
         console.print(
-            "    4. [white]Check for port conflicts:[/white] [cyan]ss -tulpen | grep :8000[/cyan]"
+            "    [green]Check for port conflicts:[/green] [white]ss -tulpen | grep :8000[/white]"
         )
         console.print(
-            f"    5. [white]Restart the service:[/white] [cyan]pm restart {target}[/cyan]"
+            f"    [green]Restart the service:[/green] [white]pm restart {target}[/white]"
         )
 
         # Check for specific issues in the data
