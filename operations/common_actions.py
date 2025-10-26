@@ -156,7 +156,6 @@ class CommonActionsFormatter:
         container_name: Optional[str] = None,
         port: Optional[str] = None,
         categories: Optional[List[str]] = None,
-        compact: bool = False,
     ):
         """
         Display common actions with dynamic substitution
@@ -167,7 +166,6 @@ class CommonActionsFormatter:
             container_name: Container name for podman commands
             port: Port number for network tests
             categories: List of category keys to show (None = all)
-            compact: Show compact format
         """
         # Set defaults
         if not service_name and target:
@@ -191,44 +189,10 @@ class CommonActionsFormatter:
 
         console.print("\n[bold green]More available actions:[/bold green]")
 
-        if compact:
-            self._show_compact_format(
-                target, service_name, container_name, port, categories
-            )
-        else:
-            self._show_detailed_format(
-                target, service_name, container_name, port, categories
-            )
-
-    def _show_compact_format(
-        self, target, service_name, container_name, port, categories
-    ):
-        """Show compact format with essential commands only"""
-        essential_commands = [
-            ("podman logs", f"pm logs {target or 'SERVICE'}"),
-            (
-                "service logs",
-                f"journalctl --user -u {service_name or 'SERVICE.service'} -n 100",
-            ),
-            (
-                "service status",
-                f"systemctl --user status {service_name or 'SERVICE.service'} --no-pager -l",
-            ),
-            (
-                "service config",
-                f"systemctl --user cat {service_name or 'SERVICE.service'}",
-            ),
-            ("troubleshoot", f"pm diag {target or 'SERVICE'}"),
-            ("restart service", f"pm restart {target or 'SERVICE'}"),
-        ]
-
-        for label, command in essential_commands:
-            console.print(
-                f"          [green]✓ {label:15}:[/green] [white]{command}[/white]"
-            )
-
-        # Add a newline after compact format
-        console.print()
+        # Always use detailed format
+        self._show_detailed_format(
+            target, service_name, container_name, port, categories
+        )
 
     def _show_detailed_format(
         self, target, service_name, container_name, port, categories
@@ -295,9 +259,3 @@ def show_common_actions(**kwargs):
     """Convenience function to show common actions"""
     formatter = CommonActionsFormatter()
     formatter.show_common_actions(**kwargs)
-
-
-def show_compact_actions(**kwargs):
-    """Convenience function to show compact actions"""
-    formatter = CommonActionsFormatter()
-    formatter.show_common_actions(compact=True, **kwargs)

@@ -205,7 +205,7 @@ class ReinitManager:
 
             if actual_success:
                 console.print(
-                    f"\n[green]Successfully reinitialized {display_name}[/green]\n"
+                    f"\n[green]Successfully reinitialized {display_name}[/green]"
                 )
 
                 # Show optional next steps

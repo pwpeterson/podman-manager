@@ -181,7 +181,7 @@ class CommandRouter:
                 else service_name
             )
 
-            # Show essential actions based on command type
+            # Show comprehensive actions for all commands using detailed format
             if command_type in ["reinit", "restart"]:
                 # Show comprehensive actions for reinit and restart with all categories
                 self.common_actions.show_common_actions(
@@ -194,7 +194,6 @@ class CommandRouter:
                         "logs_diagnostics",
                         "troubleshooting",
                     ],
-                    compact=False,  # Use detailed format for comprehensive view
                 )
             elif command_type in [
                 "install",
@@ -207,7 +206,6 @@ class CommandRouter:
                     service_name=service_name,
                     container_name=container_name,
                     categories=["pm_shortcuts", "service_status", "logs_diagnostics"],
-                    compact=True,
                 )
             elif command_type in ["stop", "disable", "reset", "uninstall"]:
                 # For stop/disable commands, show different essential actions
@@ -220,7 +218,6 @@ class CommandRouter:
                         "logs_diagnostics",
                         "troubleshooting",
                     ],
-                    compact=True,
                 )
             else:
                 # Default essential actions for other commands
@@ -229,7 +226,6 @@ class CommandRouter:
                     service_name=service_name,
                     container_name=container_name,
                     categories=["pm_shortcuts", "service_status", "logs_diagnostics"],
-                    compact=True,
                 )
         except Exception as e:
             # Don't let common actions display errors break the main command
