@@ -107,7 +107,15 @@ class AIAnalyzer:
                 console.print("[cyan]" + "─" * 80 + "[/cyan]")
                 console.print()
 
-            # Show analyzing spinner before AI agent call
+            # Show AI analysis start message for both verbose and non-verbose
+            console.print("[green]Starting AI analysis and diagnostics...[/green]")
+
+            # Get the actual agent name that will be used
+            actual_agent = resolved_agent or ai_agent_manager.default_agent
+            console.print(f"[green]Using AI agent: {actual_agent}[/green]")
+            console.print()
+
+            # Show analyzing spinner before AI agent call (non-verbose only)
             if not verbose:
                 if analysis_type == "build_failure":
                     console.print("[green]⠴ Analyzing build failure...[/green]", end="")
