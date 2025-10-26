@@ -268,40 +268,44 @@ class MarkdownDisplayFormatter(DisplayFormatter):
         elif not service_name.endswith(".service"):
             service_name = f"{target}.service"
 
-        formatter = CommonActionsFormatter()
+        # Only show recommended actions for non-diag analysis types
+        # (diag command should not show any additional actions)
+        if analysis_type != "logs":  # diag uses "logs" analysis type
+            formatter = CommonActionsFormatter()
 
-        # Show analysis-type specific actions first
-        console.print("\n  [bold green]Recommended actions:[/bold green]")
+            # Show analysis-type specific actions first
+            console.print("\n  [bold green]Recommended actions:[/bold green]")
 
-        if analysis_type == "reinit_failure":
-            console.print(
-                f"[green]         Retry reinit:[/green] [white]pm reinit {target} -v[/white]"
-            )
-            console.print(
-                f"[green]   Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
-            )
-        elif analysis_type == "build_failure":
-            console.print(
-                f"[green]        Retry build:[/green] [white]pm build {target}[/white]"
-            )
-            console.print(
-                f"[green]    Clean and rebuild:[/green] [white]pm reinit {target} -b[/white]"
-            )
-        elif analysis_type == "status":
-            console.print(
-                f"[green]    Restart service:[/green] [white]pm restart {target}[/white]"
-            )
-            console.print(
-                f"[green]   Monitor live logs:[/green] [white]pm logs {target} --f[/white]"
+            if analysis_type == "reinit_failure":
+                console.print(
+                    f"[green]         Retry reinit:[/green] [white]pm reinit {target} -v[/white]"
+                )
+                console.print(
+                    f"[green]   Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
+                )
+            elif analysis_type == "build_failure":
+                console.print(
+                    f"[green]        Retry build:[/green] [white]pm build {target}[/white]"
+                )
+                console.print(
+                    f"[green]    Clean and rebuild:[/green] [white]pm reinit {target} -b[/white]"
+                )
+            elif analysis_type == "status":
+                console.print(
+                    f"[green]    Restart service:[/green] [white]pm restart {target}[/white]"
+                )
+                console.print(
+                    f"[green]   Monitor live logs:[/green] [white]pm logs {target} --f[/white]"
+                )
+
+            # Show common actions
+            formatter.show_common_actions(
+                target=target,
+                service_name=service_name,
+                categories=["pm_shortcuts", "logs_diagnostics", "troubleshooting"],
+                compact=True,
             )
 
-        # Show common actions in compact format
-        formatter.show_common_actions(
-            target=target,
-            service_name=service_name,
-            categories=["pm_shortcuts", "logs_diagnostics", "troubleshooting"],
-            compact=True,
-        )
         console.print()
 
 
@@ -457,10 +461,27 @@ class InteractiveAnalysisHandler:
                 break
 
         console.print(f"\n[green]AI analysis for {target} completed[/green]")
-        console.print(
-            f"    [green]For further analysis try:[/green] [white]pm logs {target} -ai[/white]"
+
+        # Show comprehensive common actions when user exits interactive session
+        from operations.common_actions import CommonActionsFormatter
+
+        formatter = CommonActionsFormatter()
+        formatter.show_common_actions(
+            target=target,
+            service_name=f"{target}.service",
+            categories=[
+                "pm_shortcuts",
+                "service_status",
+                "logs_diagnostics",
+                "troubleshooting",
+                "container_ops",
+                "system_resources",
+                "network_connectivity",
+                "volume_management",
+                "service_management",
+            ],
+            compact=False,  # Use detailed format for comprehensive view
         )
-        console.print()
 
     def _process_followup_question(
         self, analysis_type: str, target: str, question: str, verbose: bool = False

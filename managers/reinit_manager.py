@@ -521,31 +521,9 @@ class ReinitManager:
 
     def _show_next_steps(self, target: str) -> None:
         """Show optional next steps after successful reinit"""
-        from operations.common_actions import CommonActionsFormatter
-
-        # Use the new Common Actions System
-        formatter = CommonActionsFormatter()
-
-        # Resolve service name for placeholder substitution
-        service_name = self.manager._find_service_name(target)
-        if not service_name:
-            service_name = f"{target}.service"
-
-        # Extract container name from service name
-        container_name = (
-            service_name.replace(".service", "")
-            if service_name.endswith(".service")
-            else service_name
-        )
-
-        # Show essential actions with compact format
-        formatter.show_common_actions(
-            target=target,
-            service_name=service_name,
-            container_name=container_name,
-            categories=["pm_shortcuts", "service_status", "logs_diagnostics"],
-            compact=True,
-        )
+        # Common actions are now handled by the command router's try_with_fallback method
+        # This method is kept for potential future use but no longer displays actions
+        pass
 
     def _filter_error_warning_lines(self, stdout: str, stderr: str) -> str:
         """Filter output to extract only lines containing errors or warnings."""
@@ -916,35 +894,14 @@ Keep the response brief and actionable. Focus on the most critical issues first.
 
     def _show_ai_reinit_analysis_menu(self, target: str, service_name: str) -> None:
         """Show recommended actions after AI analysis"""
-        from operations.common_actions import CommonActionsFormatter
-
         console.print("\n      [bold green]Recommended actions:[/bold green]")
 
-        # Show reinit-specific actions first
+        # Show reinit-specific actions only (common actions handled by command router)
         console.print(
             f"[green]       Retry reinit:[/green] [white]pm reinit {target} -v[/white]"
         )
         console.print(
             f"[green]    Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
-        )
-
-        # Use the new Common Actions System for additional actions
-        formatter = CommonActionsFormatter()
-
-        # Extract container name from service name
-        container_name = (
-            service_name.replace(".service", "")
-            if service_name.endswith(".service")
-            else service_name
-        )
-
-        # Show common actions with compact format
-        formatter.show_common_actions(
-            target=target,
-            service_name=service_name,
-            container_name=container_name,
-            categories=["pm_shortcuts", "logs_diagnostics", "troubleshooting"],
-            compact=True,
         )
 
     def _verbose_health_monitoring(

@@ -182,13 +182,25 @@ class CommandRouter:
             )
 
             # Show essential actions based on command type
-            if command_type in [
+            if command_type in ["reinit", "restart"]:
+                # Show comprehensive actions for reinit and restart with all categories
+                self.common_actions.show_common_actions(
+                    target=target,
+                    service_name=service_name,
+                    container_name=container_name,
+                    categories=[
+                        "pm_shortcuts",
+                        "service_status",
+                        "logs_diagnostics",
+                        "troubleshooting",
+                    ],
+                    compact=False,  # Use detailed format for comprehensive view
+                )
+            elif command_type in [
                 "install",
                 "start",
-                "restart",
                 "enable",
                 "build",
-                "reinit",
             ]:
                 self.common_actions.show_common_actions(
                     target=target,
@@ -281,8 +293,9 @@ class CommandRouter:
             elif result is True or (
                 hasattr(result, "returncode") and result.returncode == 0
             ):
-                # Operation was successful, show common actions
-                self._show_common_actions_for_command(command_type, target)
+                # Operation was successful, show common actions (except for install and diag)
+                if command_type not in ["install", "diag"]:
+                    self._show_common_actions_for_command(command_type, target)
 
             return result
         except Exception as e:
@@ -737,8 +750,6 @@ class CommandRouter:
                 # Perform container failure diagnosis
                 self.container_ops.diagnose_container_failure(args.target)
 
-            # Show common actions after successful diagnosis
-            self._show_common_actions_for_command("diag", args.target)
             return True
         except Exception as e:
             console.print(f"[red]Error in diagnostic command: {e}[/red]")

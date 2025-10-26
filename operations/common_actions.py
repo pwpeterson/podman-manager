@@ -131,7 +131,6 @@ class CommonActionsFormatter:
                 "commands": [
                     ("View podman logs", "pm logs {target}"),
                     ("Diagnose issues", "pm diag {target}"),
-                    ("Check status", "pm status {target}"),
                     ("Restart service", "pm restart {target}"),
                     ("Reinitialize", "pm reinit {target}"),
                     ("View all containers", "pm ps"),
@@ -172,7 +171,10 @@ class CommonActionsFormatter:
         """
         # Set defaults
         if not service_name and target:
-            service_name = f"{target}.service"
+            # Extract the last part of the target name for simplified service names
+            # e.g., 'local-ai-neo4j' -> 'neo4j'
+            simplified_target = target.split("-")[-1] if "-" in target else target
+            service_name = f"{simplified_target}.service"
         if not container_name and target:
             container_name = target
         if not port:
