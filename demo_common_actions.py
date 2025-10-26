@@ -9,7 +9,6 @@ from operations.common_actions import (
     CommonActionsFormatter,
     show_common_actions,
     show_compact_actions,
-    show_essential_actions,
 )
 
 
@@ -22,7 +21,12 @@ def demo_basic_usage():
     console.print(
         "\n[bold cyan]Example 1: Essential actions for vllm-qwen25[/bold cyan]"
     )
-    show_essential_actions("vllm-qwen25")
+    formatter = CommonActionsFormatter()
+    formatter.show_common_actions(
+        target="vllm-qwen25",
+        categories=["pm_shortcuts", "service_status", "logs_diagnostics"],
+        compact=True,
+    )
 
     # Example 2: Compact format
     console.print(

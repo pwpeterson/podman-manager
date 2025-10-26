@@ -299,13 +299,3 @@ def show_compact_actions(**kwargs):
     """Convenience function to show compact actions"""
     formatter = CommonActionsFormatter()
     formatter.show_common_actions(compact=True, **kwargs)
-
-
-def show_essential_actions(target: str):
-    """Show essential actions for a target"""
-    formatter = CommonActionsFormatter()
-    formatter.show_common_actions(
-        target=target,
-        categories=["pm_shortcuts", "service_status", "logs_diagnostics"],
-        compact=False,
-    )

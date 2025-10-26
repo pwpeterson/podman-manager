@@ -521,9 +521,31 @@ class ReinitManager:
 
     def _show_next_steps(self, target: str) -> None:
         """Show optional next steps after successful reinit"""
-        from operations.common_actions import show_essential_actions
+        from operations.common_actions import CommonActionsFormatter
 
-        show_essential_actions(target)
+        # Use the new Common Actions System
+        formatter = CommonActionsFormatter()
+
+        # Resolve service name for placeholder substitution
+        service_name = self.manager._find_service_name(target)
+        if not service_name:
+            service_name = f"{target}.service"
+
+        # Extract container name from service name
+        container_name = (
+            service_name.replace(".service", "")
+            if service_name.endswith(".service")
+            else service_name
+        )
+
+        # Show essential actions with compact format
+        formatter.show_common_actions(
+            target=target,
+            service_name=service_name,
+            container_name=container_name,
+            categories=["pm_shortcuts", "service_status", "logs_diagnostics"],
+            compact=True,
+        )
 
     def _filter_error_warning_lines(self, stdout: str, stderr: str) -> str:
         """Filter output to extract only lines containing errors or warnings."""
