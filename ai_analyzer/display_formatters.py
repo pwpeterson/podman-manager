@@ -269,7 +269,7 @@ class MarkdownDisplayFormatter(DisplayFormatter):
                 service_name = f"{target}.service"
 
             console.print(
-                f"[green]   View service logs:[/green] [white]journalctl --user -u {service_name} -n 100[/white]"
+                f"[green]    View service logs:[/green] [white]journalctl --user -u {service_name} -n 100[/white]"
             )
 
         if analysis_type == "reinit_failure":
@@ -277,7 +277,7 @@ class MarkdownDisplayFormatter(DisplayFormatter):
                 f"[green]         Retry reinit:[/green] [white]pm reinit {target} -v[/white]"
             )
             console.print(
-                f"[green]    Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
+                f"[green]   Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
             )
         elif analysis_type == "build_failure":
             console.print(
@@ -373,18 +373,16 @@ class BasicTroubleshootingFormatter(DisplayFormatter):
         elif not service_name.endswith(".service"):
             service_name = f"{target}.service"
 
-        console.print("[bold green]Common Issues to check;[/bold green]")
+        console.print("    [bold green]Common Issues to ✓:[/bold green]")
         console.print(
-            f"    [green]Check emojie service status:[/green] [white]systemctl --user status {service_name}[/white]"
+            f"    [green]✓ Service status:[/green] [white]systemctl --user status {service_name}[/white]"
         )
         console.print(
             f"    [green]View recent logs:[/green] [white]journalctl --user -u {service_name} -n 100[/white]"
         )
+        console.print("        [green]✓ Disk space:[/green] [white]df -h[/white]")
         console.print(
-            "    [green]Check emojie disk space:[/green] [white]df -h[/white]"
-        )
-        console.print(
-            "    [green]Check emojie for port conflicts:[/green] [white]ss -tulpen | grep :8000[/white]"
+            "    [green]✓ Port conflicts:[/green] [white]ss -tulpen | grep :8000[/white]"
         )
         console.print(
             f"    [green]Restart  service:[/green] [white]pm restart {target}[/white]"
@@ -411,10 +409,7 @@ class BasicTroubleshootingFormatter(DisplayFormatter):
 
         console.print("\n[bold green]Next Steps:[/bold green]")
         console.print(
-            f"    [white]For detailed analysis:[/white] [cyan]pm logs {target} -ai claude[/cyan]"
-        )
-        console.print(
-            f"    [white]For manual diagnosis:[/white] [cyan]pm diagnose {target}[/cyan]"
+            f"    [white]For detailed analysis:[/white] [cyan]pm diag {target}[/cyan]"
         )
         console.print()
 

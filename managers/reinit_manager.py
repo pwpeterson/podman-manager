@@ -526,13 +526,13 @@ class ReinitManager:
             f"  [green] View detailed logs:[/green] [white]pm logs {target}[/white]"
         )
         console.print(
-            f"    [green]View service logs:[/green] [white]journalctl --user -u {target}.service -n 100[/white]"
+            f"     [green]View service logs:[/green] [white]journalctl --user -u {target}.service -n 100[/white]"
         )
         console.print(
             f"  [green] Diagnose the issue:[/green] [white]pm diagnose {target}[/white]"
         )
         console.print(
-            f" [green] Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
+            f"[green] Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
         )
         console.print()
 
