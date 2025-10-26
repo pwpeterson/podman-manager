@@ -315,15 +315,6 @@ class ContainerDataCollector(DataCollector):
                     if fallback_logs_result["success"]:
                         data["container_logs"] = fallback_logs_result["stdout"].strip()
 
-        # Check for pods
-        pod_result = self._run_command(
-            ["podman", "pod", "ps", "--format", "{{.ID}}\t{{.Name}}\t{{.Status}}"],
-            timeout=10,
-        )
-
-        if pod_result["success"] and pod_result["stdout"].strip():
-            data["pod_list"] = pod_result["stdout"].strip()
-
         return data
 
     def _find_matching_container(
@@ -501,29 +492,6 @@ class LogsDataCollector(DataCollector):
         else:
             data["systemd_logs"] = "No systemd logs found"
             data["log_lines_count"] = 0
-
-        # Also collect extended logs (100 lines) for comprehensive analysis
-        extended_logs_result = self._run_command(
-            [
-                "journalctl",
-                "--user",
-                "-u",
-                service_name,
-                "-n",
-                "100",
-                "--no-pager",
-            ],
-            timeout=30,
-        )
-
-        if extended_logs_result["success"] and extended_logs_result["stdout"].strip():
-            data["extended_systemd_logs"] = extended_logs_result["stdout"].strip()
-            data["extended_log_lines_count"] = len(
-                extended_logs_result["stdout"].strip().split("\n")
-            )
-        else:
-            data["extended_systemd_logs"] = "No extended systemd logs found"
-            data["extended_log_lines_count"] = 0
 
         return data
 
