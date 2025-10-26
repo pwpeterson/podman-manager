@@ -349,25 +349,6 @@ class BasicTroubleshootingFormatter(DisplayFormatter):
                 ],
             )
 
-            # Check for specific issues in the data and show additional context
-            if isinstance(result, str):
-                logs = result.lower()
-                if "port already in use" in logs or "bind" in logs:
-                    console.print("\n[bold red]⚠ Port Conflict Detected[/bold red]")
-                    console.print(
-                        f"    [white]Try:[/white] [cyan]pm stop {target} && pm start {target}[/cyan]"
-                    )
-                elif "no space left" in logs or "disk" in logs:
-                    console.print("\n[bold red]⚠ Disk Space Issue Detected[/bold red]")
-                    console.print(
-                        "    [white]Try:[/white] [cyan]podman system prune -f[/cyan]"
-                    )
-                elif "permission denied" in logs:
-                    console.print("\n[bold red]⚠ Permission Issue Detected[/bold red]")
-                    console.print(
-                        f"    [white]Try:[/white] [cyan]pm reset-failed {target}[/cyan]"
-                    )
-
     def set_collected_data(self, data: dict) -> None:
         """Set the collected data for use in display methods"""
         self._collected_data = data
