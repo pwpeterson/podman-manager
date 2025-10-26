@@ -916,26 +916,36 @@ Keep the response brief and actionable. Focus on the most critical issues first.
 
     def _show_ai_reinit_analysis_menu(self, target: str, service_name: str) -> None:
         """Show recommended actions after AI analysis"""
+        from operations.common_actions import CommonActionsFormatter
+
         console.print("\n      [bold green]Recommended actions:[/bold green]")
-        console.print(
-            "[green]    Fix configuration:[/green] [white]Edit the service configuration files[/white]"
-        )
+
+        # Show reinit-specific actions first
         console.print(
             f"[green]       Retry reinit:[/green] [white]pm reinit {target} -v[/white]"
         )
         console.print(
-            f"[green]     Check service logs:[/green] [white]pm logs {target}[/white]"
-        )
-        console.print(
-            f"[green]     View service logs:[/green] [white]journalctl --user -u {service_name} -n 100[/white]"
-        )
-        console.print(
             f"[green]    Reset failed state:[/green] [white]pm reset-failed {target}[/white]"
         )
-        console.print(
-            f"[green]   Manual service start:[/green] [white]systemctl --user start {service_name}[/white]"
+
+        # Use the new Common Actions System for additional actions
+        formatter = CommonActionsFormatter()
+
+        # Extract container name from service name
+        container_name = (
+            service_name.replace(".service", "")
+            if service_name.endswith(".service")
+            else service_name
         )
-        console.print()
+
+        # Show common actions with compact format
+        formatter.show_common_actions(
+            target=target,
+            service_name=service_name,
+            container_name=container_name,
+            categories=["pm_shortcuts", "logs_diagnostics", "troubleshooting"],
+            compact=True,
+        )
 
     def _verbose_health_monitoring(
         self, target: str, service_name: str, display_name: str
