@@ -117,8 +117,6 @@ class ReinitManager:
         # Use the provided service_name to avoid duplicate resolution
         # Stop the service
         console.print(f"[green]Stopping {display_name}...[/green]")
-        if not _verbose_enabled:
-            console.print()
         stop_cmd = ["systemctl", "--user", "stop", service_name]
         verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
         stop_result = self.manager._run_systemctl_command(
@@ -126,7 +124,10 @@ class ReinitManager:
         )
         stop_success = stop_result.returncode == 0
 
-        if not stop_success:
+        if stop_success:
+            console.print(f"[green]    Stopped {display_name}[/green]")
+            console.print()
+        else:
             console.print("[yellow]Service was not running or failed to stop[/yellow]")
 
         # Build if requested
@@ -172,8 +173,6 @@ class ReinitManager:
 
         # Start the service using the resolved service name
         console.print(f"[green]Starting {display_name}...[/green]")
-        if not _verbose_enabled:
-            console.print()
         start_cmd = ["systemctl", "--user", "restart", service_name]
 
         start_result = self.manager._run_systemctl_command(
@@ -182,6 +181,9 @@ class ReinitManager:
             quiet=False,  # Don't suppress output in verbose mode
         )
         start_success = start_result.returncode == 0
+
+        if start_success:
+            console.print(f"[green]    Started {display_name}.[/green]")
 
         # Add detailed health monitoring in verbose mode
         if _verbose_enabled and start_success:
@@ -205,7 +207,7 @@ class ReinitManager:
 
             if actual_success:
                 console.print(
-                    f"\n[green]Successfully reinitialized {display_name}[/green]"
+                    f"[green]Successfully reinitialized {display_name}[/green]"
                 )
 
                 # Show optional next steps
