@@ -296,8 +296,8 @@ class ContainerDataCollector(DataCollector):
 
                 if direct_logs_result["success"]:
                     data["container_logs"] = direct_logs_result["stdout"].strip()
-                else:
-                    # Fallback to original target name
+                elif container_base_name != target:
+                    # Only try fallback if container_base_name is different from target
                     fallback_logs_result = self._run_command(
                         [
                             "podman",
