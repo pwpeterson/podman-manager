@@ -247,7 +247,7 @@ class MarkdownDisplayFormatter(DisplayFormatter):
         self, analysis_type: str, target: str, verbose: bool = False
     ) -> None:
         """Show recommended actions after AI analysis"""
-        console.print("\n  [bold green]Recommended actions:[/bold green]")
+        console.print("\n  [bold green]Optional actions:[/bold green]")
 
         # Common actions
         console.print(
@@ -269,7 +269,7 @@ class MarkdownDisplayFormatter(DisplayFormatter):
                 service_name = f"{target}.service"
 
             console.print(
-                f"[green]  View service logs:[/green] [white]journalctl --user -u {service_name} -n 100[/white]"
+                f"[green]   View service logs:[/green] [white]journalctl --user -u {service_name} -n 100[/white]"
             )
 
         if analysis_type == "reinit_failure":
