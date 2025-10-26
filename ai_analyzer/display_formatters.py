@@ -326,7 +326,47 @@ class BasicTroubleshootingFormatter(DisplayFormatter):
         if analysis_type == "build_failure":
             self._show_build_troubleshooting(target, result)
         else:
-            self._show_service_troubleshooting(target, result, analysis_type)
+            # Use standard common actions formatter for service troubleshooting
+            from operations.common_actions import CommonActionsFormatter
+
+            # Get the resolved service name from collected data, fallback to target.service
+            service_name = target
+            if self._collected_data and self._collected_data.get("service_name"):
+                service_name = self._collected_data["service_name"]
+            elif not service_name.endswith(".service"):
+                service_name = f"{target}.service"
+
+            # Use standard common actions formatter
+            formatter = CommonActionsFormatter()
+            formatter.show_common_actions(
+                target=target,
+                service_name=service_name,
+                categories=[
+                    "pm_shortcuts",
+                    "service_status",
+                    "logs_diagnostics",
+                    "troubleshooting",
+                ],
+            )
+
+            # Check for specific issues in the data and show additional context
+            if isinstance(result, str):
+                logs = result.lower()
+                if "port already in use" in logs or "bind" in logs:
+                    console.print("\n[bold red]⚠ Port Conflict Detected[/bold red]")
+                    console.print(
+                        f"    [white]Try:[/white] [cyan]pm stop {target} && pm start {target}[/cyan]"
+                    )
+                elif "no space left" in logs or "disk" in logs:
+                    console.print("\n[bold red]⚠ Disk Space Issue Detected[/bold red]")
+                    console.print(
+                        "    [white]Try:[/white] [cyan]podman system prune -f[/cyan]"
+                    )
+                elif "permission denied" in logs:
+                    console.print("\n[bold red]⚠ Permission Issue Detected[/bold red]")
+                    console.print(
+                        f"    [white]Try:[/white] [cyan]pm reset-failed {target}[/cyan]"
+                    )
 
     def set_collected_data(self, data: dict) -> None:
         """Set the collected data for use in display methods"""
@@ -365,51 +405,6 @@ class BasicTroubleshootingFormatter(DisplayFormatter):
             f"    [white]Check Dockerfile:[/white] [cyan]cat Dockerfile.{target}[/cyan]"
         )
         console.print()
-
-    def _show_service_troubleshooting(
-        self, target: str, data: str, analysis_type: str
-    ) -> None:
-        """Show service-specific troubleshooting using standard common actions"""
-        from operations.common_actions import CommonActionsFormatter
-
-        # Get the resolved service name from collected data, fallback to target.service
-        service_name = target
-        if self._collected_data and self._collected_data.get("service_name"):
-            service_name = self._collected_data["service_name"]
-        elif not service_name.endswith(".service"):
-            service_name = f"{target}.service"
-
-        # Use standard common actions formatter
-        formatter = CommonActionsFormatter()
-        formatter.show_common_actions(
-            target=target,
-            service_name=service_name,
-            categories=[
-                "pm_shortcuts",
-                "service_status",
-                "logs_diagnostics",
-                "troubleshooting",
-            ],
-        )
-
-        # Check for specific issues in the data and show additional context
-        if isinstance(data, str):
-            logs = data.lower()
-            if "port already in use" in logs or "bind" in logs:
-                console.print("\n[bold red]⚠ Port Conflict Detected[/bold red]")
-                console.print(
-                    f"    [white]Try:[/white] [cyan]pm stop {target} && pm start {target}[/cyan]"
-                )
-            elif "no space left" in logs or "disk" in logs:
-                console.print("\n[bold red]⚠ Disk Space Issue Detected[/bold red]")
-                console.print(
-                    "    [white]Try:[/white] [cyan]podman system prune -f[/cyan]"
-                )
-            elif "permission denied" in logs:
-                console.print("\n[bold red]⚠ Permission Issue Detected[/bold red]")
-                console.print(
-                    f"    [white]Try:[/white] [cyan]pm reset-failed {target}[/cyan]"
-                )
 
 
 class InteractiveAnalysisHandler:
