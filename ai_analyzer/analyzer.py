@@ -112,9 +112,7 @@ class AIAnalyzer:
                 "[green]Collecting data for AI analysis and diagnostic...[/green]"
             )
 
-            # Get the actual agent name that will be used
-            actual_agent = resolved_agent or ai_agent_manager.default_agent
-            console.print(f"[green]Using AI agent: {actual_agent}[/green]")
+            console.print("[green]Starting AI analysis and diagnostics...[/green]")
             console.print()
 
             # Show analyzing spinner before AI agent call (non-verbose only)
