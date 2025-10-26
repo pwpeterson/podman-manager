@@ -51,8 +51,20 @@ class MarkdownDisplayFormatter(DisplayFormatter):
         }
         return titles.get(analysis_type, "AI Analysis")
 
+    def _clean_rich_markup(self, content: str) -> str:
+        """Remove Rich markup tags from AI-generated content"""
+        # Remove Rich markup tags like [/cyan], [cyan], [bold], [/bold], etc.
+        import re
+
+        # Pattern to match Rich markup tags: [tag] or [/tag]
+        pattern = r"\[/?(?:cyan|bold|white|green|red|yellow|blue|magenta|dim|italic|underline|strike|blink|reverse|conceal)\]"
+        cleaned_content = re.sub(pattern, "", content)
+        return cleaned_content
+
     def _render_markdown(self, content: str) -> None:
         """Render markdown content using Rich formatting"""
+        # Clean any Rich markup tags that might be in the AI-generated content
+        content = self._clean_rich_markup(content)
         lines = content.split("\n")
         previous_was_header = False
         in_code_block = False
