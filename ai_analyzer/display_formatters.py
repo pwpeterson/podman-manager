@@ -303,7 +303,6 @@ class MarkdownDisplayFormatter(DisplayFormatter):
                 target=target,
                 service_name=service_name,
                 categories=["pm_shortcuts", "logs_diagnostics", "troubleshooting"],
-                compact=True,
             )
 
         console.print()
@@ -370,7 +369,9 @@ class BasicTroubleshootingFormatter(DisplayFormatter):
     def _show_service_troubleshooting(
         self, target: str, data: str, analysis_type: str
     ) -> None:
-        """Show service-specific troubleshooting"""
+        """Show service-specific troubleshooting using standard common actions"""
+        from operations.common_actions import CommonActionsFormatter
+
         # Get the resolved service name from collected data, fallback to target.service
         service_name = target
         if self._collected_data and self._collected_data.get("service_name"):
@@ -378,22 +379,20 @@ class BasicTroubleshootingFormatter(DisplayFormatter):
         elif not service_name.endswith(".service"):
             service_name = f"{target}.service"
 
-        console.print("    [bold green]Common Issues to ✓:[/bold green]")
-        console.print(
-            f"    [green]✓ Service status:[/green] [white]systemctl --user status {service_name}[/white]"
-        )
-        console.print(
-            f"    [green]View recent logs:[/green] [white]journalctl --user -u {service_name} -n 100[/white]"
-        )
-        console.print("        [green]✓ Disk space:[/green] [white]df -h[/white]")
-        console.print(
-            "    [green]✓ Port conflicts:[/green] [white]ss -tulpen | grep :8000[/white]"
-        )
-        console.print(
-            f"    [green]Restart  service:[/green] [white]pm restart {target}[/white]"
+        # Use standard common actions formatter
+        formatter = CommonActionsFormatter()
+        formatter.show_common_actions(
+            target=target,
+            service_name=service_name,
+            categories=[
+                "pm_shortcuts",
+                "service_status",
+                "logs_diagnostics",
+                "troubleshooting",
+            ],
         )
 
-        # Check for specific issues in the data
+        # Check for specific issues in the data and show additional context
         if isinstance(data, str):
             logs = data.lower()
             if "port already in use" in logs or "bind" in logs:
@@ -411,12 +410,6 @@ class BasicTroubleshootingFormatter(DisplayFormatter):
                 console.print(
                     f"    [white]Try:[/white] [cyan]pm reset-failed {target}[/cyan]"
                 )
-
-        console.print("\n[bold green]Next Steps:[/bold green]")
-        console.print(
-            f"    [white]For detailed analysis:[/white] [cyan]pm diag {target}[/cyan]"
-        )
-        console.print()
 
 
 class InteractiveAnalysisHandler:
@@ -480,7 +473,6 @@ class InteractiveAnalysisHandler:
                 "volume_management",
                 "service_management",
             ],
-            compact=False,  # Use detailed format for comprehensive view
         )
 
     def _process_followup_question(
