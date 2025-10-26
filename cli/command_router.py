@@ -303,8 +303,7 @@ class CommandRouter:
             return self._handle_auto_update(args)
         elif command == "reload":
             return self._handle_reload(args)
-        elif command == "refresh":
-            return self._handle_refresh(args)
+
         elif command == "fix-supabase-env":
             return self._handle_fix_supabase_env(args)
         elif command == "copy-volumes":
@@ -768,16 +767,6 @@ class CommandRouter:
 
     def _handle_reload(self, args):
         return self.container_ops.reload_daemon()
-
-    def _handle_refresh(self, args):
-        # Hidden refresh command used internally by universal script
-        if hasattr(self.manager, "refresh_service_discovery"):
-            self.manager.refresh_service_discovery()
-        # Also clear any display caches
-        if hasattr(self.display, "clear_cache"):
-            self.display.clear_cache()
-        console.print("[green]Service discovery refreshed[/green]")
-        return True
 
     def _handle_fix_supabase_env(self, args):
         # Fix Supabase environment variable issues

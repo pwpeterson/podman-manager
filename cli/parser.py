@@ -569,15 +569,6 @@ def _add_image_commands(subparsers):
         help="Show detailed command execution (exec lines)",
     )
 
-    # Hidden refresh command
-    refresh_parser = subparsers.add_parser("refresh", help=argparse.SUPPRESS)
-    refresh_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show detailed command execution (exec lines)",
-    )
-
     # Fix Supabase environment variables
     fix_supabase_parser = subparsers.add_parser(
         "fix-supabase-env", help="Fix Supabase environment variable issues"
