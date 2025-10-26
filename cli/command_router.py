@@ -608,9 +608,20 @@ class CommandRouter:
             # Store AI agent from command-specific argument if provided, otherwise use global
             ai_agent = getattr(args, "ai_agent", None) or self.ai_agent
 
+            # Resolve service name first to show proper name in troubleshooting message
+            service_name = self.manager._find_service_name(args.target, "diag")
+            if not service_name:
+                console.print(f"[red]Service '{args.target}' not found[/red]")
+                return False
+            elif service_name == "CANCELLED":
+                return False
+
+            # Always show troubleshooting message first with resolved service name
+            console.print(f"\n[green]Troubleshooting {service_name}...[/green]")
+            console.print()
+
             # If AI agent is specified, trigger AI analysis directly
             if ai_agent:
-                console.print()
                 console.print(
                     f"[green]Performing AI diagnostic analysis with {ai_agent}...[/green]"
                 )
@@ -690,6 +701,12 @@ class CommandRouter:
     # Service lifecycle command handlers
     def _handle_reinit(self, args):
         self.handle_command_verbose(args)
+
+        # Show AI analysis message in verbose mode
+        from core.config import _verbose_enabled
+
+        if _verbose_enabled:
+            console.print("[green]Starting AI analysis and diagnostics...[/green]")
 
         # Determine build type
         build_type = None

@@ -117,7 +117,7 @@ class AIAnalyzer:
 
             # Get AI analysis using the agent system
             result = ai_agent_manager.analyze_with_agent(
-                prompt, resolved_agent, verbose=verbose
+                prompt, resolved_agent, verbose=verbose, target=target
             )
 
             # Clear the analyzing message if not in verbose mode

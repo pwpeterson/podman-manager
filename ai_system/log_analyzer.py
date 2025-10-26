@@ -412,6 +412,9 @@ class LogAnalyzer:
             console.print(f"[red]Service '{target}' not found[/red]")
             return
 
+        console.print(f"\n[green]Troubleshooting {service_name}...[/green]")
+        console.print()
+
         # Check systemd service status
         status_cmd = ["systemctl", "--user", "status", service_name, "--no-pager", "-l"]
         if _verbose_enabled:
@@ -955,7 +958,10 @@ class LogAnalyzer:
         """Show recommended actions for troubleshooting"""
         console.print("[green]Recommended actions:[/green]")
         console.print(
-            f"[green]  View detailed logs:[/green] [white]pm logs {target}[/white]"
+            f"[green]  View podman logs:[/green] [white]pm logs {target}[/white]"
+        )
+        console.print(
+            f"[green]  View service config:[/green] [white]systemctl --user cat {service_name}[/white]"
         )
         console.print(
             f"[green]  Diagnose the issue:[/green] [white]pm diagnose {target}[/white]"

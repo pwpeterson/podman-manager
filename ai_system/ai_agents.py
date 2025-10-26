@@ -569,7 +569,11 @@ class AIAgentManager:
         console.print()
 
     def analyze_with_agent(
-        self, prompt: str, agent_name: Optional[str] = None, verbose: bool = False
+        self,
+        prompt: str,
+        agent_name: Optional[str] = None,
+        verbose: bool = False,
+        target: Optional[str] = None,
     ) -> Optional[str]:
         """Analyze logs using specified agent or default"""
         agent = self.get_agent(agent_name)

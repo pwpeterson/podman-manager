@@ -255,16 +255,7 @@ class ContainerDataCollector(DataCollector):
             if container_name:
                 # Get container logs
                 logs_result = self._run_command(
-                    [
-                        "podman",
-                        "logs",
-                        container_name,
-                        "--since",
-                        "2h",
-                        "--timestamps",
-                        "--tail",
-                        "100",
-                    ],
+                    ["podman", "logs", container_name],
                     timeout=15,
                 )
 
@@ -281,16 +272,7 @@ class ContainerDataCollector(DataCollector):
             else:
                 # Try direct service-based log collection using resolved service name first
                 direct_logs_result = self._run_command(
-                    [
-                        "podman",
-                        "logs",
-                        container_base_name,
-                        "--since",
-                        "2h",
-                        "--timestamps",
-                        "--tail",
-                        "100",
-                    ],
+                    ["podman", "logs", container_base_name],
                     timeout=15,
                 )
 
@@ -299,16 +281,7 @@ class ContainerDataCollector(DataCollector):
                 elif container_base_name != target:
                     # Only try fallback if container_base_name is different from target
                     fallback_logs_result = self._run_command(
-                        [
-                            "podman",
-                            "logs",
-                            target,
-                            "--since",
-                            "2h",
-                            "--timestamps",
-                            "--tail",
-                            "100",
-                        ],
+                        ["podman", "logs", target],
                         timeout=15,
                     )
 
