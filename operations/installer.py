@@ -1479,8 +1479,6 @@ class QuadletInstaller:
     def _refresh_pm_discovery(self, display_name: str) -> None:
         """Restart podman service to load changes (refresh functionality removed)."""
         console.print("[green]Restarting podman service to load changes...[/green]")
-        if not is_verbose():
-            console.print()
         try:
             restart_cmd = ["systemctl", "--user", "restart", "podman.service"]
             verbose_print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
@@ -1523,7 +1521,6 @@ class QuadletInstaller:
             target=service_name,
             service_name=f"{service_name}.service",
             categories=["service_management", "service_status", "logs_diagnostics"],
-            compact=False,
         )
 
     def _show_stack_next_steps(self, stack_name: str, use_sudo: bool) -> None:
@@ -1543,7 +1540,6 @@ class QuadletInstaller:
                 target=example_service,
                 service_name=f"{example_service}.service",
                 categories=["service_management", "service_status", "logs_diagnostics"],
-                compact=False,
             )
 
     def list_stacks(self) -> None:

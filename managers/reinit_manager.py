@@ -125,7 +125,7 @@ class ReinitManager:
         stop_success = stop_result.returncode == 0
 
         if stop_success:
-            console.print(f"[green]    Stopped {display_name}[/green]")
+            console.print(f"[green]    Stopped {display_name}.[/green]")
             console.print()
         else:
             console.print("[yellow]Service was not running or failed to stop[/yellow]")
