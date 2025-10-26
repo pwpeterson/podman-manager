@@ -108,11 +108,11 @@ class AIAnalyzer:
                 console.print()
 
             # Show AI analysis start message for both verbose and non-verbose
+            console.print("[green]Starting AI analysis and diagnostics...[/green]")
+
             console.print(
                 "[green]Collecting data for AI analysis and diagnostic...[/green]"
             )
-
-            console.print("[green]Starting AI analysis and diagnostics...[/green]")
             console.print()
 
             # Show analyzing spinner before AI agent call (non-verbose only)
