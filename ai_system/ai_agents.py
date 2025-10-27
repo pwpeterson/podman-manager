@@ -7,6 +7,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
+# Load environment variables from .env file if available
+try:
+    from dotenv import load_dotenv
+
+    # Load .env file from the project root (parent of this package)
+    env_path = Path(__file__).parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    # python-dotenv not installed, skip loading
+    pass
+
 try:
     import requests
 except ImportError:
