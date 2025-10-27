@@ -123,6 +123,10 @@ class AIAnalyzer:
                 else:
                     console.print("[green]⠴ Analyzing build failure...[/green]", end="")
                     console.print(" ", end="")
+            elif analysis_type == "reinit_failure":
+                # For reinit failures, don't show any startup message to avoid duplication
+                # The reinit manager already shows "Error found in reinit command"
+                pass
             else:
                 # For other analysis types, show analyzing message only in verbose mode
                 if verbose:
