@@ -120,9 +120,22 @@ class ClaudeAgent(AIAgent):
         api_key = os.getenv(self.config.api_key_env or "ANTHROPIC_API_KEY")
         available = api_key is not None and requests is not None
 
-        # Debug output
+        # Debug output with API key details
+        if api_key:
+            key_preview = (
+                f"{api_key[:15]}...{api_key[-10:]}" if len(api_key) > 25 else api_key
+            )
+            key_length = len(api_key)
+            console.print(
+                f"[dim]DEBUG: ClaudeAgent.is_available() - API key present: {api_key is not None}, length: {key_length}, preview: {key_preview}[/dim]"
+            )
+        else:
+            console.print(
+                f"[dim]DEBUG: ClaudeAgent.is_available() - API key present: {api_key is not None}, env var: {self.config.api_key_env or 'ANTHROPIC_API_KEY'}[/dim]"
+            )
+
         console.print(
-            f"[dim]DEBUG: ClaudeAgent.is_available() - API key present: {api_key is not None}, requests available: {requests is not None}, result: {available}[/dim]"
+            f"[dim]DEBUG: ClaudeAgent.is_available() - requests available: {requests is not None}, result: {available}[/dim]"
         )
 
         return available
