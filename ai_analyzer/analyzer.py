@@ -124,11 +124,14 @@ class AIAnalyzer:
                     console.print("[green]⠴ Analyzing build failure...[/green]", end="")
                     console.print(" ", end="")
             else:
-                # Show "Starting AI analysis and diagnostics..." for both verbose and non-verbose
-                console.print("[green]Starting AI analysis and diagnostics...[/green]")
+                # For other analysis types, show analyzing message only in verbose mode
                 if verbose:
+                    console.print(
+                        "[green]Starting AI analysis and diagnostics...[/green]"
+                    )
                     console.print()
                 else:
+                    console.print("[green]⠴ Analyzing...[/green]", end="")
                     console.print(" ", end="")
 
             # Get AI analysis using the agent system with fallback logic
