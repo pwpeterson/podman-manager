@@ -118,19 +118,37 @@ class ClaudeAgent(AIAgent):
     def is_available(self) -> bool:
         """Check if Claude API key is available"""
         api_key = os.getenv(self.config.api_key_env or "ANTHROPIC_API_KEY")
-        return api_key is not None and requests is not None
+        available = api_key is not None and requests is not None
+
+        # Debug output
+        console.print(
+            f"[dim]DEBUG: ClaudeAgent.is_available() - API key present: {api_key is not None}, requests available: {requests is not None}, result: {available}[/dim]"
+        )
+
+        return available
 
     def analyze_logs(self, prompt: str) -> Optional[str]:
         """Send prompt to Claude API"""
         if not requests:
+            console.print(
+                "[dim]DEBUG: ClaudeAgent.analyze_logs() - requests module not available[/dim]"
+            )
             return None
 
         api_key = os.getenv(self.config.api_key_env or "ANTHROPIC_API_KEY")
         if not api_key:
+            console.print(
+                "[dim]DEBUG: ClaudeAgent.analyze_logs() - API key not found[/dim]"
+            )
             return None
 
+        model_name = self.config.model_name or "claude-3-sonnet-20240229"
+        console.print(
+            f"[dim]DEBUG: ClaudeAgent.analyze_logs() - Using model: {model_name}[/dim]"
+        )
+
         payload = {
-            "model": self.config.model_name or "claude-3-sonnet-20240229",
+            "model": model_name,
             "max_tokens": self.config.max_tokens,
             "temperature": self.config.temperature,
             "messages": [{"role": "user", "content": prompt}],
@@ -142,6 +160,10 @@ class ClaudeAgent(AIAgent):
             "anthropic-version": "2023-06-01",
         }
 
+        console.print(
+            "[dim]DEBUG: ClaudeAgent.analyze_logs() - Making API request to Anthropic[/dim]"
+        )
+
         try:
             response = requests.post(
                 "https://api.anthropic.com/v1/messages",
@@ -150,14 +172,36 @@ class ClaudeAgent(AIAgent):
                 timeout=self.config.timeout,
             )
 
+            console.print(
+                f"[dim]DEBUG: ClaudeAgent.analyze_logs() - Response status: {response.status_code}[/dim]"
+            )
+
             if response.status_code == 200:
                 result = response.json()
+                console.print(
+                    f"[dim]DEBUG: ClaudeAgent.analyze_logs() - Response keys: {list(result.keys())}[/dim]"
+                )
                 if "content" in result and len(result["content"]) > 0:
+                    console.print(
+                        "[dim]DEBUG: ClaudeAgent.analyze_logs() - Success, returning response[/dim]"
+                    )
                     return result["content"][0]["text"]
+                else:
+                    console.print(
+                        "[dim]DEBUG: ClaudeAgent.analyze_logs() - No content in response[/dim]"
+                    )
+            else:
+                console.print(
+                    f"[dim]DEBUG: ClaudeAgent.analyze_logs() - API error: {response.status_code}[/dim]"
+                )
+                console.print(f"[dim]DEBUG: Response body: {response.text[:500]}[/dim]")
 
             return None
 
-        except requests.RequestException:
+        except requests.RequestException as e:
+            console.print(
+                f"[dim]DEBUG: ClaudeAgent.analyze_logs() - Request exception: {e}[/dim]"
+            )
             return None
 
 
