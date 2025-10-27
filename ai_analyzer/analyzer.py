@@ -126,6 +126,10 @@ class AIAnalyzer:
             elif analysis_type == "reinit_failure":
                 # For reinit failures, don't show any startup message to avoid duplication
                 # The reinit manager already shows "Error found in reinit command"
+                if verbose:
+                    verbose_print(
+                        "  [cyan]exec: Skipping startup message for reinit_failure[/cyan]"
+                    )
                 pass
             else:
                 # For other analysis types, show analyzing message only in verbose mode
