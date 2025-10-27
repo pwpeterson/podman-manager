@@ -14,7 +14,8 @@ try:
     # Load .env file from the project root (parent of this package)
     env_path = Path(__file__).parent.parent / ".env"
     if env_path.exists():
-        load_dotenv(env_path)
+        # Use override=True to force .env values over system environment
+        load_dotenv(env_path, override=True)
 except ImportError:
     # python-dotenv not installed, skip loading
     pass
@@ -132,45 +133,18 @@ class ClaudeAgent(AIAgent):
         api_key = os.getenv(self.config.api_key_env or "ANTHROPIC_API_KEY")
         available = api_key is not None and requests is not None
 
-        # Debug output with API key details
-        if api_key:
-            key_preview = (
-                f"{api_key[:15]}...{api_key[-10:]}" if len(api_key) > 25 else api_key
-            )
-            key_length = len(api_key)
-            console.print(
-                f"[dim]DEBUG: ClaudeAgent.is_available() - API key present: {api_key is not None}, length: {key_length}, preview: {key_preview}[/dim]"
-            )
-        else:
-            console.print(
-                f"[dim]DEBUG: ClaudeAgent.is_available() - API key present: {api_key is not None}, env var: {self.config.api_key_env or 'ANTHROPIC_API_KEY'}[/dim]"
-            )
-
-        console.print(
-            f"[dim]DEBUG: ClaudeAgent.is_available() - requests available: {requests is not None}, result: {available}[/dim]"
-        )
-
         return available
 
     def analyze_logs(self, prompt: str) -> Optional[str]:
         """Send prompt to Claude API"""
         if not requests:
-            console.print(
-                "[dim]DEBUG: ClaudeAgent.analyze_logs() - requests module not available[/dim]"
-            )
             return None
 
         api_key = os.getenv(self.config.api_key_env or "ANTHROPIC_API_KEY")
         if not api_key:
-            console.print(
-                "[dim]DEBUG: ClaudeAgent.analyze_logs() - API key not found[/dim]"
-            )
             return None
 
         model_name = self.config.model_name or "claude-3-sonnet-20240229"
-        console.print(
-            f"[dim]DEBUG: ClaudeAgent.analyze_logs() - Using model: {model_name}[/dim]"
-        )
 
         payload = {
             "model": model_name,
@@ -185,10 +159,6 @@ class ClaudeAgent(AIAgent):
             "anthropic-version": "2023-06-01",
         }
 
-        console.print(
-            "[dim]DEBUG: ClaudeAgent.analyze_logs() - Making API request to Anthropic[/dim]"
-        )
-
         try:
             response = requests.post(
                 "https://api.anthropic.com/v1/messages",
@@ -197,36 +167,14 @@ class ClaudeAgent(AIAgent):
                 timeout=self.config.timeout,
             )
 
-            console.print(
-                f"[dim]DEBUG: ClaudeAgent.analyze_logs() - Response status: {response.status_code}[/dim]"
-            )
-
             if response.status_code == 200:
                 result = response.json()
-                console.print(
-                    f"[dim]DEBUG: ClaudeAgent.analyze_logs() - Response keys: {list(result.keys())}[/dim]"
-                )
                 if "content" in result and len(result["content"]) > 0:
-                    console.print(
-                        "[dim]DEBUG: ClaudeAgent.analyze_logs() - Success, returning response[/dim]"
-                    )
                     return result["content"][0]["text"]
-                else:
-                    console.print(
-                        "[dim]DEBUG: ClaudeAgent.analyze_logs() - No content in response[/dim]"
-                    )
-            else:
-                console.print(
-                    f"[dim]DEBUG: ClaudeAgent.analyze_logs() - API error: {response.status_code}[/dim]"
-                )
-                console.print(f"[dim]DEBUG: Response body: {response.text[:500]}[/dim]")
 
             return None
 
-        except requests.RequestException as e:
-            console.print(
-                f"[dim]DEBUG: ClaudeAgent.analyze_logs() - Request exception: {e}[/dim]"
-            )
+        except requests.RequestException:
             return None
 
 

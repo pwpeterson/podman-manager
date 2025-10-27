@@ -9,7 +9,8 @@ try:
     # Load .env file from the project root (parent of this package)
     env_path = Path(__file__).parent.parent / ".env"
     if env_path.exists():
-        load_dotenv(env_path)
+        # Use override=True to force .env values over system environment
+        load_dotenv(env_path, override=True)
 except ImportError:
     # python-dotenv not installed, skip loading
     pass
