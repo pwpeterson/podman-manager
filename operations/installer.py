@@ -312,19 +312,46 @@ class ValidationManager:
     ) -> List[str]:
         """Format quadlet error messages for clean display."""
         formatted_errors = []
-        lines = grep_output.strip().split("\n")
+        import re
 
-        for line in lines:
+        # First, try to match the multi-line pattern across the entire output
+        full_output = grep_output.strip()
+
+        # Pattern for the specific error that spans multiple lines
+        # This handles the exact format from the screenshot:
+        # quadlet-generator[2911523]: Loading source unit file /home/pwp/.config/containers/systemd/sys-services-registry.container
+        # quadlet-generator[2911523]: error loading "/home/pwp/.config/containers/systemd/sys-services-registry.container", file contains line 1: "Unit]" which is not a key-value pair, group, or comment
+        multiline_pattern = r'quadlet-generator\[\d+\]:\s*Loading source unit file[^\n]*\n\s*quadlet-generator\[\d+\]:\s*error loading "([^"]+)", file contains line (\d+): "([^"]+)" which\s*is not a key-value pair, group, or comment'
+        multiline_match = re.search(
+            multiline_pattern, full_output, re.MULTILINE | re.DOTALL
+        )
+
+        if multiline_match:
+            file_path = multiline_match.group(1)
+            line_num = multiline_match.group(2)
+            content = multiline_match.group(3)
+            # Format the error message in bright_yellow without the quadlet-generator prefix
+            formatted_errors.append(
+                f'[bright_yellow]error loading "{file_path}", file contains line {line_num}: "{content}" which is not a key-value pair, group, or comment[/bright_yellow]'
+            )
+            return formatted_errors
+
+        # Fallback: process line by line for other error types
+        lines = full_output.split("\n")
+
+        for i, line in enumerate(lines):
             line = line.strip()
             if not line:
+                continue
+
+            # Skip "Loading source unit file" lines
+            if "Loading source unit file" in line:
                 continue
 
             # Parse typical quadlet error format:
             # quadlet-generator[2696881]: converting "local-ai-caddy-dav.container": unsupported key 'Env' in group 'Container' in /path/file
             if "unsupported key" in line.lower():
                 # Extract the key and format cleanly
-                import re
-
                 match = re.search(
                     r"unsupported key '([^']+)' in group '([^']+)'", line, re.IGNORECASE
                 )
@@ -332,17 +359,38 @@ class ValidationManager:
                     key = match.group(1)
                     group = match.group(2)
                     formatted_errors.append(
-                        f"[red]Unsupported key '{key}' in group '{group}' in {container_file}[/red]"
+                        f"[bright_yellow]Unsupported key '{key}' in group '{group}' in {container_file}[/bright_yellow]"
                     )
                 else:
-                    # Fallback to original line if parsing fails
-                    formatted_errors.append(f"[red]{line}[/red]")
+                    # Fallback to original line if parsing fails, removing quadlet-generator prefix
+                    clean_line = re.sub(r"quadlet-generator\[\d+\]:\s*", "", line)
+                    if clean_line.strip():  # Only show non-empty lines
+                        formatted_errors.append(
+                            f"[bright_yellow]{clean_line}[/bright_yellow]"
+                        )
             elif any(
                 keyword in line.lower()
                 for keyword in ["error", "invalid", "failed", "cannot", "missing"]
             ):
-                # Format other error types
-                formatted_errors.append(f"[red]{line}[/red]")
+                # Check for single-line error pattern
+                single_line_pattern = r'quadlet-generator\[\d+\]:\s*error loading "([^"]+)", file contains line (\d+): "([^"]+)" which\s*is not a key-value pair, group, or comment'
+                single_match = re.search(single_line_pattern, line, re.IGNORECASE)
+
+                if single_match:
+                    file_path = single_match.group(1)
+                    line_num = single_match.group(2)
+                    content = single_match.group(3)
+                    # Format the error message in bright_yellow without the quadlet-generator prefix
+                    formatted_errors.append(
+                        f'[bright_yellow]error loading "{file_path}", file contains line {line_num}: "{content}" which is not a key-value pair, group, or comment[/bright_yellow]'
+                    )
+                else:
+                    # Format other error types in bright_yellow, removing quadlet-generator prefix
+                    clean_line = re.sub(r"quadlet-generator\[\d+\]:\s*", "", line)
+                    if clean_line.strip():  # Only show non-empty lines
+                        formatted_errors.append(
+                            f"[bright_yellow]{clean_line}[/bright_yellow]"
+                        )
 
         return formatted_errors
 
@@ -1095,8 +1143,63 @@ class FileManager:
                     console.print(
                         f"[bright_yellow]Validation warning for {container_file}:[/bright_yellow]"
                     )
-                    for line in grep_output.strip().split("\n"):
-                        console.print(f"  [dim]{line.strip()}[/dim]")
+                    # Process the entire output to handle multi-line error messages
+                    import re
+
+                    # First, try to match the multi-line pattern across the entire output
+                    full_output = grep_output.strip()
+
+                    # Pattern for the specific error that spans multiple lines
+                    # This handles the exact format from the screenshot:
+                    # quadlet-generator[2911523]: Loading source unit file /home/pwp/.config/containers/systemd/sys-services-registry.container
+                    # quadlet-generator[2911523]: error loading "/home/pwp/.config/containers/systemd/sys-services-registry.container", file contains line 1: "Unit]" which is not a key-value pair, group, or comment
+                    multiline_pattern = r'quadlet-generator\[\d+\]:\s*Loading source unit file[^\n]*\n\s*quadlet-generator\[\d+\]:\s*error loading "([^"]+)", file contains line (\d+): "([^"]+)" which\s*is not a key-value pair, group, or comment'
+                    multiline_match = re.search(
+                        multiline_pattern, full_output, re.MULTILINE | re.DOTALL
+                    )
+
+                    if multiline_match:
+                        file_path = multiline_match.group(1)
+                        line_num = multiline_match.group(2)
+                        content = multiline_match.group(3)
+                        # Format the error message in bright_yellow without the quadlet-generator prefix
+                        console.print(
+                            f'  [bright_yellow]error loading "{file_path}", file contains line {line_num}: "{content}" which is not a key-value pair, group, or comment[/bright_yellow]'
+                        )
+                    else:
+                        # Fallback: process line by line for other error types
+                        for line in full_output.split("\n"):
+                            line = line.strip()
+                            if not line:
+                                continue
+
+                            # Skip the "Loading source unit file" lines
+                            if "Loading source unit file" in line:
+                                continue
+
+                            # Check for single-line error pattern
+                            single_line_pattern = r'quadlet-generator\[\d+\]:\s*error loading "([^"]+)", file contains line (\d+): "([^"]+)" which\s*is not a key-value pair, group, or comment'
+                            single_match = re.search(
+                                single_line_pattern, line, re.IGNORECASE
+                            )
+
+                            if single_match:
+                                file_path = single_match.group(1)
+                                line_num = single_match.group(2)
+                                content = single_match.group(3)
+                                # Format the error message in bright_yellow without the quadlet-generator prefix
+                                console.print(
+                                    f'  [bright_yellow]error loading "{file_path}", file contains line {line_num}: "{content}" which is not a key-value pair, group, or comment[/bright_yellow]'
+                                )
+                            else:
+                                # For other lines, remove quadlet-generator prefix and show in bright_yellow
+                                clean_line = re.sub(
+                                    r"quadlet-generator\[\d+\]:\s*", "", line
+                                )
+                                if clean_line.strip():  # Only show non-empty lines
+                                    console.print(
+                                        f"  [bright_yellow]{clean_line}[/bright_yellow]"
+                                    )
 
         except (subprocess.TimeoutExpired, Exception):
             # Silently ignore validation errors during individual file processing

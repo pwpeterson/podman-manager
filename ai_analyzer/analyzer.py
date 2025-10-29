@@ -84,11 +84,12 @@ class AIAnalyzer:
             )
 
         try:
-            # Show data collection message before starting collection
-            console.print(
-                "[green]Collecting data for AI analysis and diagnostic...[/green]"
-            )
-            console.print()
+            # Show data collection message before starting collection (skip for reinit_failure)
+            if analysis_type != "reinit_failure":
+                console.print(
+                    "[green]Collecting data for AI analysis and diagnostic...[/green]"
+                )
+                console.print()
 
             # Collect context data for the analysis
             collected_data = self._collect_context_data(
@@ -132,13 +133,13 @@ class AIAnalyzer:
                     )
                 pass
             else:
-                # For other analysis types, show analyzing message only in verbose mode
-                if verbose:
+                # For other analysis types, show analyzing message only in verbose mode (skip for reinit_failure)
+                if verbose and analysis_type != "reinit_failure":
                     console.print(
                         "[green]Starting AI analysis and diagnostics...[/green]"
                     )
                     console.print()
-                else:
+                elif analysis_type != "reinit_failure":
                     console.print("[green]⠴ Analyzing...[/green]", end="")
                     console.print(" ", end="")
 
