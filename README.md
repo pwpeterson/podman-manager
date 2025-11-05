@@ -730,12 +730,12 @@ The system provides standardized "More available actions" across all pm commands
 
 ### Essential Commands (Compact Format)
 ```
-✓ podman logs      : pm logs SERVICE
-✓ service logs     : journalctl --user -u SERVICE.service -n 100
-✓ service status   : systemctl --user status SERVICE.service --no-pager -l
-✓ service config   : systemctl --user cat SERVICE.service
-✓ troubleshoot     : pm diag SERVICE
-✓ restart service  : pm restart SERVICE
+✓ View podman logs    : pm logs vllm-qwen25
+✓ Diagnose issues     : pm diag vllm-qwen25
+✓ Restart service     : pm restart vllm-qwen25
+✓ Reinitialize        : pm reinit vllm-qwen25
+✓ service logs        : journalctl --user -u vllm-qwen25.service -n 100
+✓ service status      : systemctl --user status vllm-qwen25.service --no-pager -l
 ```
 
 ### Benefits

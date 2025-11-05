@@ -187,19 +187,13 @@ class FuzzyMatcher:
         has_stacks = any(item["type"] == "stack" for item in matches)
 
         if has_services and has_stacks:
-            console.print()
             console.print(
                 f"\n[green]Multiple services and stacks match '{partial_name}':[/green]"
             )
-            console.print()
         elif has_services:
-            console.print()
-            console.print(f"[green]Multiple services match '{partial_name}':[/green]")
-            console.print()
+            console.print(f"\n[green]Multiple services match '{partial_name}':[/green]")
         else:
-            console.print()
-            console.print(f"[green]Multiple stacks match '{partial_name}':[/green]")
-            console.print()
+            console.print(f"\n[green]Multiple stacks match '{partial_name}':[/green]")
 
         console.print(
             "[green]Please specify the full name or use the number prefix:[/green]"
@@ -212,34 +206,37 @@ class FuzzyMatcher:
                 f"  {i}. [cyan]pm {command} {item['name']}[/cyan] [dim]({item_type})[/dim]"
             )
 
-        # Interactive selection
-        try:
-            choice = input(
-                f"Select {('service' if has_services else 'stack')} (1-{len(matches)}) or press Enter to cancel: "
-            ).strip()
+        # Interactive selection with single prompt
+        while True:
+            try:
+                choice = input(
+                    f"Select {('service' if has_services else 'stack')} (1-{len(matches)}) or press Enter to cancel: "
+                ).strip()
 
-            if not choice:
-                return "CANCELLED"
+                if not choice:
+                    return "CANCELLED"
 
-            if choice.isdigit():
-                selection = int(choice)
-                if 1 <= selection <= len(matches):
-                    selected_item = matches[selection - 1]
-                    return self._resolve_match(selected_item)
+                if choice.isdigit():
+                    selection = int(choice)
+                    if 1 <= selection <= len(matches):
+                        selected_item = matches[selection - 1]
+                        resolved = self._resolve_match(selected_item)
+                        console.print(f"[dim]Selected: {selected_item['name']}[/dim]")
+                        return resolved
+                    else:
+                        console.print(
+                            f"[red]Invalid selection '{selection}'. Choose 1-{len(matches)}[/red]"
+                        )
+                        continue
                 else:
                     console.print(
-                        f"[red]Invalid selection '{selection}'. Choose 1-{len(matches)}[/red]"
+                        "[red]Please enter a number or press Enter to cancel[/red]"
                     )
-                    return None
-            else:
-                console.print(
-                    "[red]Please enter a number or press Enter to cancel[/red]"
-                )
-                return None
+                    continue
 
-        except (KeyboardInterrupt, EOFError):
-            console.print("\n[yellow]Selection cancelled[/yellow]")
-            return "CANCELLED"
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[yellow]Selection cancelled[/yellow]")
+                return "CANCELLED"
 
     def _resolve_match(self, item: dict) -> str:
         """Resolve a matched item to the appropriate return value."""

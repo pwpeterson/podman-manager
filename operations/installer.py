@@ -1034,7 +1034,7 @@ class FileManager:
             if file.endswith(".container"):
                 service_name = file.replace(".container", "")
                 console.print(
-                    f"[green]Copying & validating master {service_name} .container to systemd[/green]"
+                    f"[green]Copying & validating master {service_name}.container to systemd[/green]"
                 )
                 if not is_verbose():
                     console.print()

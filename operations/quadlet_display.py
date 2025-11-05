@@ -663,14 +663,15 @@ class QuadletDisplayManager:
             return None
 
     def _get_all_container_statuses(self, verbose=False):
-        """Get all container statuses at once using a single podman ps command"""
+        """Get all container statuses at once using a single podman ps command with timeout protection"""
         try:
             cmd = ["podman", "ps", "-a", "--format", "{{.Names}};{{.Status}}"]
 
             if verbose:
                 console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            # Use shorter timeout to prevent hanging
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
 
             if result.returncode == 0 and result.stdout.strip():
                 container_statuses = {}
@@ -682,41 +683,79 @@ class QuadletDisplayManager:
 
             return {}
 
+        except subprocess.TimeoutExpired:
+            if verbose:
+                console.print(
+                    "  [yellow]⚠️  Podman command timed out after 5s - using systemd fallback[/yellow]"
+                )
+            return {}
         except Exception:
             return {}
 
     def _get_service_status_from_cache(self, service_name, all_container_statuses):
-        """Get service status from cached container statuses"""
+        """Get service status from cached container statuses with systemd fallback"""
         try:
-            # Check exact match first
-            if service_name in all_container_statuses:
-                return self._format_status(all_container_statuses[service_name])
+            # If we have container statuses, use them
+            if all_container_statuses:
+                # Check exact match first
+                if service_name in all_container_statuses:
+                    return self._format_status(all_container_statuses[service_name])
 
-            # Check for partial matches
-            for container_name, status in all_container_statuses.items():
-                if service_name in container_name:
-                    return self._format_status(status)
-
-            # Check for common service variations
-            variations = [
-                service_name.replace("-", "_"),
-                service_name.replace("_", "-"),
-                f"local-ai-{service_name}",
-                f"supabase-{service_name}",
-                service_name.replace("local-ai-", ""),
-                service_name.replace("supabase-", ""),
-            ]
-
-            for variation in variations:
-                if variation in all_container_statuses:
-                    return self._format_status(all_container_statuses[variation])
-
-                # Check partial matches for variations
+                # Check for partial matches
                 for container_name, status in all_container_statuses.items():
-                    if variation in container_name:
+                    if service_name in container_name:
                         return self._format_status(status)
 
-            return "[white]not found[/white]"
+                # Check for common service variations
+                variations = [
+                    service_name.replace("-", "_"),
+                    service_name.replace("_", "-"),
+                    f"local-ai-{service_name}",
+                    f"supabase-{service_name}",
+                    service_name.replace("local-ai-", ""),
+                    service_name.replace("supabase-", ""),
+                ]
+
+                for variation in variations:
+                    if variation in all_container_statuses:
+                        return self._format_status(all_container_statuses[variation])
+
+                    # Check partial matches for variations
+                    for container_name, status in all_container_statuses.items():
+                        if variation in container_name:
+                            return self._format_status(status)
+
+            # Fallback: check systemd service status when podman is unresponsive
+            try:
+                cmd = ["systemctl", "--user", "is-active", f"{service_name}.service"]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+
+                if result.returncode == 0:
+                    return "[green]active (systemd)[/green]"
+                else:
+                    # Check if service exists but is inactive
+                    cmd_status = [
+                        "systemctl",
+                        "--user",
+                        "show",
+                        f"{service_name}.service",
+                        "--property=LoadState",
+                    ]
+                    status_result = subprocess.run(
+                        cmd_status, capture_output=True, text=True, timeout=3
+                    )
+
+                    if (
+                        status_result.returncode == 0
+                        and "LoadState=loaded" in status_result.stdout
+                    ):
+                        return "[yellow]inactive (systemd)[/yellow]"
+                    else:
+                        return "[white]not found[/white]"
+            except subprocess.TimeoutExpired:
+                return "[red]timeout[/red]"
+            except Exception:
+                return "[white]not found[/white]"
 
         except Exception:
             return "[red]error[/red]"

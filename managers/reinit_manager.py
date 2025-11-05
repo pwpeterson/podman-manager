@@ -130,6 +130,32 @@ class ReinitManager:
         else:
             console.print("[yellow]Service was not running or failed to stop[/yellow]")
 
+        # Remove old generated service file
+        console.print("[green]Removing old generated service file...[/green]")
+        import os
+
+        service_file_path = os.path.expanduser(f"~/.config/systemd/user/{service_name}")
+        if not service_name.endswith(".service"):
+            service_file_path += ".service"
+
+        verbose_print(f"[cyan]exec: rm -f {service_file_path}[/cyan]")
+        try:
+            if os.path.exists(service_file_path):
+                os.remove(service_file_path)
+                console.print(
+                    f"[green]    Removed {os.path.basename(service_file_path)}.[/green]"
+                )
+            else:
+                console.print("[green]    Removed old generated service file.[/green]")
+                verbose_print(
+                    f"[cyan]Service file {service_file_path} does not exist, skipping removal[/cyan]"
+                )
+        except Exception as e:
+            console.print(
+                f"[yellow]Warning: Could not remove service file: {e}[/yellow]"
+            )
+        console.print()
+
         # Build if requested
         if build_type == "podman":
             console.print(f"[green]Building {target} (podman)...[/green]")
@@ -152,14 +178,15 @@ class ReinitManager:
 
         # Handle daemon reload
         console.print("[green]Reloading systemd daemon...[/green]")
-        if not _verbose_enabled:
-            console.print()
 
         if build_type not in ["legacy", "quadlet"]:
             reload_success = self.manager.reload_daemon()
             if not reload_success:
                 console.print("[red]Failed to reload systemd daemon[/red]")
                 return False
+            else:
+                console.print("[green]    Reloaded systemd daemon.[/green]")
+                console.print()
         else:
             # Quadlet build script already reloaded daemon, add delay and force another reload
             time.sleep(3)
@@ -169,6 +196,8 @@ class ReinitManager:
                     "[yellow]Warning: Additional daemon reload failed[/yellow]"
                 )
             else:
+                console.print("[green]    Reloaded systemd daemon.[/green]")
+                console.print()
                 time.sleep(1)
 
         # Start the service using the resolved service name
@@ -907,17 +936,18 @@ Keep the response brief and actionable. Focus on the most critical issues first.
         time.sleep(0.1)
 
         # Show error detection message and start AI analysis
-        console.print("\n[red]Error found in reinit command[/red]\n")
+        console.print(
+            f"\n[red]{target} is running but is generating error messages.[/red]\n"
+        )
 
         try:
-            from ai_analyzer import ai_analyzer
+            from ai_analyzer.analyzer import AIAnalyzer
 
-            # Initialize ai_analyzer with manager if not already done
-            if ai_analyzer.manager is None:
-                ai_analyzer.manager = self.manager
+            # Create analyzer instance with manager
+            analyzer = AIAnalyzer(self.manager)
 
             # Run unified AI analysis with error context and verbose mode
-            result = ai_analyzer.ai_analyze(
+            result = analyzer.ai_analyze(
                 analysis_type="reinit_failure",
                 target=target,
                 context_data={"start_error": error_message},
@@ -931,6 +961,11 @@ Keep the response brief and actionable. Focus on the most critical issues first.
                     "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
                 )
 
+        except ImportError as e:
+            verbose_print(f"  [cyan]exec: AI analyzer import failed: {e}[/cyan]")
+            console.print(
+                "[yellow]AI analysis unavailable (ai_analyzer module not found)[/yellow]"
+            )
         except Exception as e:
             verbose_print(f"  [cyan]exec: AI analysis failed with error: {e}[/cyan]")
             console.print(f"[yellow]AI analysis failed: {e}[/yellow]")
@@ -947,21 +982,20 @@ Keep the response brief and actionable. Focus on the most critical issues first.
         from core.config import _verbose_enabled
 
         try:
-            from ai_analyzer import ai_analyzer
+            from ai_analyzer.analyzer import AIAnalyzer
 
             verbose_print(
                 "  [cyan]exec: Using unified AI analyzer for reinit failure analysis[/cyan]"
             )
 
-            # Initialize ai_analyzer with manager if not already done
-            if ai_analyzer.manager is None:
-                ai_analyzer.manager = self.manager
+            # Create analyzer instance with manager
+            analyzer = AIAnalyzer(self.manager)
 
             # Prepare context data for reinit failure analysis
             context_data = {"start_error": start_error, "lines": 50}
 
             # Run unified AI analysis
-            ai_analyzer.ai_analyze(
+            analyzer.ai_analyze(
                 analysis_type="reinit_failure",
                 target=target,
                 context_data=context_data,

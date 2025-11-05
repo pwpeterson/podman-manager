@@ -57,7 +57,8 @@ class MarkdownDisplayFormatter(DisplayFormatter):
         import re
 
         # Pattern to match Rich markup tags: [tag] or [/tag]
-        pattern = r"\[/?(?:cyan|bold|white|green|red|yellow|blue|magenta|dim|italic|underline|strike|blink|reverse|conceal)\]"
+        # Include all common Rich colors and styles, plus any custom colors
+        pattern = r"\[/?(?:cyan|bold|white|green|red|yellow|blue|magenta|dim|italic|underline|strike|blink|reverse|conceal|bright_[a-z]+|color\([0-9]+\)|rgb\([0-9,]+\)|#[0-9a-fA-F]+|orange1|[a-z_]+)\]"
         cleaned_content = re.sub(pattern, "", content)
         return cleaned_content
 

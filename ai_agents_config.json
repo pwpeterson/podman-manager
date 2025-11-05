@@ -1,10 +1,10 @@
 {
-  "default_agent": "claude-sonnet-4.5",
+  "default_agent": "claude-sonnet-4-5",
   "agent_preferences": {
     "prefer_local": true,
     "fallback_order": [
       "vllm-qwen25",
-      "claude-sonnet-4.5",
+      "claude-sonnet-4-5",
       "gpt-4"
     ]
   },
@@ -36,8 +36,8 @@
       "description": "Local GLM-4-6B model"
     },
     {
-      "name": "claude-sonnet-4.5",
-      "display_name": "Claude Sonnet 4.5",
+      "name": "claude-sonnet-4-5",
+      "display_name": "claude-sonnet-4-5",
       "agent_type": "claude",
       "endpoint": null,
       "model_name": "claude-sonnet-4-5",
@@ -46,7 +46,7 @@
       "temperature": 0.1,
       "timeout": 60,
       "enabled": true,
-      "description": "Anthropic Claude Sonnet 4.5"
+      "description": "Anthropic claude-sonnet-4-5"
     },
     {
       "name": "claude-haiku",

@@ -1048,13 +1048,20 @@ class QuadletManager:
             stack_name = service_name[6:]  # Remove "STACK:" prefix
             return stack_manager._start_stack(stack_name.replace("-stack", ""))
 
-        console.print(f"\nStarting {target}...")
+        # Get display name for the resolved service
+        display_name = service_name
+        if service_name.endswith(".service"):
+            display_name = service_name[:-8]  # Remove .service suffix
+        elif service_name.endswith(".target"):
+            display_name = service_name[:-7]  # Remove .target suffix
+
+        console.print(f"\nStarting {display_name}...")
 
         cmd = ["systemctl", "--user", "start", service_name]
         result = self._run_systemctl_command(cmd, f"start_{target}")
 
         if result.returncode == 0:
-            console.print(f"  Started {target}")
+            console.print(f"  Started {display_name}")
             return True
         else:
             console.print(f"[red]Failed to start {service_name}[/red]")

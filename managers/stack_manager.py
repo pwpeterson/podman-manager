@@ -381,7 +381,13 @@ class StackManager:
 
         console.print()
         if service_file:
-            console.print(f"[green]Installing {stack} service...[/green]")
+            # Get display name for the resolved service
+            display_name = resolved_stack
+            if display_name.endswith(".service"):
+                display_name = display_name[:-8]  # Remove .service suffix
+            elif display_name.endswith(".target"):
+                display_name = display_name[:-7]  # Remove .target suffix
+            console.print(f"[green]Installing {display_name} service...[/green]")
         else:
             console.print(f"[green]Installing {resolved_stack} stack...[/green]")
         console.print()

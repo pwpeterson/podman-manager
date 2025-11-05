@@ -164,7 +164,7 @@ class CommandRouter:
                 )
 
         except Exception as e:
-            console.print(f"[red]AI analysis failed: {e}[/red]")
+            console.print(f"[red]AI analysis failed: {e}[/red]", markup=False)
 
     def _show_common_actions_for_command(self, command_type: str, target: str):
         """Show common actions after successful command completion"""
@@ -295,7 +295,7 @@ class CommandRouter:
 
             return result
         except Exception as e:
-            console.print(f"[red]Operation failed: {e}[/red]")
+            console.print(f"[red]Operation failed: {e}[/red]", markup=False)
 
             # Trigger AI analysis for exceptions as well
             self._trigger_automatic_ai_analysis(
@@ -598,18 +598,12 @@ class CommandRouter:
             console.print(f"[red]Service '{target}' not found[/red]")
             return False
 
-        # Extract short container name for podman command
+        # Use the resolved service name (without .service suffix) for container name
         container_name = (
             service_name.replace(".service", "")
             if service_name.endswith(".service")
             else service_name
         )
-        # Further shorten the name by extracting the last part after the last dash
-        # e.g., 'local-ai-open-webui' -> 'open-webui'
-        if "-" in container_name:
-            parts = container_name.split("-")
-            if len(parts) > 2:  # Only shorten if there are multiple parts
-                container_name = "-".join(parts[-2:])  # Take last 2 parts
 
         # Commands to run with their descriptions - using shell=True to force plain text
         commands = [
