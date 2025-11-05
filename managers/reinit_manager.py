@@ -936,8 +936,10 @@ Keep the response brief and actionable. Focus on the most critical issues first.
         time.sleep(0.1)
 
         # Show error detection message and start AI analysis
+        # Use a more user-friendly display name
+        display_name = target.replace("-", " ").title()
         console.print(
-            f"\n[red]{target} is running but is generating error messages.[/red]\n"
+            f"\n[red]{display_name} is running but is generating error messages.[/red]\n"
         )
 
         try:
