@@ -3,6 +3,7 @@
 import subprocess
 
 from core.config import console, verbose_print
+from core.simple_fuzzy_matcher import find_container
 
 
 class ServiceLifecycle:
@@ -26,10 +27,13 @@ class ServiceLifecycle:
         ):
             return self._start_stack(target)
 
-        # PRIORITY 3: Try service name resolution
-        service_name = self.manager._find_service_name(target, "start")
+        # PRIORITY 3: Try container resolution using fuzzy matching
+        container = find_container(target)
+        if container:
+            return self._start_service_with_build(target, build=build)
 
-        # Handle stack operations (STACK: prefix)
+        # Fallback to old service name resolution for backward compatibility
+        service_name = self.manager._find_service_name(target, "start")
         if service_name and service_name.startswith("STACK:"):
             stack_name = service_name[6:]  # Remove "STACK:" prefix
             return self._start_stack(stack_name)
@@ -51,10 +55,13 @@ class ServiceLifecycle:
         ):
             return self._stop_stack(target)
 
-        # PRIORITY 3: Try service name resolution
-        service_name = self.manager._find_service_name(target, "stop")
+        # PRIORITY 3: Try container resolution using fuzzy matching
+        container = find_container(target)
+        if container:
+            return self.manager.stop_service(target)
 
-        # Handle stack operations (STACK: prefix)
+        # Fallback to old service name resolution for backward compatibility
+        service_name = self.manager._find_service_name(target, "stop")
         if service_name and service_name.startswith("STACK:"):
             stack_name = service_name[6:]  # Remove "STACK:" prefix
             return self._stop_stack(stack_name)
@@ -104,13 +111,19 @@ class ServiceLifecycle:
         ):
             return self._restart_stack(target)
 
-        # PRIORITY 3: Try service name resolution
-        service_name = self.manager._find_service_name(target, "restart")
+        # PRIORITY 3: Try container resolution using fuzzy matching
+        container = find_container(target)
+        if container:
+            container_name = container["name"]
+            service_name = f"{container_name}.service"
+        else:
+            # Fallback to old service name resolution for backward compatibility
+            service_name = self.manager._find_service_name(target, "restart")
 
-        # Handle stack operations (STACK: prefix)
-        if service_name and service_name.startswith("STACK:"):
-            stack_name = service_name[6:]  # Remove "STACK:" prefix
-            return self._restart_stack(stack_name)
+            # Handle stack operations (STACK: prefix)
+            if service_name and service_name.startswith("STACK:"):
+                stack_name = service_name[6:]  # Remove "STACK:" prefix
+                return self._restart_stack(stack_name)
 
         # If we found a service, call manager.restart_service directly to avoid duplicate resolution
         if service_name:
@@ -188,18 +201,23 @@ class ServiceLifecycle:
         """Reset failed service state"""
         self.manager._clear_auto_match_cache()
 
-        # Check if container file exists first
-        if not self.manager._check_container_file_exists(target):
-            self.manager._show_install_suggestion(target)
-            return False
+        # Try container resolution using fuzzy matching first
+        container = find_container(target)
+        if container:
+            service_name = f"{container['name']}.service"
+        else:
+            # Check if container file exists first
+            if not self.manager._check_container_file_exists(target):
+                self.manager._show_install_suggestion(target)
+                return False
 
-        service_name = self.manager._find_service_name(target)
+            service_name = self.manager._find_service_name(target)
 
-        if not service_name:
-            console.print(f"[red]Service '{target}' not found[/red]")
-            return False
-        elif service_name == "CANCELLED":
-            return False
+            if not service_name:
+                console.print(f"[red]Service '{target}' not found[/red]")
+                return False
+            elif service_name == "CANCELLED":
+                return False
 
         console.print(f"[yellow]Resetting failed state for {target}...[/yellow]")
 
@@ -226,18 +244,23 @@ class ServiceLifecycle:
         """Show service file contents"""
         self.manager._clear_auto_match_cache()
 
-        # Check if container file exists first
-        if not self.manager._check_container_file_exists(target):
-            self.manager._show_install_suggestion(target)
-            return False
+        # Try container resolution using fuzzy matching first
+        container = find_container(target)
+        if container:
+            service_name = f"{container['name']}.service"
+        else:
+            # Check if container file exists first
+            if not self.manager._check_container_file_exists(target):
+                self.manager._show_install_suggestion(target)
+                return False
 
-        service_name = self.manager._find_service_name(target)
+            service_name = self.manager._find_service_name(target)
 
-        if not service_name:
-            console.print(f"[red]Service '{target}' not found[/red]")
-            return False
-        elif service_name == "CANCELLED":
-            return False
+            if not service_name:
+                console.print(f"[red]Service '{target}' not found[/red]")
+                return False
+            elif service_name == "CANCELLED":
+                return False
 
         console.print(f"[yellow]Showing service file for {target}...[/yellow]")
 
@@ -262,25 +285,32 @@ class ServiceLifecycle:
     def show_service_status(self, target: str) -> None:
         """Show detailed status for a specific service"""
         self.manager._clear_auto_match_cache()
-        service_name = self.manager._find_service_name(target)
 
-        # Handle stack operations (STACK: prefix)
-        if service_name and service_name.startswith("STACK:"):
-            stack_name = service_name[6:]  # Remove "STACK:" prefix
-            self._show_stack_status(stack_name)
-            return
-
-        # Handle legacy stack targets
+        # Handle legacy stack targets first
         if target.endswith("-stack"):
             project_name = target[:-6]  # Remove "-stack" suffix
             self._show_stack_status(project_name)
             return
 
-        if not service_name:
-            # When service_name is None, it could be due to user cancellation
-            # The fuzzy matcher already showed "Selection cancelled" message
-            # so we don't need to show an additional error message
-            return
+        # Try container resolution using fuzzy matching
+        container = find_container(target)
+        if container:
+            service_name = f"{container['name']}.service"
+        else:
+            # Fallback to old service name resolution
+            service_name = self.manager._find_service_name(target)
+
+            # Handle stack operations (STACK: prefix)
+            if service_name and service_name.startswith("STACK:"):
+                stack_name = service_name[6:]  # Remove "STACK:" prefix
+                self._show_stack_status(stack_name)
+                return
+
+            if not service_name:
+                # When service_name is None, it could be due to user cancellation
+                # The fuzzy matcher already showed "Selection cancelled" message
+                # so we don't need to show an additional error message
+                return
 
         # Use systemctl status for detailed output
         from core.config import _verbose_enabled
@@ -616,19 +646,26 @@ class ServiceLifecycle:
             if not quiet:
                 console.print(f"[yellow]Warning: Could not stop {target}[/yellow]")
 
-        # Get the service name for container operations
-        service_name = self.manager._find_service_name(target, "remove")
-        if not service_name or service_name.startswith("STACK:"):
-            if not quiet:
-                console.print(f"[red]Could not resolve service name for {target}[/red]")
-            return False
+        # Try container resolution using fuzzy matching first
+        container = find_container(target)
+        if container:
+            container_name = container["name"]
+        else:
+            # Fallback to old service name resolution
+            service_name = self.manager._find_service_name(target, "remove")
+            if not service_name or service_name.startswith("STACK:"):
+                if not quiet:
+                    console.print(
+                        f"[red]Could not resolve service name for {target}[/red]"
+                    )
+                return False
 
-        # Extract container name (remove .service suffix if present)
-        container_name = (
-            service_name.replace(".service", "")
-            if service_name.endswith(".service")
-            else service_name
-        )
+            # Extract container name (remove .service suffix if present)
+            container_name = (
+                service_name.replace(".service", "")
+                if service_name.endswith(".service")
+                else service_name
+            )
 
         # Try to remove the container
         try:

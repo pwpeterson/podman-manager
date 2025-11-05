@@ -169,25 +169,11 @@ class CommandRouter:
     def _show_common_actions_for_command(self, command_type: str, target: str):
         """Show common actions after successful command completion"""
         try:
-            # Resolve service name for placeholder substitution
-            service_name = self.manager._find_service_name(target)
-            if not service_name:
-                service_name = f"{target}.service"
-
-            # Extract container name from service name
-            container_name = (
-                service_name.replace(".service", "")
-                if service_name.endswith(".service")
-                else service_name
-            )
-
             # Show comprehensive actions for all commands using detailed format
             if command_type in ["reinit", "restart"]:
                 # Show comprehensive actions for reinit and restart with all categories
                 self.common_actions.show_common_actions(
                     target=target,
-                    service_name=service_name,
-                    container_name=container_name,
                     categories=[
                         "pm_shortcuts",
                         "service_status",
@@ -203,16 +189,12 @@ class CommandRouter:
             ]:
                 self.common_actions.show_common_actions(
                     target=target,
-                    service_name=service_name,
-                    container_name=container_name,
                     categories=["pm_shortcuts", "service_status", "logs_diagnostics"],
                 )
             elif command_type in ["stop", "disable", "reset", "uninstall"]:
                 # For stop/disable commands, show different essential actions
                 self.common_actions.show_common_actions(
                     target=target,
-                    service_name=service_name,
-                    container_name=container_name,
                     categories=[
                         "service_status",
                         "logs_diagnostics",
@@ -223,8 +205,6 @@ class CommandRouter:
                 # Default essential actions for other commands
                 self.common_actions.show_common_actions(
                     target=target,
-                    service_name=service_name,
-                    container_name=container_name,
                     categories=["pm_shortcuts", "service_status", "logs_diagnostics"],
                 )
         except Exception as e:
@@ -592,18 +572,16 @@ class CommandRouter:
         # Display comprehensive logs using multiple commands
         target = args.target
 
-        # Resolve service name for commands
-        service_name = self.manager._find_service_name(target)
-        if not service_name:
-            console.print(f"[red]Service '{target}' not found[/red]")
+        # Use fuzzy matching to find container
+        from core.simple_fuzzy_matcher import find_container
+
+        container = find_container(target)
+
+        if not container:
+            console.print(f"[red]Container '{target}' not found[/red]")
             return False
 
-        # Use the resolved service name (without .service suffix) for container name
-        container_name = (
-            service_name.replace(".service", "")
-            if service_name.endswith(".service")
-            else service_name
-        )
+        container_name = container["name"]
 
         # Commands to run with their descriptions - using shell=True to force plain text
         commands = [
@@ -615,14 +593,14 @@ class CommandRouter:
             },
             {
                 "name": "Systemd Service Status",
-                "cmd": f"SYSTEMD_COLORS=0 systemctl --user status {service_name} --no-pager -l --plain --no-legend 2>&1 | cat",
-                "description": f"systemctl --user status {service_name} --no-pager -l --plain --no-legend",
+                "cmd": f"SYSTEMD_COLORS=0 systemctl --user status {container_name} --no-pager -l --plain --no-legend 2>&1 | cat",
+                "description": f"systemctl --user status {container_name} --no-pager -l --plain --no-legend",
                 "shell": True,
             },
             {
                 "name": "Systemd Service Logs",
-                "cmd": f"journalctl --user -u {service_name} -n 100 --no-pager --no-hostname --output=short-precise 2>&1 | cat",
-                "description": f"journalctl --user -u {service_name} -n 100 --no-pager --no-hostname --output=short-precise",
+                "cmd": f"journalctl --user -u {container_name} -n 100 --no-pager --no-hostname --output=short-precise 2>&1 | cat",
+                "description": f"journalctl --user -u {container_name} -n 100 --no-pager --no-hostname --output=short-precise",
                 "shell": True,
             },
         ]
@@ -693,16 +671,19 @@ class CommandRouter:
             # Store AI agent from command-specific argument if provided, otherwise use global
             ai_agent = getattr(args, "ai_agent", None) or self.ai_agent
 
-            # Resolve service name first to show proper name in troubleshooting message
-            service_name = self.manager._find_service_name(args.target, "diag")
-            if not service_name:
-                console.print(f"[red]Service '{args.target}' not found[/red]")
-                return False
-            elif service_name == "CANCELLED":
+            # Use fuzzy matching to find container
+            from core.simple_fuzzy_matcher import find_container
+
+            container = find_container(args.target)
+
+            if not container:
+                console.print(f"[red]Container '{args.target}' not found[/red]")
                 return False
 
-            # Always show troubleshooting message first with resolved service name
-            console.print(f"\n[green]Troubleshooting {service_name}...[/green]")
+            container_name = container["name"]
+
+            # Always show troubleshooting message first with container name
+            console.print(f"\n[green]Troubleshooting {container_name}...[/green]")
             console.print()
 
             # If AI agent is specified, trigger AI analysis directly

@@ -936,10 +936,14 @@ Keep the response brief and actionable. Focus on the most critical issues first.
         time.sleep(0.1)
 
         # Show error detection message and start AI analysis
-        # Use a more user-friendly display name
-        display_name = target.replace("-", " ").title()
+        # Use the actual container name from fuzzy matching
+        from core.simple_fuzzy_matcher import find_container
+
+        container = find_container(target)
+        container_name = container["name"] if container else target
+
         console.print(
-            f"\n[red]{display_name} is running but is generating error messages.[/red]\n"
+            f"\n[red]{container_name} is running but is generating error messages.[/red]\n"
         )
 
         try:

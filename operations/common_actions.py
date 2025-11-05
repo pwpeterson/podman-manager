@@ -6,6 +6,7 @@ Provides a standardized set of diagnostic and management commands
 from typing import List, Optional
 
 from core.config import console
+from core.simple_fuzzy_matcher import find_container
 
 
 class CommonActionsFormatter:
@@ -23,11 +24,14 @@ class CommonActionsFormatter:
                 "commands": [
                     (
                         "Check service status",
-                        "systemctl --user status {service_name} --no-pager -l",
+                        "systemctl --user status {container_name} --no-pager -l",
                     ),
-                    ("View service file", "systemctl --user cat {service_name}"),
-                    ("Check if enabled", "systemctl --user is-enabled {service_name}"),
-                    ("Check if active", "systemctl --user is-active {service_name}"),
+                    ("View service file", "systemctl --user cat {container_name}"),
+                    (
+                        "Check if enabled",
+                        "systemctl --user is-enabled {container_name}",
+                    ),
+                    ("Check if active", "systemctl --user is-active {container_name}"),
                 ],
             },
             # Logs & Diagnostics
@@ -36,16 +40,16 @@ class CommonActionsFormatter:
                 "commands": [
                     (
                         "View service logs",
-                        "journalctl --user -u {service_name} -n 100 --no-pager",
+                        "journalctl --user -u {container_name} -n 100 --no-pager",
                     ),
-                    ("Follow live logs", "journalctl --user -u {service_name} -f"),
+                    ("Follow live logs", "journalctl --user -u {container_name} -f"),
                     (
                         "View recent logs",
-                        "journalctl --user -u {service_name} --since '1 hour ago' --no-pager",
+                        "journalctl --user -u {container_name} --since '1 hour ago' --no-pager",
                     ),
                     (
                         "Search for errors",
-                        "journalctl --user -u {service_name} -n 200 --no-pager | grep -i error",
+                        "journalctl --user -u {container_name} -n 200 --no-pager | grep -i error",
                     ),
                 ],
             },
@@ -102,7 +106,7 @@ class CommonActionsFormatter:
                 "label": "Volume Management",
                 "commands": [
                     ("List volumes", "podman volume ls"),
-                    ("Inspect volume", "podman volume inspect {volume_name}"),
+                    ("Inspect volume", "podman volume inspect {container_name}-volume"),
                     ("Volume usage", "podman system df -v"),
                     (
                         "Check volume mounts",
@@ -114,14 +118,14 @@ class CommonActionsFormatter:
             "service_management": {
                 "label": "Service Management",
                 "commands": [
-                    ("Start service", "systemctl --user start {service_name}"),
-                    ("Stop service", "systemctl --user stop {service_name}"),
-                    ("Restart service", "systemctl --user restart {service_name}"),
-                    ("Enable auto-start", "systemctl --user enable {service_name}"),
-                    ("Disable auto-start", "systemctl --user disable {service_name}"),
+                    ("Start service", "systemctl --user start {container_name}"),
+                    ("Stop service", "systemctl --user stop {container_name}"),
+                    ("Restart service", "systemctl --user restart {container_name}"),
+                    ("Enable auto-start", "systemctl --user enable {container_name}"),
+                    ("Disable auto-start", "systemctl --user disable {container_name}"),
                     (
                         "Reset failed state",
-                        "systemctl --user reset-failed {service_name}",
+                        "systemctl --user reset-failed {container_name}",
                     ),
                 ],
             },
@@ -129,10 +133,10 @@ class CommonActionsFormatter:
             "pm_shortcuts": {
                 "label": "PM Command Shortcuts",
                 "commands": [
-                    ("View podman logs", "pm logs {target}"),
-                    ("Diagnose issues", "pm diag {target}"),
-                    ("Restart service", "pm restart {target}"),
-                    ("Reinitialize", "pm reinit {target}"),
+                    ("View podman logs", "pm logs {container_name}"),
+                    ("Diagnose issues", "pm diag {container_name}"),
+                    ("Restart service", "pm restart {container_name}"),
+                    ("Reinitialize", "pm reinit {container_name}"),
                     ("View all containers", "pm ps"),
                 ],
             },
@@ -161,19 +165,49 @@ class CommonActionsFormatter:
         Display common actions with dynamic substitution
 
         Args:
-            target: The pm target name (e.g., 'vllm-qwen25')
-            service_name: Full service name (e.g., 'vllm-qwen25.service')
-            container_name: Container name for podman commands
-            port: Port number for network tests
+            target: The pm target name (e.g., 'vllm-qwen25') - used for fuzzy matching
+            service_name: Full service name (e.g., 'vllm-qwen25.service') - derived if not provided
+            container_name: Container name for podman commands - derived if not provided
+            port: Port number for network tests - derived if not provided
             categories: List of category keys to show (None = all)
         """
-        # Set defaults
-        if not service_name and target:
-            # Extract the last part of the target name for simplified service names
+        # If target is provided, try to find container using fuzzy matching
+        container = None
+        if target:
+            container = find_container(target)
+            if container:
+                # Use container object to derive values
+                container_name = container["name"]
+                port = container["port"] if container["port"] != "unknown" else "8000"
+                # Derive service_name from container name
+                if not service_name:
+                    # Extract the last part of the container name for simplified service names
+                    # e.g., 'local-ai-neo4j' -> 'neo4j'
+                    simplified_name = (
+                        container_name.split("-")[-1]
+                        if "-" in container_name
+                        else container_name
+                    )
+                    service_name = f"{simplified_name}.service"
+            else:
+                console.print(
+                    f"[yellow]Warning: No container found for '{target}'. Using provided values.[/yellow]"
+                )
+
+        # Set defaults if not derived from container
+        if not service_name and container_name:
+            # Extract the last part of the container name for simplified service names
             # e.g., 'local-ai-neo4j' -> 'neo4j'
+            simplified_name = (
+                container_name.split("-")[-1]
+                if "-" in container_name
+                else container_name
+            )
+            service_name = f"{simplified_name}.service"
+        elif not service_name and target:
+            # Fallback to target if container_name not available
             simplified_target = target.split("-")[-1] if "-" in target else target
             service_name = f"{simplified_target}.service"
-        if not container_name and target:
             container_name = target
         if not port:
             port = "8000"  # Default port for examples
@@ -189,14 +223,16 @@ class CommonActionsFormatter:
 
         console.print("\n[bold green]More available actions:[/bold green]")
 
-        # Always use detailed format
-        self._show_detailed_format(
-            target, service_name, container_name, port, categories
-        )
+        # Show container info if found
+        if container:
+            console.print(
+                f"[dim]Container: {container['name']} | Image: {container['image']} | Status: {container['status']} | Port: {container['port']}[/dim]"
+            )
 
-    def _show_detailed_format(
-        self, target, service_name, container_name, port, categories
-    ):
+        # Always use detailed format
+        self._show_detailed_format(container_name, service_name, port, categories)
+
+    def _show_detailed_format(self, container_name, service_name, port, categories):
         """Show detailed format with categorized commands"""
         for category_key in categories:
             if category_key not in self.actions:
@@ -208,7 +244,7 @@ class CommonActionsFormatter:
             for label, command_template in category["commands"]:
                 # Substitute placeholders
                 command = self._substitute_placeholders(
-                    command_template, target, service_name, container_name, port
+                    command_template, container_name, service_name, port
                 )
                 console.print(
                     f"    [green]✓ {label:20}:[/green] [white]{command}[/white]"
@@ -217,16 +253,11 @@ class CommonActionsFormatter:
         # Add a newline after all categories are displayed
         console.print()
 
-    def _substitute_placeholders(
-        self, template, target, service_name, container_name, port
-    ):
+    def _substitute_placeholders(self, template, container_name, service_name, port):
         """Substitute placeholders in command templates"""
         substitutions = {
-            "{target}": target or "SERVICE",
-            "{service_name}": service_name or "SERVICE.service",
             "{container_name}": container_name or "CONTAINER",
             "{port}": port or "PORT",
-            "{volume_name}": f"{target}-volume" if target else "VOLUME",
             "{hostname}": "localhost",
         }
 
