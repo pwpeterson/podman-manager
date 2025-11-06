@@ -172,27 +172,47 @@ class CommonActionsFormatter:
             categories: List of category keys to show (None = all)
         """
         # If target is provided, try to find container using fuzzy matching
+        # BUT skip fuzzy matching for stack targets to avoid interactive prompts
         container = None
         if target:
-            container = find_container(target)
-            if container:
-                # Use container object to derive values
-                container_name = container["name"]
-                port = container["port"] if container["port"] != "unknown" else "8000"
-                # Derive service_name from container name
-                if not service_name:
-                    # Extract the last part of the container name for simplified service names
-                    # e.g., 'local-ai-neo4j' -> 'neo4j'
-                    simplified_name = (
-                        container_name.split("-")[-1]
-                        if "-" in container_name
-                        else container_name
+            # Check if this is a stack target (ends with -stack or is a known stack name)
+            is_stack_target = target.endswith("-stack") or target in [
+                "local-ai",
+                "supabase",
+                "vllm",
+                "stack",
+            ]
+
+            if not is_stack_target:
+                # Only use fuzzy matching for individual container targets
+                container = find_container(target)
+                if container:
+                    # Use container object to derive values
+                    container_name = container["name"]
+                    port = (
+                        container["port"] if container["port"] != "unknown" else "8000"
                     )
-                    service_name = f"{simplified_name}.service"
+                    # Derive service_name from container name
+                    if not service_name:
+                        # Extract the last part of the container name for simplified service names
+                        # e.g., 'local-ai-neo4j' -> 'neo4j'
+                        simplified_name = (
+                            container_name.split("-")[-1]
+                            if "-" in container_name
+                            else container_name
+                        )
+                        service_name = f"{simplified_name}.service"
+                else:
+                    # Only show warning for non-stack targets
+                    console.print(
+                        f"[yellow]Warning: No container found for '{target}'. Using provided values.[/yellow]"
+                    )
             else:
-                console.print(
-                    f"[yellow]Warning: No container found for '{target}'. Using provided values.[/yellow]"
-                )
+                # For stack targets, use generic values without fuzzy matching
+                if not container_name:
+                    container_name = target
+                if not service_name:
+                    service_name = f"{target}.service"
 
         # Set defaults if not derived from container
         if not service_name and container_name:
