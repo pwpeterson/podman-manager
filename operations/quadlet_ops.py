@@ -159,9 +159,6 @@ class QuadletOperations:
         return self.container_builder.update_images_and_restart(resolved_target)
 
     # Stack Management Operations
-    def down(self, target: str = "vllm-stack") -> bool:
-        """Stop all services in a stack or project"""
-        return self.stack_manager.down(target)
 
     def uninstall_stack(self, stack: str) -> bool:
         """Uninstall quadlet stack from systemd directory"""

@@ -25,7 +25,7 @@ class CustomArgumentParser(argparse.ArgumentParser):
                     break
 
         # Determine if this is a stack-only or service command
-        stack_only_commands = ["down", "remove", "uninstall"]
+        stack_only_commands = ["remove", "uninstall"]
         service_commands = [
             "logs",
             "exec",
@@ -401,18 +401,6 @@ def _add_lifecycle_commands(subparsers):
         "target", help="Stack or service name (e.g., supabase-stack, vllm-qwen25)"
     )
     remove_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show detailed command execution (exec lines)",
-    )
-
-    # Down command
-    down_parser = subparsers.add_parser("down", help="Stop all services in stack")
-    down_parser.add_argument(
-        "target", help="Stack name (e.g., vllm-stack, local-ai-packaged)"
-    )
-    down_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",

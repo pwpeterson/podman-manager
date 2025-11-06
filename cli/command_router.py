@@ -348,8 +348,6 @@ class CommandRouter:
             return self._handle_stop(args)
         elif command == "remove":
             return self._handle_remove(args)
-        elif command == "down":
-            return self._handle_down(args)
         elif command == "restart":
             return self._handle_restart(args)
         elif command == "enable":
@@ -809,10 +807,6 @@ class CommandRouter:
     def _handle_remove(self, args):
         self.handle_command_verbose(args)
         return self.try_with_fallback(self.container_ops.remove, args.target)
-
-    def _handle_down(self, args):
-        self.handle_command_verbose(args)
-        return self.try_with_fallback(self.container_ops.down, args.target)
 
     def _handle_restart(self, args):
         self.handle_command_verbose(args)

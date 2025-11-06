@@ -84,11 +84,6 @@ def show_rich_help():
                     "pm stop vllm-qwen25",
                 ),
                 (
-                    "down [cyan]<stack>[/cyan]",
-                    "Stop all services in stack",
-                    "pm down vllm-stack",
-                ),
-                (
                     "remove [cyan]<stack|service>[/cyan]",
                     "Stop systemd services and remove podman containers",
                     "pm remove supabase-stack",
