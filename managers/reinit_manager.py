@@ -943,7 +943,7 @@ Keep the response brief and actionable. Focus on the most critical issues first.
         container_name = container["name"] if container else target
 
         console.print(
-            f"\n[red]{container_name} is running but is generating error messages.[/red]\n"
+            f"[red]{container_name} is running but is generating error messages.[/red]\n"
         )
 
         try:

@@ -269,8 +269,8 @@ class CommandRouter:
             elif result is True or (
                 hasattr(result, "returncode") and result.returncode == 0
             ):
-                # Operation was successful, show common actions (except for install and diag)
-                if command_type not in ["install", "diag"]:
+                # Operation was successful, show common actions (except for install, uninstall, and diag)
+                if command_type not in ["install", "uninstall", "diag"]:
                     self._show_common_actions_for_command(command_type, target)
 
             return result
@@ -689,6 +689,7 @@ class CommandRouter:
                 console.print(
                     f"[green]Performing AI diagnostic analysis with {ai_agent}...[/green]"
                 )
+                console.print()
 
                 # Initialize AI analyzer with manager if not already done
                 if ai_analyzer.manager is None:

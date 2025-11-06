@@ -1001,6 +1001,9 @@ class FileManager:
         if not is_verbose():
             console.print()
 
+        # Copy startup wrapper files first
+        self._copy_startup_wrapper_files(stack_dir, target_dir, use_sudo)
+
         # Group files by type for better organization
         container_files = [f for f in files if f.endswith(".container")]
         network_files = [f for f in files if f.endswith(".network")]
@@ -1269,6 +1272,48 @@ class FileManager:
 
         # Fallback to the base name
         return base_name
+
+    def _copy_startup_wrapper_files(
+        self, stack_dir: Path, target_dir: Path, use_sudo: bool = False
+    ):
+        """Copy startup wrapper Python files to systemd directory."""
+        # Look for *-startup-wrapper.py files in the stack directory
+        wrapper_files = list(stack_dir.glob("*-startup-wrapper.py"))
+
+        if not wrapper_files:
+            # No wrapper files found, nothing to do
+            return
+
+        console.print("[green]Copying startup wrapper files to systemd[/green]")
+        if not is_verbose():
+            console.print()
+
+        for wrapper_file in wrapper_files:
+            target_file = target_dir / wrapper_file.name
+
+            verbose_print(
+                f"  [cyan]exec: cp .../{wrapper_file.name} .../systemd/{wrapper_file.name}[/cyan]"
+            )
+
+            # Copy the file
+            if use_sudo:
+                cmd = ["sudo", "cp", str(wrapper_file), str(target_file)]
+                subprocess.run(cmd, check=True)
+            else:
+                shutil.copy2(wrapper_file, target_file)
+
+            # Set executable permissions for Python wrapper files
+            if use_sudo:
+                chmod_cmd = ["sudo", "chmod", "755", str(target_file)]
+                verbose_print(
+                    f"  [cyan]exec: chmod 755 .../systemd/{wrapper_file.name}[/cyan]"
+                )
+                subprocess.run(chmod_cmd, check=True)
+            else:
+                verbose_print(
+                    f"  [cyan]exec: chmod 755 .../systemd/{wrapper_file.name}[/cyan]"
+                )
+                target_file.chmod(0o755)
 
     def set_file_permissions(
         self, files: List[str], target_dir: Path, use_sudo: bool = False
@@ -1611,39 +1656,48 @@ class QuadletInstaller:
 
     def _show_service_next_steps(self, service_name: str, use_sudo: bool) -> None:
         """Show next steps after single service installation."""
-        from operations.common_actions import CommonActionsFormatter
-
-        formatter = CommonActionsFormatter()
-
-        # Show installation-specific actions
+        # Show installation-specific actions without container info
         console.print()
         console.print("[green]Installation completed successfully![/green]")
-
-        # Show common actions with appropriate categories for installation
-        formatter.show_common_actions(
-            target=service_name,
-            service_name=f"{service_name}.service",
-            categories=["service_management", "service_status", "logs_diagnostics"],
+        console.print()
+        console.print("[bold green]Next steps:[/bold green]")
+        console.print(
+            f"[green]  Start service:[/green] [white]systemctl --user start {service_name}.service[/white]"
         )
+        console.print(
+            f"[green]   Check status:[/green] [white]systemctl --user status {service_name}.service[/white]"
+        )
+        console.print(
+            f"[green]      View logs:[/green] [white]journalctl --user -u {service_name}.service -f[/white]"
+        )
+        console.print(
+            f"[green]   PM shortcuts:[/green] [white]pm start {service_name} | pm logs {service_name} | pm diag {service_name}[/white]"
+        )
+        console.print()
 
     def _show_stack_next_steps(self, stack_name: str, use_sudo: bool) -> None:
         """Show next steps after stack installation."""
-        from operations.common_actions import CommonActionsFormatter
-
         services = self.get_service_names(stack_name)
-        formatter = CommonActionsFormatter()
 
         if services:
             console.print()
             console.print("[green]Stack installation completed successfully![/green]")
+            console.print()
+            console.print("[bold green]Next steps:[/bold green]")
             example_service = services[0] if services else stack_name
-
-            # Show common actions for the example service
-            formatter.show_common_actions(
-                target=example_service,
-                service_name=f"{example_service}.service",
-                categories=["service_management", "service_status", "logs_diagnostics"],
+            console.print(
+                f"[green]    Start stack:[/green] [white]pm start {stack_name}[/white]"
             )
+            console.print(
+                f"[green]   Check status:[/green] [white]pm list {stack_name}[/white]"
+            )
+            console.print(
+                f"[green]      View logs:[/green] [white]pm logs {example_service}[/white]"
+            )
+            console.print(
+                f"[green]   PM shortcuts:[/green] [white]pm reinit {stack_name} | pm diag {example_service}[/white]"
+            )
+            console.print()
 
     def list_stacks(self) -> None:
         """List all available stacks."""

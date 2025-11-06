@@ -1055,13 +1055,13 @@ class QuadletManager:
         elif service_name.endswith(".target"):
             display_name = service_name[:-7]  # Remove .target suffix
 
-        console.print(f"\nStarting {display_name}...")
+        console.print(f"\n[green]Starting {display_name}...[/green]")
 
         cmd = ["systemctl", "--user", "start", service_name]
         result = self._run_systemctl_command(cmd, f"start_{target}")
 
         if result.returncode == 0:
-            console.print(f"  Started {display_name}")
+            console.print(f"  [green]Started {display_name}[/green]")
             return True
         else:
             console.print(f"[red]Failed to start {service_name}[/red]")
