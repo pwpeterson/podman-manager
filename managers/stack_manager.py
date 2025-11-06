@@ -44,8 +44,8 @@ class StackManager:
 
         # For quadlet mode, we primarily work with the vllm-stack
         if target in ["vllm-stack", "stack", "vllm"]:
+            console.print("pm stop vllm")
             console.print()
-            console.print("[green]Stopping and removing vllm-stack...[/green]")
 
             # Try to stop the stack target first (suppress errors since it may not exist)
             service_name = self.manager._find_service_name("vllm-stack")
@@ -63,13 +63,29 @@ class StackManager:
             all_success = True
 
             # Only stop vLLM services for vllm-stack, not all quadlet services
-            vllm_services = ["vllm-qwen25", "vllm-proxy", "vllm-delegator"]
+            vllm_services = [
+                "vllm-qwen25-coder-32b-instruct-awq",
+                "vllm-delegator-mcp",
+                "vllm-proxy",
+                "vllm-glm41-9b-thinking",
+                "vllm-glm4-9b-chat",
+                "vllm-deepseek-coder-v2",
+            ]
             for service_name in vllm_services:
-                if not self.manager.stop_service(service_name, force=True, quiet=False):
+                console.print(f"Stopping {service_name}...")
+                if self.manager.stop_service(service_name, force=True, quiet=True):
+                    console.print(f"  Stopped {service_name}")
+                else:
+                    console.print(
+                        f"  [yellow]{service_name} was not running or failed to stop[/yellow]"
+                    )
                     all_success = False
+                console.print()
 
             if all_success:
-                console.print("[green]✓ All services stopped[/green]")
+                console.print(
+                    f"[green]Successfully stopped vllm stack ({len(vllm_services)} services)[/green]"
+                )
                 return True
             else:
                 console.print("[yellow]⚠ Some services may still be running[/yellow]")
@@ -86,32 +102,31 @@ class StackManager:
             console.print(f"[red]No services found for {project} stack[/red]")
             return False
 
-        console.print()
-        console.print(f"[green]Stopping and removing {project}-stack...[/green]")
+        console.print(f"pm stop {project}")
 
         success = True
         stopped_services = []
         failed_services = []
 
         for service in services:
-            # Show service stopping without spinner
+            console.print(f"Stopping {service}...")
             service_stopped = self.manager.stop_service(service, quiet=True)
 
             if service_stopped:
+                console.print(f"  Stopped {service}")
                 stopped_services.append(service)
             else:
                 console.print(
-                    f"[yellow]{service} was not running or failed to stop[/yellow]"
+                    f"  [yellow]{service} was not running or failed to stop[/yellow]"
                 )
                 failed_services.append(service)
                 success = False
+            console.print()
 
         if success:
-            console.print()
             console.print(
                 f"[green]Successfully stopped {project} stack ({len(stopped_services)} services)[/green]"
             )
-            console.print()
         else:
             if stopped_services:
                 console.print()
@@ -448,14 +463,14 @@ class StackManager:
                     stop_success = False
             else:
                 # Show individual service stopping without spinner for non-verbose
-                console.print(f"    [green]Stopping {service}...[/green]")
+                console.print(f"  [green]Stopping {service}...[/green]")
                 service_stopped = self.manager.stop_service(service, quiet=True)
 
                 if service_stopped:
-                    console.print(f"      [green]Stopped {service}[/green]")
+                    console.print(f"    [green]Stopped {service}[/green]")
                 else:
                     console.print(
-                        f"      [yellow]{service} was not running or failed to stop[/yellow]"
+                        f"    [yellow]{service} was not running or failed to stop[/yellow]"
                     )
                     stop_success = False
                 console.print()
@@ -581,7 +596,7 @@ class StackManager:
                         )
                 else:
                     # Non-verbose mode: simple starting message without spinner
-                    console.print(f"    [green]Starting {service}...[/green]")
+                    console.print(f"  [green]Starting {service}...[/green]")
                     restart_cmd = ["systemctl", "--user", "restart", service_name]
                     restart_result = subprocess.run(
                         restart_cmd, capture_output=True, text=True
@@ -596,7 +611,7 @@ class StackManager:
                         service_success = False
 
                     if restart_result.returncode == 0 and service_success:
-                        console.print(f"      [green]Started {service}[/green]")
+                        console.print(f"    [green]Started {service}[/green]")
                         console.print()
                     elif restart_result.returncode != 0:
                         start_success = False
@@ -607,7 +622,7 @@ class StackManager:
                             ".target", ""
                         )
                         console.print(
-                            f"      [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
+                            f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
                         )
                         console.print()
             else:

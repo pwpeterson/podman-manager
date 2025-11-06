@@ -1004,34 +1004,16 @@ class FileManager:
         # Copy startup wrapper files first
         self._copy_startup_wrapper_files(stack_dir, target_dir, use_sudo)
 
-        # Group files by type for better organization
+        # Group files by type for better organization - only process container files and other files
         container_files = [f for f in files if f.endswith(".container")]
-        network_files = [f for f in files if f.endswith(".network")]
-        volume_files = [f for f in files if f.endswith(".volume")]
         other_files = [
             f
             for f in files
             if not any(f.endswith(ext) for ext in [".container", ".network", ".volume"])
         ]
 
-        # Check for network dependencies in container files and show message if networks will be processed
-        network_dependencies = self._get_network_dependencies_from_containers(
-            stack_dir, container_files
-        )
-        if network_files or network_dependencies:
-            if network_files:
-                console.print("[green]Copying share networks to systemd[/green]")
-                if not is_verbose():
-                    console.print()
-            if network_dependencies and not network_files:
-                console.print(
-                    "[green]Network dependencies detected in container files[/green]"
-                )
-                if not is_verbose():
-                    console.print()
-
-        # Process files in order: networks first (volumes may depend on them), then containers, volumes, others
-        all_files_ordered = network_files + container_files + volume_files + other_files
+        # Process files in order: containers first, then other files (excluding network and volume files)
+        all_files_ordered = container_files + other_files
 
         for file in all_files_ordered:
             if file.endswith(".container"):
@@ -1041,28 +1023,13 @@ class FileManager:
                 )
                 if not is_verbose():
                     console.print()
-            elif file.endswith(".network"):
-                # Network files are processed but message is shown once at the beginning
-                pass
-            elif file.endswith(".volume"):
-                service_name = self._extract_service_name_from_file(file)
-                console.print(
-                    f"[green]Copying {service_name} volumes & shared networks to systemd[/green]"
-                )
-                if not is_verbose():
-                    console.print()
             else:
                 console.print(f"[green]Copying {file} to systemd[/green]")
                 if not is_verbose():
                     console.print()
 
-            # Determine source file location - shared network files are in root directory
-            if file.endswith(".network") and not (stack_dir / file).exists():
-                # This is a shared network file in the root quadlets directory
-                source_file = stack_dir.parent / file
-            else:
-                # Regular file in the stack directory
-                source_file = stack_dir / file
+            # Determine source file location
+            source_file = stack_dir / file
 
             target_file = target_dir / file
 
@@ -1368,8 +1335,9 @@ class QuadletInstaller:
         return sorted(stacks)
 
     def _has_quadlet_files(self, directory: Path) -> bool:
-        """Check if directory contains quadlet files (excluding .disabled files)."""
-        quadlet_extensions = [".container", ".network", ".volume"]
+        """Check if directory contains container files (excluding .disabled files)."""
+        # Only consider container files, exclude network and volume files
+        quadlet_extensions = [".container"]
         for ext in quadlet_extensions:
             for file in directory.glob(f"*{ext}"):
                 if not file.name.endswith(".disabled"):
@@ -1377,46 +1345,20 @@ class QuadletInstaller:
         return False
 
     def get_stack_files(self, stack_name: str) -> List[str]:
-        """Get quadlet files for a stack, including shared network files."""
+        """Get quadlet files for a stack, excluding network and volume files."""
         stack_dir = self.quadlet_base_dir / stack_name
         if not stack_dir.exists():
             return []
 
         files = []
-        quadlet_extensions = [".container", ".network", ".volume"]
+        # Only include container files, exclude network and volume files
+        quadlet_extensions = [".container"]
         for ext in quadlet_extensions:
             for file in stack_dir.glob(f"*{ext}"):
                 if not file.name.endswith(".disabled"):
                     files.append(file.name)
 
-        # Add shared network files from root quadlets directory
-        # These are network files that are shared across multiple stacks
-        shared_network_files = self._get_shared_network_files_for_stack(stack_name)
-        files.extend(shared_network_files)
-
         return sorted(files)
-
-    def _get_shared_network_files_for_stack(self, stack_name: str) -> List[str]:
-        """Get shared network files that should be included for a specific stack."""
-        shared_networks = []
-
-        # Map stack names to their corresponding shared network files
-        stack_network_mapping = {
-            "local-ai-stack": ["local-ai-network.network"],
-            "supabase-stack": ["supabase-network.network"],
-            # Add more mappings as needed for other stacks
-        }
-
-        # Get the network files for this stack
-        network_files = stack_network_mapping.get(stack_name, [])
-
-        # Verify the files actually exist in the root quadlets directory
-        for network_file in network_files:
-            network_path = self.quadlet_base_dir / network_file
-            if network_path.exists() and not network_file.endswith(".disabled"):
-                shared_networks.append(network_file)
-
-        return shared_networks
 
     def get_service_names(self, stack_name: str) -> List[str]:
         """Get service names from quadlet files."""
@@ -1569,22 +1511,8 @@ class QuadletInstaller:
 
     def _show_dependency_warning(self, name: str, resolved_stack: str):
         """Show warning about service dependencies."""
-        stack_files = self.get_stack_files(resolved_stack)
-        network_files = [f for f in stack_files if f.endswith(".network")]
-        volume_files = [f for f in stack_files if f.endswith(".volume")]
-
-        if network_files or volume_files:
-            console.print()
-            console.print(
-                f"[yellow]Service {name} may require shared resources:[/yellow]"
-            )
-            if network_files:
-                console.print(f"  Networks: {', '.join(network_files)}")
-            if volume_files:
-                console.print(f"  Volumes: {', '.join(volume_files)}")
-            console.print(
-                "[yellow]Installing only the service file. Install the full stack if needed.[/yellow]"
-            )
+        # Since we no longer process network and volume files, this warning is no longer needed
+        pass
 
     def _perform_installation(
         self,

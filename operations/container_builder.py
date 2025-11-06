@@ -546,9 +546,7 @@ class ContainerBuilder:
             else:
                 final_image_name = target_image_name
 
-            console.print(
-                f"[green]  Image {final_image_name} built successfully[/green]"
-            )
+            console.print(f"[green]Image {final_image_name} built successfully[/green]")
             console.print()
 
             return True
@@ -786,6 +784,9 @@ class ContainerBuilder:
                 task = progress.add_task("starting", total=None)
                 start_success = self.manager.start_service(target)
                 progress.remove_task(task)
+
+            # Ensure spinner is completely cleared
+            console.print("\r" + " " * 50 + "\r", end="")
 
         if start_success:
             console.print()

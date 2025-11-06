@@ -408,15 +408,18 @@ class InteractiveAnalysisHandler:
         """Start interactive AI analysis session"""
         console.print("\n[bold green]Interactive AI Analysis[/bold green]")
         console.print(
-            "[bright_yellow]Ask follow-up questions about the analysis. Press Enter with empty input to exit.[/bright_yellow]"
+            "[bright_yellow]Ask follow-up questions about the analysis.[/bright_yellow]"
+        )
+        console.print(
+            "[dim]Type your question (can be multiple lines). Type 'END' on a new line to submit, or just 'END' to exit.[/dim]"
         )
 
         while True:
             try:
                 console.print("\n[bold yellow]==>[/bold yellow] ", end="")
-                user_input = input().strip()
+                user_input = self._read_multiline_input()
 
-                if not user_input:
+                if not user_input.strip():
                     break
 
                 self._process_followup_question(
@@ -432,25 +435,27 @@ class InteractiveAnalysisHandler:
 
         console.print(f"\n[green]AI analysis for {target} completed[/green]")
 
-        # Show comprehensive common actions when user exits interactive session
-        from operations.common_actions import CommonActionsFormatter
+    def _read_multiline_input(self) -> str:
+        """Read multi-line input until 'END' is entered on a new line"""
+        lines = []
 
-        formatter = CommonActionsFormatter()
-        formatter.show_common_actions(
-            target=target,
-            service_name=f"{target}.service",
-            categories=[
-                "pm_shortcuts",
-                "service_status",
-                "logs_diagnostics",
-                "troubleshooting",
-                "container_ops",
-                "system_resources",
-                "network_connectivity",
-                "volume_management",
-                "service_management",
-            ],
-        )
+        while True:
+            try:
+                line = input()
+
+                # Check if user wants to end input
+                if line.strip().upper() == "END":
+                    break
+
+                # Add the line to our input
+                lines.append(line)
+
+            except (KeyboardInterrupt, EOFError):
+                break
+
+        # Join all lines and return the complete input
+        result = "\n".join(lines).strip()
+        return result
 
     def _process_followup_question(
         self, analysis_type: str, target: str, question: str, verbose: bool = False

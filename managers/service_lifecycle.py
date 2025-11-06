@@ -386,12 +386,17 @@ class ServiceLifecycle:
         failed_services = []
 
         for service in services:
-            console.print(f"  Stopping {service}...")
-            if self.manager.stop_service(service, quiet=False):
+            console.print(f"Stopping {service}...")
+            if self.manager.stop_service(service, quiet=True):
+                console.print(f"  Stopped {service}")
                 stopped_services.append(service)
             else:
+                console.print(
+                    f"  [yellow]{service} was not running or failed to stop[/yellow]"
+                )
                 failed_services.append(service)
                 success = False
+            console.print()
 
         if success:
             console.print(

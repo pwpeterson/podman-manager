@@ -243,11 +243,7 @@ class CommonActionsFormatter:
 
         console.print("\n[bold green]More available actions:[/bold green]")
 
-        # Show container info if found
-        if container:
-            console.print(
-                f"[dim]Container: {container['name']} | Image: {container['image']} | Status: {container['status']} | Port: {container['port']}[/dim]"
-            )
+        # Container info display removed
 
         # Always use detailed format
         self._show_detailed_format(container_name, service_name, port, categories)

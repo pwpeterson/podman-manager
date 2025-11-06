@@ -125,7 +125,7 @@ class ReinitManager:
         stop_success = stop_result.returncode == 0
 
         if stop_success:
-            console.print(f"[green]    Stopped {display_name}.[/green]")
+            console.print(f"[green]  Stopped {display_name}.[/green]")
             console.print()
         else:
             console.print("[yellow]Service was not running or failed to stop[/yellow]")
@@ -143,10 +143,10 @@ class ReinitManager:
             if os.path.exists(service_file_path):
                 os.remove(service_file_path)
                 console.print(
-                    f"[green]    Removed {os.path.basename(service_file_path)}.[/green]"
+                    f"[green]  Removed {os.path.basename(service_file_path)}.[/green]"
                 )
             else:
-                console.print("[green]    Removed old generated service file.[/green]")
+                console.print("[green]  Removed old generated service file.[/green]")
                 verbose_print(
                     f"[cyan]Service file {service_file_path} does not exist, skipping removal[/cyan]"
                 )
@@ -185,7 +185,7 @@ class ReinitManager:
                 console.print("[red]Failed to reload systemd daemon[/red]")
                 return False
             else:
-                console.print("[green]    Reloaded systemd daemon.[/green]")
+                console.print("[green]  Reloaded systemd daemon.[/green]")
                 console.print()
         else:
             # Quadlet build script already reloaded daemon, add delay and force another reload
@@ -196,7 +196,7 @@ class ReinitManager:
                     "[yellow]Warning: Additional daemon reload failed[/yellow]"
                 )
             else:
-                console.print("[green]    Reloaded systemd daemon.[/green]")
+                console.print("[green]  Reloaded systemd daemon.[/green]")
                 console.print()
                 time.sleep(1)
 

@@ -361,6 +361,7 @@ class AIAnalyzer:
             console.print(
                 f"[yellow]{agent.config.display_name} is not available.[/yellow]"
             )
+            console.print()
 
             # Try to find an available fallback agent
             fallback_agent = self._find_fallback_agent(agent.config.name)
