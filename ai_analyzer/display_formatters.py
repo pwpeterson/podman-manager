@@ -499,7 +499,9 @@ class InteractiveAnalysisHandler:
                     if current_line.strip() or lines:
                         lines.append(current_line)
                         console.print("\n[dim]Submitting question...[/dim]")
-                        return "\n".join(lines).strip()
+                        # Strip trailing whitespace from each line to prevent formatting issues
+                        cleaned_lines = [line.rstrip() for line in lines]
+                        return "\n".join(cleaned_lines).strip()
                     else:
                         console.print(
                             "\n[yellow]No question entered. Press ^z to exit.[/yellow]"
@@ -564,7 +566,9 @@ class InteractiveAnalysisHandler:
                     if empty_line_count >= 2 and lines:
                         # Two empty lines in a row with content = submit
                         console.print("[dim]Submitting question...[/dim]")
-                        return "\n".join(lines).strip()
+                        # Strip trailing whitespace from each line to prevent formatting issues
+                        cleaned_lines = [line.rstrip() for line in lines]
+                        return "\n".join(cleaned_lines).strip()
                     elif empty_line_count >= 2:
                         console.print(
                             "[yellow]No question entered. Type 'quit' to exit.[/yellow]"
@@ -580,7 +584,9 @@ class InteractiveAnalysisHandler:
                 console.print("\n[dim]Interactive analysis interrupted.[/dim]")
                 return ""
 
-        return "\n".join(lines).strip()
+        # Strip trailing whitespace from each line to prevent formatting issues
+        cleaned_lines = [line.rstrip() for line in lines]
+        return "\n".join(cleaned_lines).strip()
 
     def _process_followup_question(
         self, analysis_type: str, target: str, question: str, verbose: bool = False
