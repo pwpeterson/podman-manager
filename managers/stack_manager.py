@@ -72,9 +72,9 @@ class StackManager:
                 "vllm-deepseek-coder-v2",
             ]
             for service_name in vllm_services:
-                console.print(f"Stopping {service_name}...")
+                console.print(f"[green]Stopping {service_name}...[/green]")
                 if self.manager.stop_service(service_name, force=True, quiet=True):
-                    console.print(f"  Stopped {service_name}")
+                    console.print(f"  [green]Stopped {service_name}[/green]")
                 else:
                     console.print(
                         f"  [yellow]{service_name} was not running or failed to stop[/yellow]"
@@ -109,11 +109,11 @@ class StackManager:
         failed_services = []
 
         for service in services:
-            console.print(f"Stopping {service}...")
+            console.print(f"[green]Stopping {service}...[/green]")
             service_stopped = self.manager.stop_service(service, quiet=True)
 
             if service_stopped:
-                console.print(f"  Stopped {service}")
+                console.print(f"  [green]Stopped {service}[/green]")
                 stopped_services.append(service)
             else:
                 console.print(
@@ -155,7 +155,6 @@ class StackManager:
 
         success = True
         for service in services:
-            console.print(f"[dim]  Starting {service}...[/dim]")
             if not self.manager.start_service(service):
                 success = False
 
@@ -463,14 +462,14 @@ class StackManager:
                     stop_success = False
             else:
                 # Show individual service stopping without spinner for non-verbose
-                console.print(f"  [green]Stopping {service}...[/green]")
+                console.print(f"[green]Stopping {service}...[/green]")
                 service_stopped = self.manager.stop_service(service, quiet=True)
 
                 if service_stopped:
-                    console.print(f"    [green]Stopped {service}[/green]")
+                    console.print(f"  [green]Stopped {service}[/green]")
                 else:
                     console.print(
-                        f"    [yellow]{service} was not running or failed to stop[/yellow]"
+                        f"  [yellow]{service} was not running or failed to stop[/yellow]"
                     )
                     stop_success = False
                 console.print()
@@ -596,7 +595,7 @@ class StackManager:
                         )
                 else:
                     # Non-verbose mode: simple starting message without spinner
-                    console.print(f"  [green]Starting {service}...[/green]")
+                    console.print(f"[green]Starting {service}...[/green]")
                     restart_cmd = ["systemctl", "--user", "restart", service_name]
                     restart_result = subprocess.run(
                         restart_cmd, capture_output=True, text=True
@@ -611,7 +610,7 @@ class StackManager:
                         service_success = False
 
                     if restart_result.returncode == 0 and service_success:
-                        console.print(f"    [green]Started {service}[/green]")
+                        console.print(f"  [green]Started {service}[/green]")
                         console.print()
                     elif restart_result.returncode != 0:
                         start_success = False

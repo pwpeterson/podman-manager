@@ -487,14 +487,20 @@ class InteractiveAnalysisHandler:
 
         # Show analyzing spinner
         if not verbose:
-            console.print("[green]Analyzing...[/green]", end="")
-            console.print(" ", end="")
+            from rich.live import Live
+            from rich.spinner import Spinner
+
+            spinner = Spinner("dots", text="[green]Analyzing...[/green]")
+            live = Live(spinner, console=console, refresh_per_second=10)
+            live.start()
 
         # Get AI analysis
         result = self.ai_agent_manager.analyze_with_agent(followup_prompt)
 
-        # Clear spinner
-        if not verbose and result:
+        # Stop spinner
+        if not verbose and result and "live" in locals():
+            live.stop()
+        elif not verbose and result:
             console.print("\r" + "" * 30 + "\r", end="")
 
         if result:

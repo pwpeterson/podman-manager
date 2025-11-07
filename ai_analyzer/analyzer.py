@@ -122,7 +122,7 @@ class AIAnalyzer:
                     )
                     console.print()
                 else:
-                    console.print("[green]⠴ Analyzing build failure...[/green]", end="")
+                    console.print("[green]Analyzing build failure...[/green]", end="")
                     console.print(" ", end="")
             elif analysis_type == "reinit_failure":
                 # For reinit failures, don't show any startup message to avoid duplication
@@ -140,16 +140,22 @@ class AIAnalyzer:
                     )
                     console.print()
                 elif analysis_type != "reinit_failure":
-                    console.print("[green]⠴ Analyzing...[/green]", end="")
-                    console.print(" ", end="")
+                    from rich.live import Live
+                    from rich.spinner import Spinner
+
+                    spinner = Spinner("dots", text="[green]Analyzing...[/green]")
+                    live = Live(spinner, console=console, refresh_per_second=10)
+                    live.start()
 
             # Get AI analysis using the agent system with fallback logic
             result = self._analyze_with_fallback(
                 prompt, resolved_agent, verbose=verbose, target=target
             )
 
-            # Clear the analyzing message if not in verbose mode
-            if not verbose and result:
+            # Stop the spinner if not in verbose mode
+            if not verbose and result and "live" in locals():
+                live.stop()
+            elif not verbose and result:
                 console.print("\r" + "" * 30 + "\r", end="")
 
             if result:

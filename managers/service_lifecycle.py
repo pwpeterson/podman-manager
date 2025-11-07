@@ -362,7 +362,6 @@ class ServiceLifecycle:
 
         success = True
         for service in services:
-            console.print(f"[dim]  Starting {service}...[/dim]")
             if not self.manager.start_service(service):
                 success = False
 
@@ -386,9 +385,9 @@ class ServiceLifecycle:
         failed_services = []
 
         for service in services:
-            console.print(f"Stopping {service}...")
+            console.print(f"[green]Stopping {service}...[/green]")
             if self.manager.stop_service(service, quiet=True):
-                console.print(f"  Stopped {service}")
+                console.print(f"  [green]Stopped {service}[/green]")
                 stopped_services.append(service)
             else:
                 console.print(
