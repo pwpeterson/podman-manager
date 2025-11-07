@@ -212,7 +212,7 @@ class ReinitManager:
         start_success = start_result.returncode == 0
 
         if start_success:
-            console.print(f"[green]    Started {display_name}.[/green]")
+            console.print(f"[green]  Started {display_name}.[/green]")
 
             # Add detailed health monitoring in verbose mode
             if _verbose_enabled:

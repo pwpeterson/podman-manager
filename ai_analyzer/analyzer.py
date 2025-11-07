@@ -20,6 +20,7 @@ from .display_formatters import (
     DisplayFormatterFactory,
 )
 from .prompt_generators import PromptGeneratorFactory
+from .spinner_manager import safe_spinner
 
 
 class AIAnalyzer:
@@ -139,24 +140,18 @@ class AIAnalyzer:
                         "[green]Starting AI analysis and diagnostics...[/green]"
                     )
                     console.print()
-                elif analysis_type != "reinit_failure":
-                    from rich.live import Live
-                    from rich.spinner import Spinner
-
-                    spinner = Spinner("dots", text="[green]Analyzing...[/green]")
-                    live = Live(spinner, console=console, refresh_per_second=10)
-                    live.start()
 
             # Get AI analysis using the agent system with fallback logic
-            result = self._analyze_with_fallback(
-                prompt, resolved_agent, verbose=verbose, target=target
-            )
+            # Use safe spinner for non-verbose modes (except reinit_failure which handles its own display)
+            spinner_text = "Analyzing..." if analysis_type != "reinit_failure" else None
+            show_spinner = not verbose and analysis_type != "reinit_failure"
 
-            # Stop the spinner if not in verbose mode
-            if not verbose and result and "live" in locals():
-                live.stop()
-            elif not verbose and result:
-                console.print("\r" + "" * 30 + "\r", end="")
+            with safe_spinner(
+                spinner_text or "Processing...", console, verbose=not show_spinner
+            ):
+                result = self._analyze_with_fallback(
+                    prompt, resolved_agent, verbose=verbose, target=target
+                )
 
             if result:
                 # Store context for follow-up questions
@@ -164,8 +159,9 @@ class AIAnalyzer:
                 self._original_analysis_result = result
                 self.interactive_handler.set_context(prompt, result)
 
-                # Pass collected data to formatter so it can use resolved service names
+                # Pass collected data to formatters so they can use resolved service names
                 self.markdown_formatter.set_collected_data(collected_data)
+                self.interactive_handler.set_collected_data(collected_data)
 
                 # Display the results
                 self.markdown_formatter.display(analysis_type, target, result, verbose)

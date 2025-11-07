@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 
 from core.config import console
 
+from .spinner_manager import safe_spinner
+
 
 class DisplayFormatter(ABC):
     """Abstract base class for display formatters"""
@@ -396,11 +398,17 @@ class InteractiveAnalysisHandler:
         self.ai_agent_manager = ai_agent_manager
         self.original_prompt = None
         self.original_analysis_result = None
+        self._collected_data = None
+        self._setup_keyboard_handler()
 
     def set_context(self, original_prompt: str, original_analysis_result: str) -> None:
         """Set context from original analysis"""
         self.original_prompt = original_prompt
         self.original_analysis_result = original_analysis_result
+
+    def set_collected_data(self, data: dict) -> None:
+        """Set the collected data for use in display methods"""
+        self._collected_data = data
 
     def start_session(
         self, analysis_type: str, target: str, verbose: bool = False
@@ -411,7 +419,7 @@ class InteractiveAnalysisHandler:
             "[bright_yellow]Ask follow-up questions about the analysis.[/bright_yellow]"
         )
         console.print(
-            "[dim]Type your question (can be multiple lines). Type 'END' on a new line to submit, or just 'END' to exit.[/dim]"
+            "[dim]Type your question (can be multiple lines). Press ^enter to submit, or ^z to exit.[/dim]"
         )
 
         while True:
@@ -433,35 +441,166 @@ class InteractiveAnalysisHandler:
                 console.print("\n[dim]Interactive analysis ended.[/dim]")
                 break
 
-        console.print(f"\n[green]AI analysis for {target} completed[/green]")
+        # Get the resolved service name from collected data, fallback to target
+        display_name = target
+        if self._collected_data and self._collected_data.get("service_name"):
+            service_name = self._collected_data["service_name"]
+            # Remove .service suffix for display if present
+            display_name = (
+                service_name.replace(".service", "")
+                if service_name.endswith(".service")
+                else service_name
+            )
+
+        console.print(f"\n[green]AI analysis for {display_name} completed[/green]")
+
+    def _setup_keyboard_handler(self) -> None:
+        """Setup keyboard handling for interactive input"""
+        try:
+            import termios  # noqa: F401
+            import tty  # noqa: F401
+
+            self._has_termios = True
+        except ImportError:
+            # Windows or system without termios
+            self._has_termios = False
 
     def _read_multiline_input(self) -> str:
-        """Read multi-line input until 'END' is entered on a new line"""
+        """Read multi-line input with keyboard shortcuts (Ctrl+S to submit, Ctrl+Q to exit)"""
+        if self._has_termios:
+            return self._read_with_termios()
+        else:
+            return self._read_fallback()
+
+    def _read_with_termios(self) -> str:
+        """Read input using termios for proper keyboard handling (Unix/Linux/macOS)"""
+        import sys
+        import termios
+        import tty
+
         lines = []
+        current_line = ""
+
+        # Save terminal settings
+        old_settings = termios.tcgetattr(sys.stdin)
+
+        try:
+            # Set terminal to raw mode for character-by-character input
+            tty.setraw(sys.stdin.fileno())
+
+            while True:
+                char = sys.stdin.read(1)
+
+                # Handle Ctrl+Z (exit)
+                if ord(char) == 26:  # Ctrl+Z
+                    console.print("\n[dim]Exiting interactive analysis...[/dim]")
+                    return ""
+
+                # Handle Ctrl+Enter (submit)
+                elif ord(char) == 10:  # Ctrl+Enter
+                    if current_line.strip() or lines:
+                        lines.append(current_line)
+                        console.print("\n[dim]Submitting question...[/dim]")
+                        return "\n".join(lines).strip()
+                    else:
+                        console.print(
+                            "\n[yellow]No question entered. Press ^z to exit.[/yellow]"
+                        )
+                        console.print("\n[bold yellow]==>[/bold yellow] ", end="")
+                        current_line = ""
+                        continue
+
+                # Handle Enter (new line)
+                elif ord(char) == 13:  # Enter/Return
+                    lines.append(current_line)
+                    current_line = ""
+                    console.print("\n[bold yellow]==>[/bold yellow] ", end="")
+
+                # Handle Backspace
+                elif ord(char) == 127:  # Backspace
+                    if current_line:
+                        current_line = current_line[:-1]
+                        # Move cursor back, print space, move back again
+                        sys.stdout.write("\b \b")
+                        sys.stdout.flush()
+
+                # Handle Ctrl+C (interrupt)
+                elif ord(char) == 3:  # Ctrl+C
+                    raise KeyboardInterrupt
+
+                # Handle regular characters (printable ASCII)
+                elif 32 <= ord(char) <= 126:
+                    current_line += char
+                    sys.stdout.write(char)
+                    sys.stdout.flush()
+
+        except KeyboardInterrupt:
+            console.print("\n[dim]Interactive analysis interrupted.[/dim]")
+            return ""
+        finally:
+            # Restore terminal settings
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+    def _read_fallback(self) -> str:
+        """Fallback input method for systems without termios (Windows)"""
+        console.print(
+            "[dim]Note: Using fallback input mode. Type your question and press Enter twice to submit, or type 'quit' to exit.[/dim]"
+        )
+
+        lines = []
+        empty_line_count = 0
 
         while True:
             try:
                 line = input()
 
-                # Check if user wants to end input
-                if line.strip().upper() == "END":
-                    break
+                # Check for quit command
+                if line.strip().lower() in ["quit", "exit", "q"]:
+                    console.print("[dim]Exiting interactive analysis...[/dim]")
+                    return ""
 
-                # Add the line to our input
-                lines.append(line)
+                # Check for empty line (potential submit)
+                if not line.strip():
+                    empty_line_count += 1
+                    if empty_line_count >= 2 and lines:
+                        # Two empty lines in a row with content = submit
+                        console.print("[dim]Submitting question...[/dim]")
+                        return "\n".join(lines).strip()
+                    elif empty_line_count >= 2:
+                        console.print(
+                            "[yellow]No question entered. Type 'quit' to exit.[/yellow]"
+                        )
+                        console.print("[bold yellow]==>[/bold yellow] ", end="")
+                        empty_line_count = 0
+                        continue
+                else:
+                    empty_line_count = 0
+                    lines.append(line)
 
             except (KeyboardInterrupt, EOFError):
-                break
+                console.print("\n[dim]Interactive analysis interrupted.[/dim]")
+                return ""
 
-        # Join all lines and return the complete input
-        result = "\n".join(lines).strip()
-        return result
+        return "\n".join(lines).strip()
 
     def _process_followup_question(
         self, analysis_type: str, target: str, question: str, verbose: bool = False
     ) -> None:
         """Process a follow-up question and generate AI response"""
-        console.print(f"\n[bold green]Follow-up Analysis for {target}[/bold green]")
+        # Get the resolved service name from collected data, fallback to target
+        display_name = target
+        if self._collected_data and self._collected_data.get("service_name"):
+            service_name = self._collected_data["service_name"]
+            # Remove .service suffix for display if present
+            display_name = (
+                service_name.replace(".service", "")
+                if service_name.endswith(".service")
+                else service_name
+            )
+
+        console.print(
+            f"\n[bold green]Follow-up Analysis for {display_name}[/bold green]"
+        )
         console.print()
 
         # Create followup prompt
@@ -485,23 +624,9 @@ class InteractiveAnalysisHandler:
             console.print("[cyan]" + "─" * 80 + "[/cyan]")
             console.print()
 
-        # Show analyzing spinner
-        if not verbose:
-            from rich.live import Live
-            from rich.spinner import Spinner
-
-            spinner = Spinner("dots", text="[green]Analyzing...[/green]")
-            live = Live(spinner, console=console, refresh_per_second=10)
-            live.start()
-
-        # Get AI analysis
-        result = self.ai_agent_manager.analyze_with_agent(followup_prompt)
-
-        # Stop spinner
-        if not verbose and result and "live" in locals():
-            live.stop()
-        elif not verbose and result:
-            console.print("\r" + "" * 30 + "\r", end="")
+        # Get AI analysis with safe spinner management
+        with safe_spinner("Analyzing...", console, verbose=verbose):
+            result = self.ai_agent_manager.analyze_with_agent(followup_prompt)
 
         if result:
             formatter = MarkdownDisplayFormatter()
