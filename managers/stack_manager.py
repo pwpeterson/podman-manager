@@ -582,7 +582,7 @@ class StackManager:
                                 ".service", ""
                             ).replace(".target", "")
                             verbose_print(
-                                f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
+                                f"  [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
                             )
                     else:
                         start_success = False
@@ -591,7 +591,7 @@ class StackManager:
                             ".target", ""
                         )
                         verbose_print(
-                            f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
+                            f"  [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
                         )
                 else:
                     # Non-verbose mode: simple starting message without spinner
@@ -621,7 +621,7 @@ class StackManager:
                             ".target", ""
                         )
                         console.print(
-                            f"    [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
+                            f"  [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
                         )
                         console.print()
             else:
@@ -983,7 +983,7 @@ class StackManager:
 
         # Show clean failure message with AI analysis suggestion
         console.print(
-            f"      [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
+            f"  [red]{clean_service_name} start failed. Run [/red][white]pm reinit {clean_service_name}[/white][red] for AI analysis.[/red]"
         )
         console.print()
 

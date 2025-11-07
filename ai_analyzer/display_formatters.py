@@ -506,7 +506,7 @@ class InteractiveAnalysisHandler:
                         console.print(
                             "\n[yellow]No question entered. Press ^z to exit.[/yellow]"
                         )
-                        console.print("\n[bold yellow]==>[/bold yellow] ", end="")
+                        console.print("[bold yellow]==>[/bold yellow] ", end="")
                         current_line = ""
                         continue
 
@@ -514,7 +514,8 @@ class InteractiveAnalysisHandler:
                 elif ord(char) == 13:  # Enter/Return
                     lines.append(current_line)
                     current_line = ""
-                    console.print("\n[bold yellow]==>[/bold yellow] ", end="")
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
 
                 # Handle Backspace
                 elif ord(char) == 127:  # Backspace
