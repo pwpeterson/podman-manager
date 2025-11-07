@@ -417,7 +417,7 @@ class InteractiveAnalysisHandler:
             "[bright_yellow]Ask follow-up questions about the analysis.[/bright_yellow]"
         )
         console.print(
-            "[dim]Type your question (can be multiple lines). Press ^enter to submit, or ^z to exit.[/dim]"
+            "[dim]Type your question (can be multiple lines). Type '^enter' on a new line to submit, or '^z' to exit.[/dim]"
         )
 
         while True:
@@ -464,11 +464,60 @@ class InteractiveAnalysisHandler:
             self._has_termios = False
 
     def _read_multiline_input(self) -> str:
-        """Read multi-line input with keyboard shortcuts (Ctrl+S to submit, Ctrl+Q to exit)"""
-        if self._has_termios:
-            return self._read_with_termios()
-        else:
-            return self._read_fallback()
+        """Read multi-line input with keyboard shortcuts (^enter to submit, ^z to exit)"""
+        # Use a simpler approach that doesn't interfere with terminal positioning
+        return self._read_simple_multiline()
+
+    def _read_simple_multiline(self) -> str:
+        """Simple multiline input using standard input without raw mode"""
+        lines = []
+
+        try:
+            while True:
+                try:
+                    line = input()
+
+                    # Check for exit command
+                    if line.strip() == "^z" or line.strip().lower() in [
+                        "quit",
+                        "exit",
+                        "q",
+                    ]:
+                        console.print("[dim]Exiting interactive analysis...[/dim]")
+                        return ""
+
+                    # Check for submit command
+                    if line.strip() == "^enter" or line.strip() == "":
+                        if lines:
+                            console.print("[dim]Submitting question...[/dim]")
+                            # Strip trailing whitespace from each line
+                            cleaned_lines = [line.rstrip() for line in lines]
+                            return "\n".join(cleaned_lines).strip()
+                        elif line.strip() == "":
+                            # Empty line, continue collecting input
+                            continue
+                        else:
+                            console.print(
+                                "[yellow]No question entered. Type 'quit' or '^z' to exit.[/yellow]"
+                            )
+                            continue
+
+                    # Add line to input
+                    lines.append(line)
+
+                except EOFError:
+                    # Handle Ctrl+D
+                    if lines:
+                        console.print("[dim]Submitting question...[/dim]")
+                        cleaned_lines = [line.rstrip() for line in lines]
+                        return "\n".join(cleaned_lines).strip()
+                    else:
+                        console.print("[dim]Exiting interactive analysis...[/dim]")
+                        return ""
+
+        except KeyboardInterrupt:
+            console.print("\n[dim]Interactive analysis interrupted.[/dim]")
+            return ""
 
     def _read_with_termios(self) -> str:
         """Read input using termios for proper keyboard handling (Unix/Linux/macOS)"""
