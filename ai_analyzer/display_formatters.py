@@ -6,8 +6,6 @@ from abc import ABC, abstractmethod
 
 from core.config import console
 
-from .spinner_manager import safe_spinner
-
 
 class DisplayFormatter(ABC):
     """Abstract base class for display formatters"""
@@ -625,9 +623,8 @@ class InteractiveAnalysisHandler:
             console.print("[cyan]" + "─" * 80 + "[/cyan]")
             console.print()
 
-        # Get AI analysis with safe spinner management
-        with safe_spinner("Analyzing...", console, verbose=verbose):
-            result = self.ai_agent_manager.analyze_with_agent(followup_prompt)
+        # Get AI analysis without spinner to avoid conflicts
+        result = self.ai_agent_manager.analyze_with_agent(followup_prompt)
 
         if result:
             formatter = MarkdownDisplayFormatter()
