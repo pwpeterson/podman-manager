@@ -792,7 +792,14 @@ class CommandRouter:
         )
 
     def _handle_build(self, args):
-        self.handle_command_verbose(args)
+        # Handle verbose/quiet flags for build command
+        # Build command defaults to verbose unless --quiet is specified
+        if hasattr(args, "quiet") and args.quiet:
+            # Override default verbose behavior with quiet flag
+            set_verbose(False)
+        else:
+            # Default to verbose for build command
+            set_verbose(True)
         return self.try_with_fallback(self.container_ops.rebuild, args.target)
 
     def _handle_start(self, args):

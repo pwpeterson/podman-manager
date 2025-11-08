@@ -7,9 +7,9 @@
       "image_name": "localhost/mcp-crawl4ai-rag:latest"
     },
     "vllm-proxy": {
-      "build_dir": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
-      "dockerfile": "Dockerfile.vllm_proxy",
-      "context": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
+      "build_dir": "/home/pwp/srv/system/vllm-proxy",
+      "dockerfile": "Dockerfile.vllm-proxy",
+      "context": "/home/pwp/srv/system/vllm-proxy",
       "image_name": "localhost/vllm-proxy:latest"
     }
   },

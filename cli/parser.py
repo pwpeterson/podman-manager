@@ -360,7 +360,14 @@ def _add_lifecycle_commands(subparsers):
         "-v",
         "--verbose",
         action="store_true",
-        help="Show detailed command execution (exec lines)",
+        default=True,
+        help="Show detailed command execution (exec lines) - enabled by default",
+    )
+    build_parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Disable verbose output (opposite of --verbose)",
     )
 
     # Start command
