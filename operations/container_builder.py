@@ -38,6 +38,10 @@ class ContainerBuilder:
         """Find which stack directory contains the given service."""
         quadlets_base_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
 
+        # Special handling for services that use podman build instead of quadlet build
+        if service_name in ["mcp-crawl4ai-rag"]:
+            return "mcp-services-stack"
+
         if not quadlets_base_dir.exists():
             # Fallback logic if directory doesn't exist
             if service_name.startswith("local-ai-"):
@@ -46,6 +50,8 @@ class ContainerBuilder:
                 return "supabase-stack"
             elif service_name.startswith("vllm-"):
                 return "vllm-stack"
+            elif service_name.startswith("mcp-"):
+                return "mcp-services-stack"
             elif "-" in service_name:
                 base_name = service_name.split("-")[0]
                 return f"{base_name}-stack"
@@ -258,6 +264,17 @@ class ContainerBuilder:
     def build_service(self, target: str) -> bool:
         """Build images for a single service by looking for Dockerfile.<service_name>"""
         try:
+            # Special handling for services that use podman build instead of quadlet build
+            if target in [
+                "mcp-crawl4ai-rag",
+                "vllm-delegator",
+                "vllm-delegator-mcp",
+                "vllm-proxy",
+                "vllm-proxy-mcp",
+            ]:
+                console.print(f"[green]Using podman build for {target}[/green]")
+                return self.build_service_podman(target)
+
             # Dynamically determine stack name from directory structure
             stack_name = self._find_stack_for_service(target)
 
