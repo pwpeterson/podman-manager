@@ -692,7 +692,55 @@ class ContainerBuilder:
                     ]
                     console.print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
 
-                    result = subprocess.run(build_cmd, capture_output=True, text=True)
+                    from core.config import _verbose_enabled
+
+                    if _verbose_enabled:
+                        # In verbose mode, show build output with indentation and capture for AI analysis
+                        console.print(f"[green]Building image: {image_name}[/green]")
+
+                        process = subprocess.Popen(
+                            build_cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            bufsize=1,
+                            universal_newlines=True,
+                        )
+
+                        # Capture output while displaying it live
+                        captured_output = []
+                        if process.stdout:
+                            for line in iter(process.stdout.readline, ""):  # type: ignore
+                                if line.strip():
+                                    console.print(f"  {line.rstrip()}")
+                                    captured_output.append(line.rstrip())
+                        process.wait()
+
+                        # Create a mock result object with captured output for AI analysis
+                        class MockResult:
+                            def __init__(self, returncode, stdout):
+                                self.returncode = returncode
+                                self.stdout = stdout
+                                self.stderr = None  # stderr is merged with stdout
+
+                        result = MockResult(
+                            process.returncode, "\n".join(captured_output)
+                        )
+                    else:
+                        # In non-verbose mode, use spinner and capture output
+                        with Progress(
+                            SpinnerColumn(),
+                            TextColumn(
+                                f"[yellow]Building image: {image_name}[/yellow]"
+                            ),
+                            console=console,
+                            transient=True,
+                        ) as progress:
+                            task = progress.add_task("building", total=None)
+                            result = subprocess.run(
+                                build_cmd, capture_output=True, text=True
+                            )
+                            progress.remove_task(task)
 
                     if result.returncode == 0:
                         console.print(
@@ -703,16 +751,19 @@ class ContainerBuilder:
                         console.print(f"[red]Podman build failed for {target}[/red]")
 
                         # Collect error information for AI analysis
-                        build_error = (
-                            result.stderr.strip()
-                            if result.stderr
-                            else "Build failed with unknown error"
-                        )
-                        build_output = result.stdout.strip() if result.stdout else ""
+                        build_error = ""
+                        build_output = ""
                         build_command = " ".join(build_cmd)
 
-                        if result.stderr:
-                            console.print(f"[red]{build_error}[/red]")
+                        # Handle both Popen and CompletedProcess objects
+                        if hasattr(result, "stderr") and result.stderr:
+                            if isinstance(result.stderr, str):
+                                build_error = result.stderr.strip()
+                                console.print(f"[red]{build_error}[/red]")
+
+                        if hasattr(result, "stdout") and result.stdout:
+                            if isinstance(result.stdout, str):
+                                build_output = result.stdout.strip()
 
                         # Store build context for AI analysis
                         self._store_build_context(
@@ -725,8 +776,6 @@ class ContainerBuilder:
                         )
 
                         # Trigger AI analysis for build failure
-                        from core.config import _verbose_enabled
-
                         self._trigger_build_ai_analysis(
                             target=target,
                             build_error=build_error,
