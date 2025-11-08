@@ -5,9 +5,16 @@
       "dockerfile": "Dockerfile.mcp-crawl4ai-rag",
       "context": "/home/pwp/srv/coding_agent/mcp/mcp-crawl4ai-rag",
       "image_name": "localhost/mcp-crawl4ai-rag:latest"
+    },
+    "vllm-proxy": {
+      "build_dir": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
+      "dockerfile": "Dockerfile.vllm_proxy",
+      "context": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
+      "image_name": "localhost/vllm-proxy:latest"
     }
   },
   "podman_build_services": [
-    "mcp-crawl4ai-rag"
+    "mcp-crawl4ai-rag",
+    "vllm-proxy"
   ]
 }
