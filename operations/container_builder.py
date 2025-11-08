@@ -629,28 +629,41 @@ class ContainerBuilder:
     def build_service_podman(self, target: str) -> bool:
         """Build images using regular podman build (not specialized rebuild)"""
         try:
-            # Common Dockerfile locations for different services
-            dockerfile_locations = {
-                "vllm-delegator": (
-                    "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
-                    "Dockerfile-vllm-delegator",
-                ),
-                "vllm-delegator-mcp": (
-                    "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
-                    "Dockerfile-vllm-delegator",
-                ),
-                "vllm-proxy": (
-                    "/home/pwp/srv/local-ai-packaged/vllm-proxy",
-                    "Dockerfile.vllm_proxy",
-                ),
-                "vllm-proxy-mcp": (
-                    "/home/pwp/srv/local-ai-packaged/vllm-proxy",
-                    "Dockerfile.vllm_proxy",
-                ),
+            # Build context configurations for different services
+            build_contexts = {
+                "vllm-delegator": {
+                    "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
+                    "dockerfile": "Dockerfile-vllm-delegator",
+                    "context": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
+                },
+                "vllm-delegator-mcp": {
+                    "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
+                    "dockerfile": "Dockerfile-vllm-delegator",
+                    "context": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
+                },
+                "vllm-proxy": {
+                    "build_dir": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
+                    "dockerfile": "Dockerfile.vllm_proxy",
+                    "context": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
+                },
+                "vllm-proxy-mcp": {
+                    "build_dir": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
+                    "dockerfile": "Dockerfile.vllm_proxy",
+                    "context": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
+                },
+                "mcp-crawl4ai-rag": {
+                    "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-crawl4ai-rag",
+                    "dockerfile": "Dockerfile",
+                    "context": "/home/pwp/srv/coding_agent/mcp/mcp-crawl4ai-rag",
+                },
             }
 
-            if target in dockerfile_locations:
-                build_dir, dockerfile = dockerfile_locations[target]
+            if target in build_contexts:
+                config = build_contexts[target]
+                build_dir = config["build_dir"]
+                dockerfile = config["dockerfile"]
+                context_dir = config["context"]
+
                 if not Path(build_dir).exists():
                     console.print(f"[red]Build directory not found: {build_dir}[/red]")
                     return False
@@ -671,6 +684,7 @@ class ContainerBuilder:
                     else:
                         image_name = f"localhost/{target}:latest"
 
+                    # Build command with configurable context directory
                     build_cmd = [
                         "podman",
                         "build",
@@ -679,7 +693,7 @@ class ContainerBuilder:
                         dockerfile,
                         "-t",
                         image_name,
-                        ".",
+                        context_dir,
                     ]
                     console.print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
 
@@ -712,6 +726,7 @@ class ContainerBuilder:
                             build_dir=build_dir,
                             image_name=image_name,
                             service_type="podman_container",
+                            context_dir=context_dir,
                         )
 
                         # Trigger AI analysis for build failure
@@ -907,6 +922,7 @@ class ContainerBuilder:
         IMAGE_NAME = "localhost/vllm-delegator-mcp:latest"
         DOCKERFILE = "Dockerfile-vllm-delegator"
         MCP_SERVICE_DIR = "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator"
+        BUILD_CONTEXT = "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator"
 
         console.print("[yellow]🔨 Rebuilding vLLM Delegator MCP image...[/yellow]")
 
@@ -977,7 +993,7 @@ class ContainerBuilder:
                 DOCKERFILE,
                 "-t",
                 IMAGE_NAME,
-                ".",
+                BUILD_CONTEXT,
             ]
             console.print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
             build_result = subprocess.run(build_cmd, capture_output=True, text=True)
@@ -1009,6 +1025,7 @@ class ContainerBuilder:
         IMAGE_NAME = "localhost/vllm-proxy:latest"
         DOCKERFILE = "Dockerfile.vllm_proxy"
         PROXY_SERVICE_DIR = "/home/pwp/srv/local-ai-packaged/vllm-proxy"
+        BUILD_CONTEXT = "/home/pwp/srv/local-ai-packaged/vllm-proxy"
 
         console.print("[yellow]🔨 Rebuilding vLLM Proxy image...[/yellow]")
 
@@ -1079,7 +1096,7 @@ class ContainerBuilder:
                 DOCKERFILE,
                 "-t",
                 IMAGE_NAME,
-                ".",
+                BUILD_CONTEXT,
             ]
             console.print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
             build_result = subprocess.run(build_cmd, capture_output=True, text=True)
