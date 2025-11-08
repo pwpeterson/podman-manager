@@ -1,0 +1,41 @@
+{
+  "build_contexts": {
+    "vllm-delegator": {
+      "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
+      "dockerfile": "Dockerfile-vllm-delegator",
+      "context": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
+      "image_name": "localhost/vllm-delegator-mcp:latest"
+    },
+    "vllm-delegator-mcp": {
+      "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
+      "dockerfile": "Dockerfile-vllm-delegator",
+      "context": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
+      "image_name": "localhost/vllm-delegator-mcp:latest"
+    },
+    "vllm-proxy": {
+      "build_dir": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
+      "dockerfile": "Dockerfile.vllm_proxy",
+      "context": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
+      "image_name": "localhost/vllm-proxy:latest"
+    },
+    "vllm-proxy-mcp": {
+      "build_dir": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
+      "dockerfile": "Dockerfile.vllm_proxy",
+      "context": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
+      "image_name": "localhost/vllm-proxy:latest"
+    },
+    "mcp-crawl4ai-rag": {
+      "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-crawl4ai-rag",
+      "dockerfile": "Dockerfile",
+      "context": "/home/pwp/srv/coding_agent/mcp/mcp-crawl4ai-rag",
+      "image_name": "localhost/mcp-crawl4ai-rag:latest"
+    }
+  },
+  "podman_build_services": [
+    "mcp-crawl4ai-rag",
+    "vllm-delegator",
+    "vllm-delegator-mcp",
+    "vllm-proxy",
+    "vllm-proxy-mcp"
+  ]
+}

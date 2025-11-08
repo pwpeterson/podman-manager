@@ -17,6 +17,20 @@ class ContainerBuilder:
     def __init__(self, manager):
         self.manager = manager
         self._build_context = {}  # Store build context for AI analysis
+        self._build_configs = self._load_build_configs()
+
+    def _load_build_configs(self) -> Dict[str, Any]:
+        """Load build configurations from JSON file."""
+        config_file = Path(__file__).parent.parent / "build_contexts.json"
+        try:
+            with open(config_file, "r") as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            console.print(
+                f"[yellow]Warning: Could not load build_contexts.json: {e}[/yellow]"
+            )
+            # Return empty config as fallback
+            return {"build_contexts": {}, "podman_build_services": []}
 
     def _check_config_sys(self, stack_dir: Path) -> Optional[Dict[str, Any]]:
         """Check for config.sys file in stack directory and parse it."""
@@ -265,13 +279,8 @@ class ContainerBuilder:
         """Build images for a single service by looking for Dockerfile.<service_name>"""
         try:
             # Special handling for services that use podman build instead of quadlet build
-            if target in [
-                "mcp-crawl4ai-rag",
-                "vllm-delegator",
-                "vllm-delegator-mcp",
-                "vllm-proxy",
-                "vllm-proxy-mcp",
-            ]:
+            podman_services = self._build_configs.get("podman_build_services", [])
+            if target in podman_services:
                 console.print(f"[green]Using podman build for {target}[/green]")
                 return self.build_service_podman(target)
 
@@ -646,34 +655,8 @@ class ContainerBuilder:
     def build_service_podman(self, target: str) -> bool:
         """Build images using regular podman build (not specialized rebuild)"""
         try:
-            # Build context configurations for different services
-            build_contexts = {
-                "vllm-delegator": {
-                    "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
-                    "dockerfile": "Dockerfile-vllm-delegator",
-                    "context": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
-                },
-                "vllm-delegator-mcp": {
-                    "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
-                    "dockerfile": "Dockerfile-vllm-delegator",
-                    "context": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
-                },
-                "vllm-proxy": {
-                    "build_dir": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
-                    "dockerfile": "Dockerfile.vllm_proxy",
-                    "context": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
-                },
-                "vllm-proxy-mcp": {
-                    "build_dir": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
-                    "dockerfile": "Dockerfile.vllm_proxy",
-                    "context": "/home/pwp/srv/local-ai-packaged/vllm-proxy",
-                },
-                "mcp-crawl4ai-rag": {
-                    "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-crawl4ai-rag",
-                    "dockerfile": "Dockerfile",
-                    "context": "/home/pwp/srv/coding_agent/mcp/mcp-crawl4ai-rag",
-                },
-            }
+            # Load build context configurations from JSON file
+            build_contexts = self._build_configs.get("build_contexts", {})
 
             if target in build_contexts:
                 config = build_contexts[target]
@@ -693,13 +676,8 @@ class ContainerBuilder:
                         console.print(f"[red]Dockerfile not found: {dockerfile}[/red]")
                         return False
 
-                    # Determine image name
-                    if target in ["vllm-delegator", "vllm-delegator-mcp"]:
-                        image_name = "localhost/vllm-delegator-mcp:latest"
-                    elif target in ["vllm-proxy", "vllm-proxy-mcp"]:
-                        image_name = "localhost/vllm-proxy:latest"
-                    else:
-                        image_name = f"localhost/{target}:latest"
+                    # Determine image name from config or use default
+                    image_name = config.get("image_name", f"localhost/{target}:latest")
 
                     # Build command with configurable context directory
                     build_cmd = [
