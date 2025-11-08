@@ -4,6 +4,7 @@ Podman Container Management Script with Rich Console Output
 Quadlet-only version with clean separation of concerns
 """
 
+import signal
 import sys
 from pathlib import Path
 
@@ -29,6 +30,12 @@ from operations.quadlet_display import QuadletDisplayManager
 from operations.quadlet_ops import QuadletOperations
 
 
+def handle_sigtstp(signum, frame):
+    """Handle Ctrl+Z (SIGTSTP) signal to provide clean exit instead of suspension"""
+    console.print("\n[yellow]Operation cancelled by user (Ctrl+Z)[/yellow]")
+    sys.exit(130)  # Exit with code 130 (128 + SIGINT equivalent for user interruption)
+
+
 def main():
     """Main entry point for podman manager"""
     parser = create_argument_parser()
@@ -40,6 +47,9 @@ def main():
         return
 
     try:
+        # Set up signal handler for Ctrl+Z
+        signal.signal(signal.SIGTSTP, handle_sigtstp)
+
         # Set verbose mode from global flag
         set_verbose(args.verbose)
 

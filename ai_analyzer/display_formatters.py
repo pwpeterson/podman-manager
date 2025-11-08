@@ -417,7 +417,7 @@ class InteractiveAnalysisHandler:
             "[bright_yellow]Ask follow-up questions about the analysis.[/bright_yellow]"
         )
         console.print(
-            "[dim]Type your question (can be multiple lines). Type '^enter' on a new line to submit, or '^z' to exit.[/dim]"
+            "[dim]Type your question (can be multiple lines). Type '^enter' on a new line to submit, or press Enter with no input to exit.[/dim]"
         )
 
         while True:
@@ -433,9 +433,19 @@ class InteractiveAnalysisHandler:
                 )
 
             except KeyboardInterrupt:
+                # Clear any shell job control messages
+                import sys
+
+                sys.stdout.write("\r\033[K")  # Clear current line
+                sys.stdout.flush()
                 console.print("\n[dim]Interactive analysis interrupted.[/dim]")
                 break
             except EOFError:
+                # Clear any shell job control messages
+                import sys
+
+                sys.stdout.write("\r\033[K")  # Clear current line
+                sys.stdout.flush()
                 console.print("\n[dim]Interactive analysis ended.[/dim]")
                 break
 
@@ -450,7 +460,13 @@ class InteractiveAnalysisHandler:
                 else service_name
             )
 
-        console.print(f"\n[green]AI analysis for {display_name} completed[/green]")
+        # Clear any shell job control messages by printing a newline and moving cursor
+        import sys
+
+        sys.stdout.write("\r\033[K")  # Clear current line
+        sys.stdout.flush()
+
+        console.print(f"[green]AI analysis for {display_name} completed[/green]")
 
     def _setup_keyboard_handler(self) -> None:
         """Setup keyboard handling for interactive input"""
@@ -483,30 +499,47 @@ class InteractiveAnalysisHandler:
                         "exit",
                         "q",
                     ]:
+                        # Clear any shell job control messages
+                        import sys
+
+                        sys.stdout.write("\r\033[K")  # Clear current line
+                        sys.stdout.flush()
                         console.print("[dim]Exiting interactive analysis...[/dim]")
                         return ""
 
                     # Check for submit command
-                    if line.strip() == "^enter" or line.strip() == "":
+                    if line.strip() == "^enter":
                         if lines:
                             console.print("[dim]Submitting question...[/dim]")
                             # Strip trailing whitespace from each line
                             cleaned_lines = [line.rstrip() for line in lines]
                             return "\n".join(cleaned_lines).strip()
-                        elif line.strip() == "":
-                            # Empty line, continue collecting input
-                            continue
                         else:
                             console.print(
-                                "[yellow]No question entered. Type 'quit' or '^z' to exit.[/yellow]"
+                                "[yellow]No question entered. Press Enter with no input to exit.[/yellow]"
                             )
                             continue
+                    elif line.strip() == "":
+                        if lines:
+                            # Empty line with existing content, continue collecting input
+                            lines.append(line)
+                            continue
+                        else:
+                            # Empty line with no content, exit
+                            console.print("[dim]Exiting interactive analysis...[/dim]")
+                            return ""
 
                     # Add line to input
                     lines.append(line)
 
                 except EOFError:
                     # Handle Ctrl+D
+                    # Clear any shell job control messages
+                    import sys
+
+                    sys.stdout.write("\r\033[K")  # Clear current line
+                    sys.stdout.flush()
+
                     if lines:
                         console.print("[dim]Submitting question...[/dim]")
                         cleaned_lines = [line.rstrip() for line in lines]
@@ -516,6 +549,11 @@ class InteractiveAnalysisHandler:
                         return ""
 
         except KeyboardInterrupt:
+            # Clear any shell job control messages
+            import sys
+
+            sys.stdout.write("\r\033[K")  # Clear current line
+            sys.stdout.flush()
             console.print("\n[dim]Interactive analysis interrupted.[/dim]")
             return ""
 

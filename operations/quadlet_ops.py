@@ -133,24 +133,29 @@ class QuadletOperations:
     # Container Building Operations
     def rebuild(self, target: str) -> bool:
         """Rebuild container image and restart service"""
-        console.print()
-        console.print(f"[green]Building {target}...[/green]")
-        console.print()
-
         service_name = self.manager._find_service_name(target)
 
         # Handle stack operations (STACK: prefix)
         if service_name and service_name.startswith("STACK:"):
             stack_name = service_name[6:]  # Remove "STACK:" prefix
+            console.print()
+            console.print(f"[green]Building {stack_name}...[/green]")
+            console.print()
             return self.container_builder.rebuild_stack(stack_name)
 
         # Handle legacy stack targets
         if target.endswith("-stack"):
             project_name = target[:-6]  # Remove "-stack" suffix
+            console.print()
+            console.print(f"[green]Building {project_name}...[/green]")
+            console.print()
             return self.container_builder.rebuild_stack(project_name)
 
         # Handle individual service - use resolved service name without .service suffix
         resolved_target = self._resolve_service_name(target, strip_service_suffix=True)
+        console.print()
+        console.print(f"[green]Building {resolved_target}...[/green]")
+        console.print()
         return self.container_builder.rebuild_service(resolved_target)
 
     def update_images_and_restart(self, target: str) -> bool:

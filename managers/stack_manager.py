@@ -395,13 +395,15 @@ class StackManager:
 
         console.print()
         if service_file:
-            # Get display name for the resolved service
-            display_name = resolved_stack
-            if display_name.endswith(".service"):
+            # Get display name for the resolved service - use the service file name without extension
+            display_name = service_file
+            if display_name.endswith(".container"):
+                display_name = display_name[:-10]  # Remove .container suffix
+            elif display_name.endswith(".service"):
                 display_name = display_name[:-8]  # Remove .service suffix
             elif display_name.endswith(".target"):
                 display_name = display_name[:-7]  # Remove .target suffix
-            console.print(f"[green]Installing {display_name} service...[/green]")
+            console.print(f"[green]Installing {display_name}...[/green]")
         else:
             console.print(f"[green]Installing {resolved_stack} stack...[/green]")
         console.print()
@@ -423,7 +425,15 @@ class StackManager:
         if success:
             # Final success message - use appropriate term based on what was installed
             if service_file:
-                console.print(f"[green]Successfully installed {stack} service[/green]")
+                # Use the resolved service name for the success message
+                display_name = service_file
+                if display_name.endswith(".container"):
+                    display_name = display_name[:-10]  # Remove .container suffix
+                elif display_name.endswith(".service"):
+                    display_name = display_name[:-8]  # Remove .service suffix
+                elif display_name.endswith(".target"):
+                    display_name = display_name[:-7]  # Remove .target suffix
+                console.print(f"[green]Successfully installed {display_name}[/green]")
             else:
                 console.print(
                     f"[green]Successfully installed {resolved_stack} stack[/green]"
