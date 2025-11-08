@@ -26,7 +26,7 @@
     },
     "mcp-crawl4ai-rag": {
       "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-crawl4ai-rag",
-      "dockerfile": "Dockerfile",
+      "dockerfile": "Dockerfile.mcp-crawl4ai-rag",
       "context": "/home/pwp/srv/coding_agent/mcp/mcp-crawl4ai-rag",
       "image_name": "localhost/mcp-crawl4ai-rag:latest"
     }
