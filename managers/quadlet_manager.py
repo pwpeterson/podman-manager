@@ -1409,6 +1409,43 @@ class QuadletManager:
         elif service_name == "CANCELLED":
             return False
 
+        # Handle stack targets by delegating to stack manager
+        if service_name.startswith("STACK:"):
+            from managers.stack_manager import StackManager
+
+            stack_manager = StackManager(self)
+            stack_name = service_name[6:]  # Remove "STACK:" prefix
+            stack_manager._show_stack_logs(stack_name.replace("-stack", ""), follow)
+            return True
+
+        # Get container name for podman logs (use target as container name)
+        container_name = target
+
+        # First show podman logs
+        console.print("\n[bold cyan]=== Podman Container Logs ===[/bold cyan]")
+        podman_cmd = ["podman", "logs", container_name]
+        verbose_print(f"[cyan]exec: {' '.join(podman_cmd)}[/cyan]")
+
+        try:
+            podman_result = subprocess.run(
+                podman_cmd, capture_output=True, text=True, timeout=30
+            )
+            if podman_result.returncode == 0:
+                if podman_result.stdout.strip():
+                    console.print(podman_result.stdout)
+                else:
+                    console.print("[dim]No podman logs available[/dim]")
+            else:
+                console.print(
+                    f"[yellow]Podman logs not available: {podman_result.stderr.strip()}[/yellow]"
+                )
+        except subprocess.TimeoutExpired:
+            console.print("[yellow]Podman logs command timed out[/yellow]")
+        except Exception as e:
+            console.print(f"[yellow]Could not get podman logs: {e}[/yellow]")
+
+        # Then show systemd/journalctl logs
+        console.print("\n[bold cyan]=== Systemd Service Logs ===[/bold cyan]")
         cmd = ["journalctl", "--user", "-u", service_name]
         if follow:
             cmd.append("-f")

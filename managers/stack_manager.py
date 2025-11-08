@@ -251,19 +251,83 @@ class StackManager:
             # For follow mode, show logs for all services in parallel (simplified approach)
             for service in services:
                 console.print(f"\n[bold cyan]=== {service} ===[/bold cyan]")
-                self.manager.show_logs(service, follow=False)
+                self._show_service_logs_with_podman(service, follow=False)
 
             # Then follow the first service (most common use case)
             if services:
                 console.print(
                     f"\n[bold cyan]=== Following {services[0]} ===[/bold cyan]"
                 )
-                self.manager.show_logs(services[0], follow=True)
+                self._show_service_logs_with_podman(services[0], follow=True)
         else:
             # For non-follow mode, show logs for each service
             for service in services:
                 console.print(f"\n[bold cyan]=== {service} ===[/bold cyan]")
-                self.manager.show_logs(service, follow=False)
+                self._show_service_logs_with_podman(service, follow=False)
+
+    def _show_service_logs_with_podman(
+        self, service: str, follow: bool = False
+    ) -> None:
+        """Show both podman logs and systemd logs for a service"""
+        # First show podman logs
+        console.print(
+            f"\n[bold green]=== Podman Container Logs for {service} ===[/bold green]"
+        )
+        podman_cmd = ["podman", "logs", service]
+        verbose_print(f"[cyan]exec: {' '.join(podman_cmd)}[/cyan]")
+
+        try:
+            podman_result = subprocess.run(
+                podman_cmd, capture_output=True, text=True, timeout=30
+            )
+            if podman_result.returncode == 0:
+                if podman_result.stdout.strip():
+                    console.print(podman_result.stdout)
+                else:
+                    console.print("[dim]No podman logs available[/dim]")
+            else:
+                console.print(
+                    f"[yellow]Podman logs not available: {podman_result.stderr.strip()}[/yellow]"
+                )
+        except subprocess.TimeoutExpired:
+            console.print("[yellow]Podman logs command timed out[/yellow]")
+        except Exception as e:
+            console.print(f"[yellow]Could not get podman logs: {e}[/yellow]")
+
+        # Then show systemd logs using the manager's show_logs method
+        console.print(
+            f"\n[bold green]=== Systemd Service Logs for {service} ===[/bold green]"
+        )
+
+        # Get the service name for systemd
+        service_name = self.manager._find_service_name(service, "logs")
+        if service_name and not service_name.startswith("STACK:"):
+            cmd = ["journalctl", "--user", "-u", service_name]
+            if follow:
+                cmd.append("-f")
+
+            verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+
+            try:
+                if follow:
+                    console.print("[dim]Press Ctrl+C to stop following logs[/dim]")
+                    subprocess.run(cmd)
+                else:
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    if result.returncode == 0:
+                        console.print(result.stdout)
+                    else:
+                        console.print(
+                            f"[red]Failed to get systemd logs: {result.stderr.strip()}[/red]"
+                        )
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Log following stopped[/yellow]")
+            except Exception as e:
+                console.print(f"[red]Error showing systemd logs: {e}[/red]")
+        else:
+            console.print(
+                f"[yellow]Could not find systemd service for {service}[/yellow]"
+            )
 
     def _show_stack_status(self, project: str) -> None:
         """Show status for all services in a project stack"""
