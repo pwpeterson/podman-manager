@@ -5,6 +5,7 @@ Command routing and execution logic
 
 import re
 import subprocess
+from typing import Optional
 
 from rich.table import Table
 
@@ -166,14 +167,47 @@ class CommandRouter:
         except Exception as e:
             console.print(f"[red]AI analysis failed: {e}[/red]", markup=False)
 
-    def _show_common_actions_for_command(self, command_type: str, target: str):
+    def _resolve_container_name_once(self, target: str) -> str:
+        """Resolve container name once using fuzzy matching to avoid duplicate prompts"""
+        try:
+            from core.simple_fuzzy_matcher import find_container
+
+            # Check if this is a stack target to avoid fuzzy matching
+            is_stack_target = target.endswith("-stack") or target in [
+                "local-ai",
+                "supabase",
+                "vllm",
+                "stack",
+            ]
+
+            if not is_stack_target:
+                container = find_container(target)
+                if container:
+                    return container["name"]
+
+            # Return original target if no container found or is stack target
+            return target
+        except Exception:
+            # If fuzzy matching fails, return original target
+            return target
+
+    def _show_common_actions_for_command(
+        self,
+        command_type: str,
+        target: str,
+        resolved_container_name: Optional[str] = None,
+    ):
         """Show common actions after successful command completion"""
         try:
+            # Use resolved container name to avoid duplicate fuzzy matching
+            container_name = resolved_container_name or target
+
             # Show comprehensive actions for all commands using detailed format
             if command_type in ["reinit", "restart"]:
                 # Show comprehensive actions for reinit and restart with all categories
                 self.common_actions.show_common_actions(
                     target=target,
+                    container_name=container_name,
                     categories=[
                         "pm_shortcuts",
                         "service_status",
@@ -189,12 +223,14 @@ class CommandRouter:
             ]:
                 self.common_actions.show_common_actions(
                     target=target,
+                    container_name=container_name,
                     categories=["pm_shortcuts", "service_status", "logs_diagnostics"],
                 )
             elif command_type in ["stop", "disable", "reset", "uninstall"]:
                 # For stop/disable commands, show different essential actions
                 self.common_actions.show_common_actions(
                     target=target,
+                    container_name=container_name,
                     categories=[
                         "service_status",
                         "logs_diagnostics",
@@ -205,6 +241,7 @@ class CommandRouter:
                 # Default essential actions for other commands
                 self.common_actions.show_common_actions(
                     target=target,
+                    container_name=container_name,
                     categories=["pm_shortcuts", "service_status", "logs_diagnostics"],
                 )
         except Exception as e:
@@ -218,6 +255,9 @@ class CommandRouter:
         target = operation_kwargs.get(
             "target", operation_args[0] if operation_args else ""
         )
+
+        # Resolve container name once to avoid duplicate fuzzy matching prompts
+        resolved_container_name = self._resolve_container_name_once(target)
 
         # Determine command type from function name
         command_type = (
@@ -271,7 +311,9 @@ class CommandRouter:
             ):
                 # Operation was successful, show common actions (except for install, uninstall, and diag)
                 if command_type not in ["install", "uninstall", "diag"]:
-                    self._show_common_actions_for_command(command_type, target)
+                    self._show_common_actions_for_command(
+                        command_type, target, resolved_container_name
+                    )
 
             return result
         except Exception as e:

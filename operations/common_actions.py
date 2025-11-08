@@ -171,10 +171,11 @@ class CommonActionsFormatter:
             port: Port number for network tests - derived if not provided
             categories: List of category keys to show (None = all)
         """
-        # If target is provided, try to find container using fuzzy matching
-        # BUT skip fuzzy matching for stack targets to avoid interactive prompts
-        container = None
-        if target:
+        # If container_name is already provided, skip fuzzy matching to avoid duplicate prompts
+        if container_name:
+            # Use provided container_name, no fuzzy matching needed
+            pass
+        elif target:
             # Check if this is a stack target (ends with -stack or is a known stack name)
             is_stack_target = target.endswith("-stack") or target in [
                 "local-ai",
