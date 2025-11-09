@@ -27,6 +27,10 @@ class ServiceLifecycle:
         ):
             return self._start_stack(target)
 
+        # PRIORITY 2.5: Handle special Supabase case
+        if target == "supabase":
+            return self._start_stack(target)
+
         # PRIORITY 3: Try container resolution using fuzzy matching
         container = find_container(target)
         if container:
@@ -353,6 +357,13 @@ class ServiceLifecycle:
 
     def _start_stack(self, project: str) -> bool:
         """Start all services in a project stack"""
+        # Handle Supabase with special startup order
+        if project == "supabase":
+            from managers.supabase_stack_manager import SupabaseStackManager
+
+            supabase_mgr = SupabaseStackManager(self.manager)
+            return supabase_mgr.start_supabase_stack()
+
         services = self._get_stack_services(project)
         if not services:
             console.print(f"[red]No services found for {project} stack[/red]")
@@ -375,6 +386,13 @@ class ServiceLifecycle:
 
     def _stop_stack(self, project: str) -> bool:
         """Stop all services in a project stack"""
+        # Handle Supabase with special shutdown order
+        if project == "supabase":
+            from managers.supabase_stack_manager import SupabaseStackManager
+
+            supabase_mgr = SupabaseStackManager(self.manager)
+            return supabase_mgr.stop_supabase_stack()
+
         services = self._get_stack_services(project)
         if not services:
             console.print(f"[red]No services found for {project} stack[/red]")

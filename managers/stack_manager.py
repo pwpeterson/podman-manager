@@ -97,6 +97,13 @@ class StackManager:
 
     def _stop_stack(self, project: str) -> bool:
         """Stop all services in a project stack"""
+        # Handle Supabase with special shutdown order
+        if project == "supabase":
+            from managers.supabase_stack_manager import SupabaseStackManager
+
+            supabase_mgr = SupabaseStackManager(self.manager)
+            return supabase_mgr.stop_supabase_stack()
+
         services = self._get_stack_services(project)
         if not services:
             console.print(f"[red]No services found for {project} stack[/red]")
@@ -146,6 +153,13 @@ class StackManager:
 
     def _start_stack(self, project: str) -> bool:
         """Start all services in a project stack"""
+        # Handle Supabase with special startup order
+        if project == "supabase":
+            from managers.supabase_stack_manager import SupabaseStackManager
+
+            supabase_mgr = SupabaseStackManager(self.manager)
+            return supabase_mgr.start_supabase_stack()
+
         services = self._get_stack_services(project)
         if not services:
             console.print(f"[red]No services found for {project} stack[/red]")
@@ -510,6 +524,13 @@ class StackManager:
         self, project: str, build: bool = False, build_type: str | None = None
     ) -> bool:
         """Reinit an entire project stack"""
+        # Handle Supabase with special reinit order
+        if project == "supabase":
+            from managers.supabase_stack_manager import SupabaseStackManager
+
+            supabase_mgr = SupabaseStackManager(self.manager)
+            return supabase_mgr.reinit_supabase_stack(build_type)
+
         console.print(f"\n[green]Reinitializing {project} stack...[/green]\n")
 
         services = self._get_stack_services(project)

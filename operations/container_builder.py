@@ -1195,3 +1195,49 @@ class ContainerBuilder:
                 f"[red]Failed to update images: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
             )
             return False
+
+    def build_stack_supabase(self) -> bool:
+        """Build Supabase stack using quadlet build script"""
+        console.print("[green]Building Supabase stack (quadlet)...[/green]")
+
+        # Use the generic stack build method
+        supabase_services = [
+            "supabase-db",
+            "supabase-auth",
+            "supabase-rest",
+            "supabase-meta",
+            "supabase-analytics",
+            "supabase-storage",
+            "supabase-realtime",
+            "supabase-edge-functions",
+            "supabase-kong",
+            "supabase-studio",
+            "supabase-imgproxy",
+            "supabase-pooler",
+            "supabase-vector",
+        ]
+
+        return self._build_stack("supabase", supabase_services)
+
+    def build_stack_supabase_podman(self) -> bool:
+        """Build Supabase stack using podman build"""
+        console.print("[green]Building Supabase stack (podman)...[/green]")
+
+        # Use the generic podman stack build method
+        supabase_services = [
+            "supabase-db",
+            "supabase-auth",
+            "supabase-rest",
+            "supabase-meta",
+            "supabase-analytics",
+            "supabase-storage",
+            "supabase-realtime",
+            "supabase-edge-functions",
+            "supabase-kong",
+            "supabase-studio",
+            "supabase-imgproxy",
+            "supabase-pooler",
+            "supabase-vector",
+        ]
+
+        return self.build_stack_podman("supabase", supabase_services)
