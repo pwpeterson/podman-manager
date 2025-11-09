@@ -62,7 +62,9 @@ class SupabaseStackManager:
 
     def start_supabase_stack(self, build: bool = False) -> bool:
         """Start Supabase stack in proper dependency order"""
-        console.print("[green]Starting Supabase stack in dependency order...[/green]")
+        console.print(
+            "\n[green]Starting Supabase stack in dependency order...[/green]\n"
+        )
 
         # Build if requested
         if build:
@@ -122,10 +124,12 @@ class SupabaseStackManager:
                         task = progress.add_task("waiting", total=None)
                         time.sleep(layer["wait_time"])
                         progress.remove_task(task)
+                    console.print()
             elif not layer_success:
                 console.print(
                     "[red]  Layer failed, continuing with next layer...[/red]"
                 )
+                console.print()
 
         # Summary
         if success:
@@ -144,6 +148,7 @@ class SupabaseStackManager:
                     "[dim]  Run 'pm reinit <service>' for individual service analysis[/dim]"
                 )
 
+        console.print()
         return success
 
     def stop_supabase_stack(self) -> bool:
@@ -151,6 +156,7 @@ class SupabaseStackManager:
         console.print(
             "[green]Stopping Supabase stack in reverse dependency order...[/green]"
         )
+        console.print()
 
         success = True
         stopped_services = []
@@ -175,6 +181,7 @@ class SupabaseStackManager:
                     )
                     failed_services.append(service)
                     success = False
+            console.print()
 
         if success:
             console.print(
@@ -189,14 +196,15 @@ class SupabaseStackManager:
                     f"[dim]  Failed to stop: {', '.join(failed_services)}[/dim]"
                 )
 
+        console.print()
         return success
 
     def reinit_supabase_stack(self, build_type: Optional[str] = None) -> bool:
         """Reinit Supabase stack with proper startup order"""
-        console.print("[green]Reinitializing Supabase stack...[/green]")
+        console.print("\n[green]Reinitializing Supabase stack...[/green]\n")
 
         # Step 1: Stop all services in reverse order
-        console.print("[green]Step 1: Stopping all Supabase services...[/green]")
+        console.print("[green]Step 1: Stopping all Supabase services...[/green]\n")
         self.stop_supabase_stack()
 
         # Step 2: Build if requested
@@ -216,7 +224,7 @@ class SupabaseStackManager:
                 return False
 
         # Step 3: Reload daemon
-        console.print("[green]Step 3: Reloading systemd daemon...[/green]")
+        console.print("[green]Step 3: Reloading systemd daemon...[/green]\n")
         if not self.manager.reload_daemon():
             console.print("[red]Failed to reload systemd daemon[/red]")
             return False
@@ -225,7 +233,9 @@ class SupabaseStackManager:
         time.sleep(3)
 
         # Step 4: Start services in proper order
-        console.print("[green]Step 4: Starting services in dependency order...[/green]")
+        console.print(
+            "[green]Step 4: Starting services in dependency order...[/green]\n"
+        )
         return self.start_supabase_stack()
 
     def _service_exists(self, service_name: str) -> bool:
