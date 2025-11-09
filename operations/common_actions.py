@@ -144,11 +144,11 @@ class CommonActionsFormatter:
             "troubleshooting": {
                 "label": "Troubleshooting",
                 "commands": [
-                    ("Check systemd user session", "systemctl --user status"),
+                    ("Check systemd session", "systemctl --user status"),
                     ("Reload systemd daemon", "systemctl --user daemon-reload"),
                     ("Check failed services", "systemctl --user --failed"),
-                    ("View system journal", "journalctl --user -n 50 --no-pager"),
-                    ("Check podman service", "systemctl --user status podman.service"),
+                    ("  View system journal", "journalctl --user -n 50 --no-pager"),
+                    (" Check podman service", "systemctl --user status podman.service"),
                 ],
             },
         }
