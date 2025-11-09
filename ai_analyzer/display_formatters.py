@@ -525,8 +525,7 @@ class InteractiveAnalysisHandler:
                             lines.append(line)
                             continue
                         else:
-                            # Empty line with no content, exit
-                            console.print("[dim]Exiting interactive analysis...[/dim]")
+                            # Empty line with no content, exit immediately
                             return ""
 
                     # Add line to input
