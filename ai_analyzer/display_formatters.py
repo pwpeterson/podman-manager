@@ -417,7 +417,7 @@ class InteractiveAnalysisHandler:
             "[bright_yellow]Ask follow-up questions about the analysis.[/bright_yellow]"
         )
         console.print(
-            "[dim]Type your question (can be multiple lines). Type '^enter' on a new line to submit, or press Enter with no input to exit.[/dim]"
+            "[dim]Type your question (can be multiple lines). Type 'submit' on a new line to submit, or press Enter with no input to exit.[/dim]"
         )
 
         while True:
@@ -480,8 +480,8 @@ class InteractiveAnalysisHandler:
             self._has_termios = False
 
     def _read_multiline_input(self) -> str:
-        """Read multi-line input with keyboard shortcuts (^enter to submit, ^z to exit)"""
-        # Use a simpler approach that doesn't interfere with terminal positioning
+        """Read multi-line input with keyboard shortcuts (submit to submit, ^z to exit)"""
+        # Use the simple approach for better reliability
         return self._read_simple_multiline()
 
     def _read_simple_multiline(self) -> str:
@@ -508,7 +508,7 @@ class InteractiveAnalysisHandler:
                         return ""
 
                     # Check for submit command
-                    if line.strip() == "^enter":
+                    if line.strip().lower() in ["^enter", "submit", "send"]:
                         if lines:
                             console.print("[dim]Submitting question...[/dim]")
                             # Strip trailing whitespace from each line
@@ -520,13 +520,13 @@ class InteractiveAnalysisHandler:
                             )
                             continue
                     elif line.strip() == "":
-                        if lines:
+                        if not lines:
+                            # Empty line with no content, exit immediately
+                            return ""
+                        else:
                             # Empty line with existing content, continue collecting input
                             lines.append(line)
                             continue
-                        else:
-                            # Empty line with no content, exit immediately
-                            return ""
 
                     # Add line to input
                     lines.append(line)
@@ -580,24 +580,12 @@ class InteractiveAnalysisHandler:
                     console.print("\n[dim]Exiting interactive analysis...[/dim]")
                     return ""
 
-                # Handle Ctrl+Enter (submit)
-                elif ord(char) == 10:  # Ctrl+Enter
-                    if current_line.strip() or lines:
-                        lines.append(current_line)
-                        console.print("\n[dim]Submitting question...[/dim]")
-                        # Strip trailing whitespace from each line to prevent formatting issues
-                        cleaned_lines = [line.rstrip() for line in lines]
-                        return "\n".join(cleaned_lines).strip()
-                    else:
-                        console.print(
-                            "\n[yellow]No question entered. Press ^z to exit.[/yellow]"
-                        )
-                        console.print("[bold yellow]==>[/bold yellow] ", end="")
-                        current_line = ""
-                        continue
+                # Handle Enter (new line) - check for Ctrl+Enter combination
+                elif ord(char) == 13 or ord(char) == 10:  # Enter/Return or LF
+                    # If this is just Enter with no content and no existing lines, exit
+                    if not current_line.strip() and not lines:
+                        return ""
 
-                # Handle Enter (new line)
-                elif ord(char) == 13:  # Enter/Return
                     lines.append(current_line)
                     current_line = ""
                     sys.stdout.write("\n")

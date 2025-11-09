@@ -242,7 +242,7 @@ class CommonActionsFormatter:
                 "troubleshooting",
             ]
 
-        console.print("\n[bold green]More available actions:[/bold green]")
+        console.print("[bold green]More available actions:[/bold green]")
 
         # Container info display removed
 
