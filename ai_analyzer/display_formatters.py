@@ -425,7 +425,7 @@ class InteractiveAnalysisHandler:
                 console.print("\n[bold yellow]==>[/bold yellow] ", end="")
                 user_input = self._read_multiline_input()
 
-                if not user_input.strip():
+                if not user_input or not user_input.strip():
                     break
 
                 self._process_followup_question(
