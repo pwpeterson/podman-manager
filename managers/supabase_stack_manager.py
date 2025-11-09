@@ -93,10 +93,6 @@ class SupabaseStackManager:
                     console.print(f"[yellow]  {service} not found, skipping[/yellow]")
                     continue
 
-                console.print(f"[green]  Starting {service}...[/green]")
-                verbose_print(
-                    f"    [cyan]exec: systemctl --user start {service}[/cyan]"
-                )
                 if self._start_service_with_monitoring(service):
                     console.print(f"[green]    ✓ Started {service}[/green]")
                     started_services.append(service)
@@ -253,20 +249,16 @@ class SupabaseStackManager:
                 console.print(f"    [red]Database not ready for {service_name}[/red]")
                 return False
 
-        # Get the resolved service name
-        resolved_service = self.manager._find_service_name(service_name, "start")
-        if not resolved_service or resolved_service.startswith("STACK:"):
+        # Use the manager's start_service method to avoid duplication
+        # This handles all the service name resolution and starting logic
+        success = self.manager.start_service(service_name)
+
+        if not success:
             return False
 
-        # Start the service
-        start_cmd = ["systemctl", "--user", "start", resolved_service]
-        verbose_print(f"    [cyan]exec: {' '.join(start_cmd)}[/cyan]")
-
-        result = self.manager._run_systemctl_command(
-            start_cmd, f"start_{service_name}", quiet=True
-        )
-
-        if result.returncode != 0:
+        # Get the resolved service name for monitoring
+        resolved_service = self.manager._find_service_name(service_name, "start")
+        if not resolved_service or resolved_service.startswith("STACK:"):
             return False
 
         # Monitor startup for a short time
