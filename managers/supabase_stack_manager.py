@@ -124,12 +124,10 @@ class SupabaseStackManager:
                         task = progress.add_task("waiting", total=None)
                         time.sleep(layer["wait_time"])
                         progress.remove_task(task)
-                    console.print()
             elif not layer_success:
                 console.print(
                     "[red]  Layer failed, continuing with next layer...[/red]"
                 )
-                console.print()
 
         # Summary
         if success:
@@ -147,8 +145,6 @@ class SupabaseStackManager:
                 console.print(
                     "[dim]  Run 'pm reinit <service>' for individual service analysis[/dim]"
                 )
-
-        console.print()
         return success
 
     def stop_supabase_stack(self) -> bool:
