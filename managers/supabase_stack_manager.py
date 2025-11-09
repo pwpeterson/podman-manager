@@ -62,9 +62,7 @@ class SupabaseStackManager:
 
     def start_supabase_stack(self, build: bool = False) -> bool:
         """Start Supabase stack in proper dependency order"""
-        console.print(
-            "\n[green]Starting Supabase stack in dependency order...[/green]\n"
-        )
+        console.print()
 
         # Build if requested
         if build:
@@ -225,9 +223,7 @@ class SupabaseStackManager:
         time.sleep(3)
 
         # Step 4: Start services in proper order
-        console.print(
-            "[green]Step 4: Starting services in dependency order...[/green]\n"
-        )
+        console.print("[green]Step 4: Starting services in dependency order...[/green]")
         return self.start_supabase_stack()
 
     def _service_exists(self, service_name: str) -> bool:
