@@ -366,28 +366,33 @@ class AIAnalyzer:
             console.print("[red]No AI agents available[/red]")
             return None
 
-        # Show which agent we're using
-        console.print(f"[green]Using AI agent: {agent.config.display_name}[/green]")
-        console.print()
-
-        # Check if the agent is available
+        # Check if the agent is available before announcing it
         if not agent.is_available():
-            console.print(
-                f"[yellow]{agent.config.display_name} is not available.[/yellow]"
-            )
-            console.print()
+            # Show that the preferred agent is not available
+            if agent_name:
+                console.print(
+                    f"[yellow]Requested AI agent '{agent.config.display_name}' is not available.[/yellow]"
+                )
+            else:
+                console.print(
+                    f"[yellow]Default AI agent '{agent.config.display_name}' is not available.[/yellow]"
+                )
 
             # Try to find an available fallback agent
             fallback_agent = self._find_fallback_agent(agent.config.name)
             if fallback_agent:
                 console.print(
-                    f"[green]Trying {fallback_agent.config.display_name}...[/green]"
+                    f"[green]Falling back to {fallback_agent.config.display_name}...[/green]"
                 )
                 console.print()
                 agent = fallback_agent
             else:
                 console.print("[red]No available AI agents found[/red]")
                 return None
+        else:
+            # Show which agent we're using (only if it's available)
+            console.print(f"[green]Using AI agent: {agent.config.display_name}[/green]")
+            console.print()
 
         # Use the agent (either original or fallback)
         if verbose:
