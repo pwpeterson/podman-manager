@@ -198,14 +198,8 @@ class CommonActionsFormatter:
                         )
                         # Derive service_name from container name
                         if not service_name:
-                            # Extract the last part of the container name for simplified service names
-                            # e.g., 'local-ai-neo4j' -> 'neo4j'
-                            simplified_name = (
-                                container_name.split("-")[-1]
-                                if "-" in container_name
-                                else container_name
-                            )
-                            service_name = f"{simplified_name}.service"
+                            # Use the full container name for service names
+                            service_name = f"{container_name}.service"
                     else:
                         # Only show warning for non-stack targets
                         console.print(
@@ -223,14 +217,8 @@ class CommonActionsFormatter:
 
         # Set defaults if not derived from container
         if not service_name and container_name:
-            # Extract the last part of the container name for simplified service names
-            # e.g., 'local-ai-neo4j' -> 'neo4j'
-            simplified_name = (
-                container_name.split("-")[-1]
-                if "-" in container_name
-                else container_name
-            )
-            service_name = f"{simplified_name}.service"
+            # Use the full container name for service names
+            service_name = f"{container_name}.service"
         elif not service_name and target:
             # Fallback to target if container_name not available
             simplified_target = target.split("-")[-1] if "-" in target else target
