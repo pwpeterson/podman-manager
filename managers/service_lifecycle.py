@@ -671,10 +671,17 @@ class ServiceLifecycle:
             console.print(f"[green]Stopping and removing {target}...[/green]")
             console.print()
 
-        # First stop the service
-        if not self.manager.stop_service(target, force=True, quiet=quiet):
+        # First stop the service - show stopping phase
+        if not quiet:
+            console.print(f"[green]Stopping  {target}...[/green]")
+
+        if not self.manager.stop_service(target, force=True, quiet=True):
             if not quiet:
-                console.print(f"[yellow]Warning: Could not stop {target}[/yellow]")
+                console.print(f"  [yellow]Warning: Could not stop {target}[/yellow]")
+        else:
+            if not quiet:
+                console.print(f"  [green]Stopped {target}[/green]")
+                console.print()
 
         # Try container resolution using fuzzy matching first
         container = find_container(target)
@@ -713,7 +720,8 @@ class ServiceLifecycle:
 
             if result.returncode == 0:
                 if not quiet:
-                    console.print(f"[green]Removed container {container_name}[/green]")
+                    console.print(f"[green]Removing {target}...[/green]")
+                    console.print(f"  [green]Removed {target}[/green]")
                 return True
             else:
                 if not quiet:
