@@ -813,7 +813,6 @@ class ContainerBuilder:
         from core.config import _verbose_enabled
 
         if _verbose_enabled:
-            console.print()
             console.print("[green]Reloading systemd user daemon[/green]")
             reload_success = self.manager.reload_daemon()
         else:
