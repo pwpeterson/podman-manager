@@ -743,9 +743,11 @@ class ContainerBuilder:
                             progress.remove_task(task)
 
                     if result.returncode == 0:
+                        console.print()
                         console.print(
                             f"[green]Podman build completed for {target}[/green]"
                         )
+                        console.print()
                         return True
                     else:
                         console.print(f"[red]Podman build failed for {target}[/red]")
@@ -811,6 +813,7 @@ class ContainerBuilder:
         from core.config import _verbose_enabled
 
         if _verbose_enabled:
+            console.print()
             console.print("[green]Reloading systemd user daemon[/green]")
             reload_success = self.manager.reload_daemon()
         else:
