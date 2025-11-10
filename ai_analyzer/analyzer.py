@@ -153,15 +153,16 @@ class AIAnalyzer:
                     prompt, resolved_agent, verbose=verbose, target=target
                 )
 
+            # Pass collected data to formatters so they can use resolved service names
+            self.markdown_formatter.set_collected_data(collected_data)
+            self.interactive_handler.set_collected_data(collected_data)
+            self.basic_formatter.set_collected_data(collected_data)
+
             if result:
                 # Store context for follow-up questions
                 self._original_prompt = prompt
                 self._original_analysis_result = result
                 self.interactive_handler.set_context(prompt, result)
-
-                # Pass collected data to formatters so they can use resolved service names
-                self.markdown_formatter.set_collected_data(collected_data)
-                self.interactive_handler.set_collected_data(collected_data)
 
                 # Display the results
                 self.markdown_formatter.display(analysis_type, target, result, verbose)
@@ -174,11 +175,22 @@ class AIAnalyzer:
                 if verbose:
                     verbose_print("  [cyan]exec: No AI analysis result returned[/cyan]")
 
-                # Pass collected data to formatter and show basic troubleshooting guide when AI analysis fails
-                self.basic_formatter.set_collected_data(collected_data)
+                # Show basic troubleshooting guide when AI analysis fails
                 self.basic_formatter.display(
                     analysis_type, target, str(collected_data), verbose
                 )
+
+                # For diag command, don't start interactive session to avoid hanging
+                # The diag command should complete after showing troubleshooting guide
+                if analysis_type != "logs" or verbose:
+                    # Only start interactive session for non-diag commands or when verbose
+                    console.print(
+                        "\n[yellow]AI analysis was unavailable, but you can still ask questions about troubleshooting.[/yellow]"
+                    )
+                    self.interactive_handler.start_session(
+                        analysis_type, target, verbose
+                    )
+
                 return "basic_troubleshooting_shown"
 
         except Exception as e:

@@ -1026,19 +1026,25 @@ class QuadletManager:
         """Start a service or the stack target"""
         self._clear_auto_match_cache()
 
-        # Check if container file exists first
-        exists, resolved_service = self._check_container_file_exists(target, "start")
-        if not exists:
-            self._show_install_suggestion(target)
-            return False
+        # Check if target is already a resolved service name (skip fuzzy matching)
+        if target in self.quadlet_services:
+            service_name = self.quadlet_services[target]
+        else:
+            # Check if container file exists first
+            exists, resolved_service = self._check_container_file_exists(
+                target, "start"
+            )
+            if not exists:
+                self._show_install_suggestion(target)
+                return False
 
-        # Use resolved service if available, otherwise try to find it
-        service_name = resolved_service or self._find_service_name(target, "start")
-        if not service_name:
-            console.print(f"[red]Service '{target}' not found[/red]")
-            return False
-        elif service_name == "CANCELLED":
-            return False
+            # Use resolved service if available, otherwise try to find it
+            service_name = resolved_service or self._find_service_name(target, "start")
+            if not service_name:
+                console.print(f"[red]Service '{target}' not found[/red]")
+                return False
+            elif service_name == "CANCELLED":
+                return False
 
         # Handle stack targets by delegating to stack manager
         if service_name.startswith("STACK:"):
@@ -1157,7 +1163,8 @@ class QuadletManager:
                 display_name = (
                     target if target in self.quadlet_services else service_name
                 )
-                console.print(f"[green]{display_name} stopped[/green]")
+                console.print(f"\n[green]Stopping  {display_name}[/green]")
+                console.print(f"  [green]Stopped {display_name}[/green]")
             return True
         else:
             # If normal stop fails or service is still running, try aggressive stopping
@@ -1176,7 +1183,8 @@ class QuadletManager:
 
                 if is_service_stopped():
                     if not quiet:
-                        console.print(f"[green]{target} stopped[/green]")
+                        console.print(f"\n[green]Stopping  {target}[/green]")
+                        console.print(f"  [green]Stopped {target}[/green]")
                     return True
 
                 # If still running, try SIGKILL
@@ -1190,7 +1198,10 @@ class QuadletManager:
 
                 if is_service_stopped():
                     if not quiet:
-                        console.print(f"[green]{target} stopped (force killed)[/green]")
+                        console.print(f"\n[green]Stopping  {target}[/green]")
+                        console.print(
+                            f"  [green]Stopped {target} (force killed)[/green]"
+                        )
                     return True
 
                 # Last resort: try to kill the container directly
@@ -1257,8 +1268,9 @@ class QuadletManager:
 
                 if is_service_stopped():
                     if not quiet:
+                        console.print(f"\n[green]Stopping  {target}[/green]")
                         console.print(
-                            f"[green]{target} stopped (containers eliminated)[/green]"
+                            f"  [green]Stopped {target} (containers eliminated)[/green]"
                         )
                     return True
                 elif containers_found and not quiet:

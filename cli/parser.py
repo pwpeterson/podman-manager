@@ -655,6 +655,12 @@ def _add_resource_commands(subparsers):
         action="store_true",
         help="Show detailed command execution (exec lines)",
     )
+    diag_parser.add_argument(
+        "--ai-agent",
+        "-ai",
+        choices=["qwen25", "glm46", "claude", "gpt4"],
+        help="AI agent for analysis (optional, triggers AI analysis)",
+    )
 
     # Exec command
     exec_parser = subparsers.add_parser("exec", help="Execute command in container")

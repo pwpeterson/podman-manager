@@ -259,6 +259,16 @@ class CommandRouter:
         # Resolve container name once to avoid duplicate fuzzy matching prompts
         resolved_container_name = self._resolve_container_name_once(target)
 
+        # Pass resolved container name to avoid duplicate fuzzy matching
+        if resolved_container_name != target:
+            # Update the target in args/kwargs to use resolved name
+            if operation_args:
+                operation_args = list(operation_args)
+                operation_args[0] = resolved_container_name
+                operation_args = tuple(operation_args)
+            if "target" in operation_kwargs:
+                operation_kwargs["target"] = resolved_container_name
+
         # Determine command type from function name
         command_type = (
             operation_func.__name__.replace("_", "")
@@ -726,40 +736,46 @@ class CommandRouter:
             console.print(f"\n[green]Troubleshooting {container_name}...[/green]")
             console.print()
 
-            # If AI agent is specified, trigger AI analysis directly
+            # Always trigger AI analysis for diagnostics (with optional specific agent)
             if ai_agent:
                 console.print(
                     f"[green]Performing AI diagnostic analysis with {ai_agent}...[/green]"
                 )
-                console.print()
-
-                # Initialize AI analyzer with manager if not already done
-                if ai_analyzer.manager is None:
-                    ai_analyzer.manager = self.manager
-
-                # Resolve AI agent name
-                resolved_ai_agent = self._resolve_ai_agent_name(ai_agent)
-
-                # Trigger AI analysis for diagnostics
-                from core.config import _verbose_enabled
-
-                result = ai_analyzer.ai_analyze(
-                    analysis_type="logs",
-                    target=args.target,
-                    context_data={"lines": 100},  # Use 100 lines for analysis
-                    ai_agent=resolved_ai_agent,
-                    verbose=_verbose_enabled or getattr(args, "verbose", False),
-                )
-
-                if result:
-                    console.print("[green]AI diagnostic analysis completed.[/green]")
-                    console.print()
-                else:
-                    console.print(
-                        "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
-                    )
             else:
-                # Perform container failure diagnosis
+                console.print("[green]Performing AI diagnostic analysis...[/green]")
+            console.print()
+
+            # Initialize AI analyzer with manager if not already done
+            if ai_analyzer.manager is None:
+                ai_analyzer.manager = self.manager
+
+            # Resolve AI agent name (use default if none specified)
+            resolved_ai_agent = (
+                self._resolve_ai_agent_name(ai_agent) if ai_agent else None
+            )
+
+            # Trigger AI analysis for diagnostics
+            from core.config import _verbose_enabled
+
+            result = ai_analyzer.ai_analyze(
+                analysis_type="logs",
+                target=args.target,
+                context_data={"lines": 100},  # Use 100 lines for analysis
+                ai_agent=resolved_ai_agent,
+                verbose=_verbose_enabled or getattr(args, "verbose", False),
+            )
+
+            if result:
+                console.print("[green]AI diagnostic analysis completed.[/green]")
+                console.print()
+            else:
+                console.print(
+                    "[yellow]⚠ AI analysis was unable to provide insights[/yellow]"
+                )
+                # Fallback to basic container diagnosis if AI analysis fails
+                console.print(
+                    "[cyan]Falling back to basic container diagnosis...[/cyan]"
+                )
                 self.container_ops.diagnose_container_failure(args.target)
 
             return True

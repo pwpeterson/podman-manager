@@ -11,10 +11,17 @@
       "dockerfile": "Dockerfile.vllm-proxy",
       "context": "/home/pwp/srv/system/vllm-proxy",
       "image_name": "localhost/vllm-proxy:latest"
+    },
+    "mcp-vllm-delegator": {
+      "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
+      "dockerfile": "Dockerfile.mcp-vllm-delegator",
+      "context": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
+      "image_name": "localhost/mcp-vllm-delegator:latest"
     }
   },
   "podman_build_services": [
     "mcp-crawl4ai-rag",
-    "vllm-proxy"
+    "vllm-proxy",
+    "mcp-vllm-delegator"
   ]
 }

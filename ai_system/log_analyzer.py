@@ -472,7 +472,15 @@ class LogAnalyzer:
                 ]
             else:
                 progress.remove_task(task)
-                console.print(f"[yellow]No diagnostic available for {target}[/yellow]")
+                # Use the resolved service name instead of original target for consistency
+                resolved_name = (
+                    service_name.replace(".service", "")
+                    if service_name.endswith(".service")
+                    else service_name
+                )
+                console.print(
+                    f"[yellow]No diagnostic available for {resolved_name}[/yellow]"
+                )
                 return
 
             progress.remove_task(task)
@@ -800,6 +808,7 @@ class LogAnalyzer:
                 ]
             else:
                 progress.remove_task(task)
+                # Use a resolved name for consistency (target should already be resolved by this point)
                 console.print(
                     f"\n[yellow]No manual test available for {target}[/yellow]"
                 )

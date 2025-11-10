@@ -31,7 +31,15 @@ class ServiceLifecycle:
         if target == "supabase":
             return self._start_stack(target)
 
-        # PRIORITY 3: Try container resolution using fuzzy matching
+        # PRIORITY 3: Check if target is already a resolved container name (skip fuzzy matching)
+        # This happens when command_router has already resolved the name
+        if (
+            hasattr(self.manager, "quadlet_services")
+            and target in self.manager.quadlet_services
+        ):
+            return self._start_service_with_build(target, build=build)
+
+        # PRIORITY 4: Try container resolution using fuzzy matching
         container = find_container(target)
         if container:
             return self._start_service_with_build(target, build=build)

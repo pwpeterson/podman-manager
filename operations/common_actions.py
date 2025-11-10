@@ -186,28 +186,34 @@ class CommonActionsFormatter:
 
             if not is_stack_target:
                 # Only use fuzzy matching for individual container targets
-                container = find_container(target)
-                if container:
-                    # Use container object to derive values
-                    container_name = container["name"]
-                    port = (
-                        container["port"] if container["port"] != "unknown" else "8000"
-                    )
-                    # Derive service_name from container name
-                    if not service_name:
-                        # Extract the last part of the container name for simplified service names
-                        # e.g., 'local-ai-neo4j' -> 'neo4j'
-                        simplified_name = (
-                            container_name.split("-")[-1]
-                            if "-" in container_name
-                            else container_name
+                try:
+                    container = find_container(target)
+                    if container:
+                        # Use container object to derive values
+                        container_name = container["name"]
+                        port = (
+                            container["port"]
+                            if container["port"] != "unknown"
+                            else "8000"
                         )
-                        service_name = f"{simplified_name}.service"
-                else:
-                    # Only show warning for non-stack targets
-                    console.print(
-                        f"[yellow]Warning: No container found for '{target}'. Using provided values.[/yellow]"
-                    )
+                        # Derive service_name from container name
+                        if not service_name:
+                            # Extract the last part of the container name for simplified service names
+                            # e.g., 'local-ai-neo4j' -> 'neo4j'
+                            simplified_name = (
+                                container_name.split("-")[-1]
+                                if "-" in container_name
+                                else container_name
+                            )
+                            service_name = f"{simplified_name}.service"
+                    else:
+                        # Only show warning for non-stack targets
+                        console.print(
+                            f"[yellow]Warning: No container found for '{target}'. Using provided values.[/yellow]"
+                        )
+                except Exception:
+                    # If fuzzy matching fails, continue with provided values
+                    pass
             else:
                 # For stack targets, use generic values without fuzzy matching
                 if not container_name:
@@ -243,8 +249,6 @@ class CommonActionsFormatter:
             ]
 
         console.print("[bold green]More available actions:[/bold green]")
-
-        # Container info display removed
 
         # Always use detailed format
         self._show_detailed_format(container_name, service_name, port, categories)

@@ -493,6 +493,16 @@ class InteractiveAnalysisHandler:
                 try:
                     line = input()
 
+                    # Check for empty line first (most common case)
+                    if line.strip() == "":
+                        if not lines:
+                            # Empty line with no content, exit immediately
+                            return ""
+                        else:
+                            # Empty line with existing content, continue collecting input
+                            lines.append(line)
+                            continue
+
                     # Check for exit command
                     if line.strip() == "^z" or line.strip().lower() in [
                         "quit",
@@ -518,14 +528,6 @@ class InteractiveAnalysisHandler:
                             console.print(
                                 "[yellow]No question entered. Press Enter with no input to exit.[/yellow]"
                             )
-                            continue
-                    elif line.strip() == "":
-                        if not lines:
-                            # Empty line with no content, exit immediately
-                            return ""
-                        else:
-                            # Empty line with existing content, continue collecting input
-                            lines.append(line)
                             continue
 
                     # Add line to input
