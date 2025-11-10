@@ -11,9 +11,33 @@ class ServiceLifecycle:
 
     def __init__(self, manager):
         self.manager = manager
+        self._vllm_manager = None
+
+    @property
+    def vllm_manager(self):
+        """Lazy initialization of vLLM manager"""
+        if self._vllm_manager is None:
+            from managers.vllm_model_manager import VLLMModelManager
+
+            self._vllm_manager = VLLMModelManager(self.manager)
+        return self._vllm_manager
 
     def start(self, target: str, build: bool = False) -> bool:
         """Start a service or stack"""
+        # Handle vLLM services with enhanced startup monitoring
+        is_vllm_service = "vllm" in target.lower() and not target.endswith("-stack")
+
+        if is_vllm_service:
+            console.print(
+                "[yellow]Detected vLLM service, using enhanced startup monitoring...[/yellow]"
+            )
+            # Ensure any existing vLLM process is properly stopped first
+            if not self.vllm_manager._cleanup_vllm_port():
+                console.print(
+                    "[yellow]Warning: Could not properly stop existing vLLM model[/yellow]"
+                )
+            console.print()
+
         # PRIORITY 1: Check for stack names first
         if target.endswith("-stack"):
             project_name = target[:-6]  # Remove "-stack" suffix
@@ -105,10 +129,35 @@ class ServiceLifecycle:
 
         return self._remove_service(target)
 
-    def restart(self, target: str, build: bool = False) -> bool:
+    def restart(self, target: str, build: bool = False, vllm_model: str = None) -> bool:
         """Restart a service or stack"""
         # Clear cache at the start of the operation
         self.manager._clear_auto_match_cache()
+
+        # Handle vLLM model switching if specified, or detect vLLM services automatically
+        is_vllm_service = "vllm" in target.lower() or target in [
+            "vllm-proxy",
+            "vllm-stack",
+        ]
+
+        if vllm_model:
+            console.print(
+                f"[green]vLLM model switching requested: {vllm_model}[/green]"
+            )
+            if not self.vllm_manager.switch_vllm_model(vllm_model):
+                console.print("[red]vLLM model switch failed, aborting restart[/red]")
+                return False
+            console.print()
+        elif is_vllm_service:
+            # For vLLM services without explicit model switch, ensure proper cleanup
+            console.print(
+                "[yellow]Detected vLLM service, ensuring proper shutdown...[/yellow]"
+            )
+            if not self.vllm_manager._cleanup_vllm_port():
+                console.print(
+                    "[yellow]Warning: Could not properly stop current vLLM model[/yellow]"
+                )
+            console.print()
 
         # PRIORITY 1: Check for stack names first
         if target.endswith("-stack"):

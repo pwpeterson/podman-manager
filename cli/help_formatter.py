@@ -153,6 +153,41 @@ def show_rich_help():
                     "Diagnose container startup failures",
                     "pm logs vllm-delegator",
                 ),
+            ],
+        ),
+        (
+            "vLLM Model Management",
+            [
+                (
+                    "vllm-switch [cyan]<model-container>[/cyan]",
+                    "Switch vLLM backend to different model container",
+                    "pm vllm-switch vllm-qwen25-coder-32b",
+                ),
+                (
+                    "vllm-status",
+                    "Show current vLLM configuration and status",
+                    "pm vllm-status",
+                ),
+                (
+                    "vllm-models",
+                    "List available vLLM model containers",
+                    "pm vllm-models",
+                ),
+                (
+                    "vllm-current",
+                    "Show which vLLM model is currently using port 8005",
+                    "pm vllm-current",
+                ),
+                (
+                    "reinit [cyan]<service>[/cyan] --vllm-model [cyan]<model>[/cyan]",
+                    "Reinit with vLLM model switch",
+                    "pm reinit vllm-proxy --vllm-model vllm-qwen25-coder-32b",
+                ),
+                (
+                    "restart [cyan]<service>[/cyan] --vllm-model [cyan]<model>[/cyan]",
+                    "Restart with vLLM model switch",
+                    "pm restart vllm-stack --vllm-model vllm-glm46",
+                ),
                 (
                     "diag [cyan]<service>[/cyan]",
                     "Show service logs with automatic AI analysis on errors",

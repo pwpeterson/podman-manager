@@ -77,9 +77,9 @@ class QuadletOperations:
         """Stop and remove a service or stack"""
         return self.service_lifecycle.remove(target)
 
-    def restart(self, target: str, build: bool = False) -> bool:
+    def restart(self, target: str, build: bool = False, vllm_model: str = None) -> bool:
         """Restart a service or stack"""
-        return self.service_lifecycle.restart(target, build)
+        return self.service_lifecycle.restart(target, build, vllm_model)
 
     def enable(self, target: str) -> bool:
         """Enable a service or stack to start at boot"""
@@ -235,10 +235,17 @@ class QuadletOperations:
 
     # Complex Reinit Operations
     def reinit(
-        self, target: str, build: bool = False, build_type: str | None = None
+        self,
+        target: str,
+        build: bool = False,
+        build_type: str | None = None,
+        vllm_model: str | None = None,
+        dry_run: bool = False,
     ) -> bool:
         """Stop service, reload daemon, and restart service (useful for .container file changes)"""
-        return self.reinit_manager.reinit(target, build, build_type)
+        return self.reinit_manager.reinit(
+            target, build, build_type, vllm_model, dry_run
+        )
 
     # Legacy compatibility methods - these delegate to the appropriate modules
     def _render_ansi_output(self, output: str) -> None:

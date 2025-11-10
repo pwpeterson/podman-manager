@@ -467,6 +467,7 @@ class InteractiveAnalysisHandler:
         sys.stdout.flush()
 
         console.print(f"[green]AI analysis for {display_name} completed[/green]")
+        console.print()
 
     def _setup_keyboard_handler(self) -> None:
         """Setup keyboard handling for interactive input"""

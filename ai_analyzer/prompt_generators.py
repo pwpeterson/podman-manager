@@ -677,5 +677,28 @@ class PromptGeneratorFactory:
     @classmethod
     def create(cls, analysis_type: str) -> PromptGenerator:
         """Create appropriate prompt generator for analysis type"""
+        # Handle enhanced generators with dynamic imports to avoid circular imports
+        if analysis_type == "pre_reinit_check":
+            from .enhanced_prompt_generators import PreReinitCheckPromptGenerator
+
+            return PreReinitCheckPromptGenerator()
+        elif analysis_type == "enhanced_reinit_failure":
+            from .enhanced_prompt_generators import EnhancedReinitFailurePromptGenerator
+
+            return EnhancedReinitFailurePromptGenerator()
+        elif analysis_type == "post_reinit_optimization":
+            from .enhanced_prompt_generators import (
+                PostReinitOptimizationPromptGenerator,
+            )
+
+            return PostReinitOptimizationPromptGenerator()
+        elif analysis_type == "intelligent_retry_fixes":
+            from .intelligent_retry_prompt_generator import (
+                IntelligentRetryFixesPromptGenerator,
+            )
+
+            return IntelligentRetryFixesPromptGenerator()
+
+        # Use standard generators
         generator_class = cls._generators.get(analysis_type, GenericPromptGenerator)
         return generator_class()

@@ -392,6 +392,8 @@ class CommandRouter:
         # Service lifecycle commands
         elif command == "reinit":
             return self._handle_reinit(args)
+        elif command == "enhanced-reinit":
+            return self._handle_enhanced_reinit(args)
         elif command == "build":
             return self._handle_build(args)
         elif command == "start":
@@ -402,6 +404,16 @@ class CommandRouter:
             return self._handle_remove(args)
         elif command == "restart":
             return self._handle_restart(args)
+
+        # vLLM model management commands
+        elif command == "vllm-switch":
+            return self._handle_vllm_switch(args)
+        elif command == "vllm-status":
+            return self._handle_vllm_status(args)
+        elif command == "vllm-models":
+            return self._handle_vllm_models(args)
+        elif command == "vllm-current":
+            return self._handle_vllm_current(args)
         elif command == "enable":
             return self._handle_enable(args)
         elif command == "disable":
@@ -845,9 +857,98 @@ class CommandRouter:
         elif getattr(args, "quadlet_build", False):
             build_type = "quadlet"
 
+        # Get vLLM model if specified
+        vllm_model = getattr(args, "vllm_model", None)
+
+        # Get dry_run flag if specified
+        dry_run = getattr(args, "dry_run", False)
+
         return self.try_with_fallback(
-            self.container_ops.reinit, args.target, build_type=build_type
+            self.container_ops.reinit,
+            args.target,
+            build_type=build_type,
+            vllm_model=vllm_model,
+            dry_run=dry_run,
         )
+
+    def _handle_enhanced_reinit(self, args):
+        """Handle enhanced reinit with proactive AI troubleshooting."""
+        self.handle_command_verbose(args)
+
+        try:
+            from managers.enhanced_reinit_manager import EnhancedReinitManager
+
+            enhanced_manager = EnhancedReinitManager(self.manager)
+
+            # Determine build type
+            build_type = None
+            if getattr(args, "build", False):
+                build_type = "legacy"  # -b flag (backward compatibility)
+            elif getattr(args, "podman_build", False):
+                build_type = "podman"
+            elif getattr(args, "quadlet_build", False):
+                build_type = "quadlet"
+
+            # Get options
+            vllm_model = getattr(args, "vllm_model", None)
+            enable_ai_guidance = getattr(args, "enable_ai_guidance", True)
+            enable_retry = getattr(args, "enable_retry", True)
+
+            # Try enhanced reinit first
+            success = enhanced_manager.enhanced_reinit(
+                target=args.target,
+                build=build_type is not None,
+                build_type=build_type,
+                vllm_model=vllm_model,
+                enable_ai_guidance=enable_ai_guidance,
+            )
+
+            # If enhanced reinit fails and retry is enabled, use intelligent retry
+            if not success and enable_retry:
+                from managers.intelligent_retry_manager import IntelligentRetryManager
+
+                retry_manager = IntelligentRetryManager(self.manager)
+
+                console.print(
+                    "\n[yellow]Enhanced reinit failed. Attempting intelligent retry...[/yellow]"
+                )
+
+                success = retry_manager.retry_with_ai_guidance(
+                    target=args.target,
+                    original_operation=enhanced_manager.enhanced_reinit,
+                    operation_kwargs={
+                        "target": args.target,
+                        "build": build_type is not None,
+                        "build_type": build_type,
+                        "vllm_model": vllm_model,
+                        "enable_ai_guidance": enable_ai_guidance,
+                    },
+                    enable_auto_fixes=getattr(args, "enable_auto_fixes", True),
+                )
+
+                if success:
+                    # Show retry statistics
+                    stats = retry_manager.get_retry_statistics()
+                    console.print(
+                        f"\n[green]✅ Succeeded after {stats.get('total_attempts', 0)} retry attempts[/green]"
+                    )
+
+            if success:
+                # Show common actions after successful enhanced reinit
+                resolved_container_name = self._resolve_container_name_once(args.target)
+                self._show_common_actions_for_command(
+                    "enhanced-reinit", args.target, resolved_container_name
+                )
+
+            return success
+
+        except ImportError as e:
+            console.print(f"[red]Enhanced reinit not available: {e}[/red]")
+            console.print("[dim]Falling back to standard reinit...[/dim]")
+            return self._handle_reinit(args)
+        except Exception as e:
+            console.print(f"[red]Enhanced reinit failed: {e}[/red]")
+            return False
 
     def _handle_build(self, args):
         # Handle verbose/quiet flags for build command
@@ -876,8 +977,13 @@ class CommandRouter:
 
     def _handle_restart(self, args):
         self.handle_command_verbose(args)
+        # Get vLLM model if specified
+        vllm_model = getattr(args, "vllm_model", None)
         return self.try_with_fallback(
-            self.container_ops.restart, args.target, build=getattr(args, "build", False)
+            self.container_ops.restart,
+            args.target,
+            build=getattr(args, "build", False),
+            vllm_model=vllm_model,
         )
 
     def _handle_enable(self, args):
@@ -1013,3 +1119,111 @@ class CommandRouter:
         return self.try_with_fallback(
             self.container_ops.cleanup_orphaned_volumes, args.target
         )
+
+    # vLLM model management command handlers
+    def _handle_vllm_switch(self, args):
+        """Switch vLLM backend to a different model container"""
+        self.handle_command_verbose(args)
+        try:
+            from managers.vllm_model_manager import VLLMModelManager
+
+            vllm_mgr = VLLMModelManager(self.manager)
+
+            proxy_image = getattr(args, "proxy_image", None)
+            result = vllm_mgr.switch_vllm_model(args.model_container, proxy_image)
+
+            if result:
+                console.print(
+                    f"[green]Successfully switched to vLLM model: {args.model_container}[/green]"
+                )
+                # Show common actions after successful switch
+                self._show_common_actions_for_command(
+                    "vllm-switch", args.model_container
+                )
+            else:
+                console.print(
+                    f"[red]Failed to switch to vLLM model: {args.model_container}[/red]"
+                )
+
+            return result
+        except ImportError:
+            console.print("[red]vLLM model manager not available[/red]")
+            return False
+        except Exception as e:
+            console.print(f"[red]Error switching vLLM model: {e}[/red]")
+            return False
+
+    def _handle_vllm_status(self, args):
+        """Show current vLLM configuration and status"""
+        self.handle_command_verbose(args)
+        try:
+            from managers.vllm_model_manager import VLLMModelManager
+
+            vllm_mgr = VLLMModelManager(self.manager)
+            vllm_mgr.show_vllm_status()
+            return True
+        except ImportError:
+            console.print("[red]vLLM model manager not available[/red]")
+            return False
+        except Exception as e:
+            console.print(f"[red]Error showing vLLM status: {e}[/red]")
+            return False
+
+    def _handle_vllm_models(self, args):
+        """List available vLLM model containers"""
+        self.handle_command_verbose(args)
+        try:
+            from managers.vllm_model_manager import VLLMModelManager
+
+            vllm_mgr = VLLMModelManager(self.manager)
+
+            available_models = vllm_mgr.get_available_vllm_models()
+            current_backend = vllm_mgr.get_current_vllm_backend()
+
+            console.print("[bold cyan]Available vLLM Model Containers[/bold cyan]")
+            console.print()
+
+            if available_models:
+                for model in available_models:
+                    status = vllm_mgr._get_container_status(model)
+                    marker = "→" if model == current_backend else " "
+                    console.print(f"  {marker} [cyan]{model}[/cyan] - {status}")
+
+                if current_backend:
+                    console.print(
+                        f"\n[green]Current Backend:[/green] {current_backend}"
+                    )
+                else:
+                    console.print(
+                        "\n[yellow]Current Backend:[/yellow] Unknown or proxy not running"
+                    )
+            else:
+                console.print("  [yellow]No vLLM model containers found[/yellow]")
+                console.print(
+                    "  [dim]Use 'podman ps -a --filter name=vllm' to check for containers[/dim]"
+                )
+
+            console.print()
+            return True
+        except ImportError:
+            console.print("[red]vLLM model manager not available[/red]")
+            return False
+        except Exception as e:
+            console.print(f"[red]Error listing vLLM models: {e}[/red]")
+            return False
+
+    def _handle_vllm_current(self, args):
+        """Show which vLLM model is currently using port 8005"""
+        self.handle_command_verbose(args)
+        try:
+            from managers.vllm_model_manager import VLLMModelManager
+
+            vllm_mgr = VLLMModelManager(self.manager)
+            vllm_mgr.show_current_vllm_model()
+            return True
+        except ImportError:
+            console.print("[red]vLLM model manager not available[/red]")
+            return False
+        except Exception as e:
+            console.print(f"[red]Error detecting current vLLM model: {e}[/red]")
+            return False

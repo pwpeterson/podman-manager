@@ -170,6 +170,9 @@ def create_argument_parser():
     # Resource commands
     _add_resource_commands(subparsers)
 
+    # vLLM model management commands
+    _add_vllm_commands(subparsers)
+
     return parser
 
 
@@ -346,6 +349,72 @@ def _add_lifecycle_commands(subparsers):
         action="store_true",
         help="Use quadlet rebuild process",
     )
+    reinit_parser.add_argument(
+        "--vllm-model",
+        help="Switch vLLM model during reinit (e.g., vllm-qwen25-coder-32b)",
+    )
+    reinit_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without actually executing commands",
+    )
+
+    # Enhanced Reinit command
+    enhanced_reinit_parser = subparsers.add_parser(
+        "enhanced-reinit",
+        help="Enhanced reinit with proactive AI troubleshooting and health checks",
+    )
+    enhanced_reinit_parser.add_argument(
+        "target",
+        help="Stack or service name (vllm-stack, local-ai-packaged, vllm-qwen25, vllm-proxy, vllm-delegator)",
+    )
+    enhanced_reinit_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+    enhanced_build_group = enhanced_reinit_parser.add_mutually_exclusive_group()
+    enhanced_build_group.add_argument(
+        "-b",
+        "--build",
+        action="store_true",
+        help="Build images before restarting (with --no-cache) - legacy option",
+    )
+    enhanced_build_group.add_argument(
+        "-pb",
+        "--podman-build",
+        action="store_true",
+        help="Use podman build (with --no-cache)",
+    )
+    enhanced_build_group.add_argument(
+        "-qb",
+        "--quadlet-build",
+        action="store_true",
+        help="Use quadlet rebuild process",
+    )
+    enhanced_reinit_parser.add_argument(
+        "--vllm-model",
+        help="Switch vLLM model during reinit (e.g., vllm-qwen25-coder-32b)",
+    )
+    enhanced_reinit_parser.add_argument(
+        "--no-ai-guidance",
+        action="store_false",
+        dest="enable_ai_guidance",
+        help="Disable AI guidance and analysis",
+    )
+    enhanced_reinit_parser.add_argument(
+        "--no-retry",
+        action="store_false",
+        dest="enable_retry",
+        help="Disable intelligent retry on failure",
+    )
+    enhanced_reinit_parser.add_argument(
+        "--no-auto-fixes",
+        action="store_false",
+        dest="enable_auto_fixes",
+        help="Disable automatic application of low-risk fixes",
+    )
 
     # Build command
     build_parser = subparsers.add_parser(
@@ -428,6 +497,10 @@ def _add_lifecycle_commands(subparsers):
         "--build",
         action="store_true",
         help="Build images before restarting (with --no-cache)",
+    )
+    restart_parser.add_argument(
+        "--vllm-model",
+        help="Switch vLLM model during restart (e.g., vllm-qwen25-coder-32b)",
     )
 
     # Enable command
@@ -685,6 +758,61 @@ def _add_resource_commands(subparsers):
     # Networks command
     networks_parser = subparsers.add_parser("networks", help="List networks")
     networks_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+
+def _add_vllm_commands(subparsers):
+    """Add vLLM model management commands"""
+    # vLLM switch command
+    vllm_switch_parser = subparsers.add_parser(
+        "vllm-switch", help="Switch vLLM backend to a different model container"
+    )
+    vllm_switch_parser.add_argument(
+        "model_container",
+        help="vLLM model container name (e.g., vllm-qwen25-coder-32b)",
+    )
+    vllm_switch_parser.add_argument(
+        "--proxy-image",
+        help="Custom proxy image to use (optional, defaults to vllm-proxy:latest)",
+    )
+    vllm_switch_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    # vLLM status command
+    vllm_status_parser = subparsers.add_parser(
+        "vllm-status", help="Show current vLLM configuration and status"
+    )
+    vllm_status_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    # vLLM models command
+    vllm_models_parser = subparsers.add_parser(
+        "vllm-models", help="List available vLLM model containers"
+    )
+    vllm_models_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    # vLLM current command
+    vllm_current_parser = subparsers.add_parser(
+        "vllm-current", help="Show which vLLM model is currently using port 8005"
+    )
+    vllm_current_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
