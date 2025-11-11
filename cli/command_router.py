@@ -842,12 +842,6 @@ class CommandRouter:
     def _handle_reinit(self, args):
         self.handle_command_verbose(args)
 
-        # Show AI analysis message in verbose mode
-        from core.config import _verbose_enabled
-
-        if _verbose_enabled:
-            console.print("[green]Starting AI analysis and diagnostics...[/green]")
-
         # Determine build type
         build_type = None
         if getattr(args, "build", False):

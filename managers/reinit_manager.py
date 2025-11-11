@@ -789,76 +789,287 @@ class ReinitManager:
         except Exception as e:
             console.print(f"[dim]Optimization suggestions unavailable: {e}[/dim]")
 
-    def _reinit_service_direct(
-        self,
-        target: str,
-        service_name: str,
-        build_type: str | None = None,
-        dry_run: bool = False,
+    def _run_command_with_spinner(
+        self, cmd: list, message: str, success_msg: str, fail_msg: str
     ) -> bool:
-        """Reinit a single service using already-resolved service name"""
-        from core.config import _verbose_enabled
+        """Run a command with spinner and status messages"""
+        with Progress(
+            SpinnerColumn(),
+            TextColumn(f"[green]{message}[/green]"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("operation", total=None)
+            verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
-        # Use the actual service name for display (remove .service suffix if present)
+            if self.vllm_manager._run_command(cmd):
+                progress.remove_task(task)
+                console.print(f"[green]  {success_msg}[/green]")
+                return True
+            else:
+                progress.remove_task(task)
+                console.print(f"[yellow]  {fail_msg}[/yellow]")
+                return False
+
+    def _show_dry_run_command(self, description: str, command: list) -> None:
+        """Display dry-run command in consistent format"""
+        console.print(f"[yellow]{description}[/yellow]")
+        console.print(f"[yellow]  Would execute: {' '.join(command)}[/yellow]")
+
+    def _stop_active_vllm_container(
+        self, current_container: str, dry_run: bool = False
+    ) -> bool:
+        """Stop the currently active vLLM container with spinner and wait for port release"""
+        if dry_run:
+            self._show_dry_run_command(
+                f"Would stop {current_container}",
+                ["podman", "stop", "-t", "120", current_container],
+            )
+            return True
+        else:
+            # Stop the container
+            success = self._run_command_with_spinner(
+                ["podman", "stop", "-t", "120", current_container],
+                f"Stopping {current_container}...",
+                f"Stopped {current_container}",
+                f"Failed to stop {current_container}.",
+            )
+
+            if success:
+                # Wait for port to be released to prevent systemd from restarting immediately
+                max_wait_time = 30
+                wait_interval = 1
+                elapsed_time = 0
+
+                while (
+                    elapsed_time < max_wait_time
+                    and self.vllm_manager._is_port_in_use(self.vllm_manager.vllm_port)
+                ):
+                    time.sleep(wait_interval)
+                    elapsed_time += wait_interval
+
+                if self.vllm_manager._is_port_in_use(self.vllm_manager.vllm_port):
+                    verbose_print(
+                        f"[cyan]Warning: Port {self.vllm_manager.vllm_port} still in use after stopping {current_container}[/cyan]"
+                    )
+                    # Try force cleanup as fallback
+                    return self.vllm_manager._cleanup_vllm_port()
+
+            return success
+
+    def _remove_vllm_container(
+        self, container_name: str, dry_run: bool = False
+    ) -> bool:
+        """Remove a vLLM container with spinner, handling systemd restart race condition"""
+        if dry_run:
+            self._show_dry_run_command(
+                f"Would remove {container_name}", ["podman", "rm", container_name]
+            )
+            return True
+        else:
+            # First try to remove the container
+            success = self._run_command_with_spinner(
+                ["podman", "rm", container_name],
+                f"Removing {container_name}...",
+                f"Removed {container_name}",
+                f"Failed to remove {container_name}.",
+            )
+
+            # If removal failed, it might be because systemd restarted the container
+            # In that case, stop it again and then remove
+            if not success:
+                verbose_print(
+                    f"[cyan]Container {container_name} may have been restarted by systemd, trying to stop and remove again[/cyan]"
+                )
+
+                # Stop the container again
+                stop_cmd = ["podman", "stop", "-t", "10", container_name]
+                verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
+                stop_result = self.vllm_manager._run_command(
+                    stop_cmd, suppress_errors=True
+                )
+
+                if stop_result:
+                    # Try to remove again
+                    rm_cmd = ["podman", "rm", container_name]
+                    verbose_print(f"[cyan]exec: {' '.join(rm_cmd)}[/cyan]")
+                    remove_result = self.vllm_manager._run_command(
+                        rm_cmd, suppress_errors=True
+                    )
+
+                    if remove_result:
+                        console.print(f"[green]  Removed {container_name}[/green]")
+                        return True
+                    else:
+                        console.print(
+                            f"[yellow]  Failed to remove {container_name} after retry[/yellow]"
+                        )
+                        return False
+                else:
+                    console.print(
+                        f"[yellow]  Failed to stop {container_name} for removal[/yellow]"
+                    )
+                    return False
+
+            return success
+
+    def _remove_service_file(self, service_name: str, dry_run: bool = False) -> bool:
+        """Remove systemd service file with proper error handling"""
+        import os
+
+        service_file_path = os.path.expanduser(f"~/.config/systemd/user/{service_name}")
+        if not service_name.endswith(".service"):
+            service_file_path += ".service"
+
+        service_file_name = os.path.basename(service_file_path)
+
+        if dry_run:
+            self._show_dry_run_command(
+                f"Would remove {service_file_name}", ["rm", "-f", service_file_path]
+            )
+            return True
+        else:
+            console.print(f"[green]Removing {service_file_name}...[/green]")
+            verbose_print(f"[cyan]exec: rm -f {service_file_path}[/cyan]")
+            try:
+                if os.path.exists(service_file_path):
+                    os.remove(service_file_path)
+                    console.print(f"[green]  Removed {service_file_name}[/green]")
+                else:
+                    console.print(f"[green]  Removed {service_file_name}[/green]")
+                    verbose_print(
+                        f"[cyan]Service file {service_file_path} does not exist, skipping removal[/cyan]"
+                    )
+                return True
+            except Exception as e:
+                console.print(
+                    f"[yellow]Warning: Could not remove service file: {e}[/yellow]"
+                )
+                return False
+
+    def _reinit_vllm_model_service(
+        self, target: str, service_name: str, dry_run: bool = False
+    ) -> bool:
+        """Handle vLLM model service reinit with container operations"""
         display_name = (
             service_name.replace(".service", "")
             if service_name.endswith(".service")
             else service_name
         )
+
+        # Handle daemon reload
         if dry_run:
-            console.print(
-                f"\n[yellow]DRY RUN: Would reinitialize {display_name}...[/yellow]\n"
+            self._show_dry_run_command(
+                "Would reload systemd daemon", ["systemctl", "--user", "daemon-reload"]
             )
         else:
-            console.print(f"\n[green]Reinitializing {display_name}...[/green]\n")
-
-        # ALWAYS detect and stop any CURRENT active vLLM model first to prevent port conflicts
-        # This applies to ALL reinit operations, not just vLLM services
-        current_container = self.vllm_manager._find_current_vllm_container()
-        if current_container:
-            console.print(
-                f"[green]Current {self.vllm_manager.vllm_port}: {current_container}[/green]"
-            )
-
-            if dry_run:
-                console.print(f"[yellow]Would stop {current_container}[/yellow]")
-                console.print(
-                    f"[yellow]  Would execute: podman stop -t 60 {current_container}[/yellow]"
-                )
+            console.print("[green]Reloading systemd daemon...[/green]")
+            reload_success = self.manager.reload_daemon()
+            if not reload_success:
+                console.print("[red]Failed to reload systemd daemon[/red]")
+                return False
             else:
-                # Always stop the current container to free up port 8005
-                # Use spinner for stopping operation
+                console.print("[green]  Reloaded systemd daemon.[/green]")
+                console.print()
+
+        # Start the service using the resolved service name
+        if dry_run:
+            self._show_dry_run_command(
+                f"Would start {display_name}",
+                ["systemctl", "--user", "restart", service_name],
+            )
+            # For vLLM model services, show proxy/delegator restart in dry-run
+            console.print(
+                "[yellow]Would restart vllm-proxy and mcp-vllm-delegator[/yellow]"
+            )
+            console.print()
+            console.print(
+                f"[green]DRY RUN: Successfully would reinitialize {display_name}[/green]"
+            )
+            return True
+        else:
+            console.print(f"[green]Starting {display_name}...[/green]")
+            start_cmd = ["systemctl", "--user", "restart", service_name]
+
+            start_result = self.manager._run_systemctl_command(
+                start_cmd,
+                f"start_{target}",
+                quiet=False,
+            )
+            start_success = start_result.returncode == 0
+
+            if start_success:
+                console.print(f"[green]  Started {display_name}.[/green]")
+
+                # Monitor service logs to verify successful startup
                 with Progress(
                     SpinnerColumn(),
-                    TextColumn(f"[green]Stopping {current_container}...[/green]"),
+                    TextColumn("[yellow]Monitoring service startup...[/yellow]"),
                     console=console,
                     transient=True,
                 ) as progress:
-                    task = progress.add_task("stopping", total=None)
+                    task = progress.add_task("monitoring", total=None)
+                    actual_success = self._monitor_service_startup(target, service_name)
+                    progress.remove_task(task)
 
-                    stop_cmd = ["podman", "stop", "-t", "60", current_container]
-                    verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
-
-                    if self.vllm_manager._run_command(stop_cmd):
-                        progress.remove_task(task)
-                        console.print(f"[green]  Stopped {current_container}[/green]")
-                    else:
-                        progress.remove_task(task)
+                if actual_success:
+                    # Restart vllm-proxy and mcp-vllm-delegator
+                    if not self.vllm_manager._restart_vllm_proxy(target):
                         console.print(
-                            f"[yellow]  Failed to stop {current_container}.[/yellow]"
+                            "[yellow]Warning: Failed to restart vLLM proxy[/yellow]"
                         )
-            console.print()
-        else:
-            verbose_print(
-                f"[cyan]No active vLLM container found on port {self.vllm_manager.vllm_port}[/cyan]"
-            )
+                        return False
 
-        # Use the provided service_name to avoid duplicate resolution
+                    # Restart mcp-vllm-delegator
+                    if not self.vllm_manager._restart_mcp_vllm_delegator():
+                        console.print(
+                            "[yellow]Warning: Failed to restart mcp-vllm-delegator[/yellow]"
+                        )
+                        # Don't fail the entire operation if mcp-vllm-delegator fails
+
+                    # Show success message
+                    console.print(
+                        f"[green]Successfully reinitialized {display_name}[/green]"
+                    )
+                    return True
+                else:
+                    # Service failed to start after monitoring - run AI analysis
+                    self._run_reinit_failure_analysis(
+                        target, "Service failed to start after reinit"
+                    )
+                    return False
+            else:
+                console.print(f"[red]Failed to start {display_name} after reinit[/red]")
+                # Handle start failure
+                self._handle_start_failure(target, start_result)
+                # Service failed to start immediately - run AI analysis
+                error_message = (
+                    start_result.stderr.strip() if start_result.stderr else ""
+                )
+                self._run_reinit_failure_analysis(target, error_message)
+                return False
+
+    def _reinit_standard_service(
+        self,
+        target: str,
+        service_name: str,
+        build_type: str | None,
+        dry_run: bool = False,
+    ) -> bool:
+        """Handle standard service reinit with systemctl operations"""
+        from core.config import _verbose_enabled
+
+        display_name = (
+            service_name.replace(".service", "")
+            if service_name.endswith(".service")
+            else service_name
+        )
+
         # Stop the service
         if dry_run:
-            console.print(f"[yellow]Would stop {display_name}[/yellow]")
-            console.print(
-                f"[yellow]  Would execute: systemctl --user stop {service_name}[/yellow]"
+            self._show_dry_run_command(
+                f"Would stop {display_name}",
+                ["systemctl", "--user", "stop", service_name],
             )
             stop_success = True  # Assume success for dry run
         else:
@@ -878,75 +1089,8 @@ class ReinitManager:
                     "[yellow]Service was not running or failed to stop[/yellow]"
                 )
 
-        # Determine if this is a vLLM model service based on the target service name
-        # Check if the target service name matches any known vLLM model containers
-        is_vllm_model_service = current_container and (
-            display_name == current_container
-            or service_name.replace(".service", "") == current_container
-            or target == current_container
-        )
-
-        # For vLLM model services, remove the systemd service file for the STOPPED container
-        if is_vllm_model_service and current_container:
-            # Remove service file for the container we stopped
-            import os
-
-            container_service_file = os.path.expanduser(
-                f"~/.config/systemd/user/{current_container}.service"
-            )
-            if dry_run:
-                console.print(
-                    f"[yellow]Would remove {current_container}.service file[/yellow]"
-                )
-                console.print(
-                    f"[yellow]  Would execute: rm -f {container_service_file}[/yellow]"
-                )
-            elif os.path.exists(container_service_file):
-                console.print(
-                    f"[green]Removing {current_container}.service file...[/green]"
-                )
-                verbose_print(f"[cyan]exec: rm -f {container_service_file}[/cyan]")
-                try:
-                    os.remove(container_service_file)
-                    console.print(
-                        f"[green]  Removed {current_container}.service file[/green]"
-                    )
-                except Exception as e:
-                    console.print(
-                        f"[yellow]Warning: Could not remove {current_container}.service file: {e}[/yellow]"
-                    )
-            console.print()
-
         # Remove old generated service file
-        import os
-
-        service_file_path = os.path.expanduser(f"~/.config/systemd/user/{service_name}")
-        if not service_name.endswith(".service"):
-            service_file_path += ".service"
-
-        service_file_name = os.path.basename(service_file_path)
-
-        if dry_run:
-            console.print(f"[yellow]Would remove {service_file_name}[/yellow]")
-            console.print(
-                f"[yellow]  Would execute: rm -f {service_file_path}[/yellow]"
-            )
-        else:
-            console.print(f"[green]Removing {service_file_name}...[/green]")
-            verbose_print(f"[cyan]exec: rm -f {service_file_path}[/cyan]")
-            try:
-                if os.path.exists(service_file_path):
-                    os.remove(service_file_path)
-                    console.print(f"[green]  Removed {service_file_name}[/green]")
-                else:
-                    console.print(f"[green]  Removed {service_file_name}[/green]")
-                    verbose_print(
-                        f"[cyan]Service file {service_file_path} does not exist, skipping removal[/cyan]"
-                    )
-            except Exception as e:
-                console.print(
-                    f"[yellow]Warning: Could not remove service file: {e}[/yellow]"
-                )
+        self._remove_service_file(service_name, dry_run)
         console.print()
 
         # Build if requested
@@ -981,9 +1125,8 @@ class ReinitManager:
 
         # Handle daemon reload
         if dry_run:
-            console.print("[yellow]Would reload systemd daemon[/yellow]")
-            console.print(
-                "[yellow]  Would execute: systemctl --user daemon-reload[/yellow]"
+            self._show_dry_run_command(
+                "Would reload systemd daemon", ["systemctl", "--user", "daemon-reload"]
             )
         else:
             console.print("[green]Reloading systemd daemon...[/green]")
@@ -1011,9 +1154,9 @@ class ReinitManager:
 
         # Start the service using the resolved service name
         if dry_run:
-            console.print(f"[yellow]Would start {display_name}[/yellow]")
-            console.print(
-                f"[yellow]  Would execute: systemctl --user restart {service_name}[/yellow]"
+            self._show_dry_run_command(
+                f"Would start {display_name}",
+                ["systemctl", "--user", "restart", service_name],
             )
             console.print()
             console.print(
@@ -1027,54 +1170,104 @@ class ReinitManager:
             start_result = self.manager._run_systemctl_command(
                 start_cmd,
                 f"start_{target}",
-                quiet=False,  # Don't suppress output in verbose mode
+                quiet=False,
             )
             start_success = start_result.returncode == 0
 
-        if start_success:
-            console.print(f"[green]  Started {display_name}.[/green]")
+            if start_success:
+                console.print(f"[green]  Started {display_name}.[/green]")
 
-            # Add detailed health monitoring in verbose mode
-            if _verbose_enabled:
-                self._verbose_health_monitoring(target, service_name, display_name)
+                # Add detailed health monitoring in verbose mode
+                if _verbose_enabled:
+                    self._verbose_health_monitoring(target, service_name, display_name)
 
-            # Monitor service logs to verify successful startup
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[yellow]Monitoring service startup...[/yellow]"),
-                console=console,
-                transient=True,
-            ) as progress:
-                task = progress.add_task("monitoring", total=None)
-                actual_success = self._monitor_service_startup(target, service_name)
-                progress.remove_task(task)
+                # Monitor service logs to verify successful startup
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[yellow]Monitoring service startup...[/yellow]"),
+                    console=console,
+                    transient=True,
+                ) as progress:
+                    task = progress.add_task("monitoring", total=None)
+                    actual_success = self._monitor_service_startup(target, service_name)
+                    progress.remove_task(task)
 
-            if actual_success:
-                # Don't show success message here for vLLM model services
-                # It will be shown after proxy/delegator restart
-                if not is_vllm_model_service:
+                if actual_success:
                     console.print(
                         f"[green]Successfully reinitialized {display_name}[/green]"
                     )
-                    # Show optional next steps
                     self._show_next_steps(target)
-                return True
+                    return True
+                else:
+                    # Service failed to start after monitoring - run AI analysis
+                    self._run_reinit_failure_analysis(
+                        target, "Service failed to start after reinit"
+                    )
+                    return False
             else:
-                # Service failed to start after monitoring - run AI analysis
-                self._run_reinit_failure_analysis(
-                    target, "Service failed to start after reinit"
+                console.print(f"[red]Failed to start {display_name} after reinit[/red]")
+                # Handle start failure
+                self._handle_start_failure(target, start_result)
+                # Service failed to start immediately - run AI analysis
+                error_message = (
+                    start_result.stderr.strip() if start_result.stderr else ""
                 )
+                self._run_reinit_failure_analysis(target, error_message)
                 return False
+
+    def _reinit_service_direct(
+        self,
+        target: str,
+        service_name: str,
+        build_type: str | None = None,
+        dry_run: bool = False,
+    ) -> bool:
+        """Reinit a single service using already-resolved service name"""
+        # Use the actual service name for display (remove .service suffix if present)
+        display_name = (
+            service_name.replace(".service", "")
+            if service_name.endswith(".service")
+            else service_name
+        )
+        if dry_run:
+            console.print(
+                f"\n[yellow]DRY RUN: Would reinitialize {display_name}...[/yellow]\n"
+            )
         else:
-            console.print(f"[red]Failed to start {display_name} after reinit[/red]")
+            console.print(f"\n[green]Reinitializing {display_name}...[/green]\n")
 
-            # Handle start failure - delegate to _handle_start_failure to avoid duplication
-            self._handle_start_failure(target, start_result)
+        # ALWAYS detect and stop any CURRENT active vLLM model first to prevent port conflicts
+        # This applies to ALL reinit operations, not just vLLM services
+        current_container = self.vllm_manager._find_current_vllm_container()
+        if current_container:
+            console.print(
+                f"[green]Current {self.vllm_manager.vllm_port}: {current_container}[/green]"
+            )
+            console.print()
 
-            # Service failed to start immediately - run AI analysis
-            error_message = start_result.stderr.strip() if start_result.stderr else ""
-            self._run_reinit_failure_analysis(target, error_message)
-            return False
+            # Stop and remove the current active vLLM container
+            if not self._stop_active_vllm_container(current_container, dry_run):
+                return False
+            console.print()
+
+            if not self._remove_vllm_container(current_container, dry_run):
+                return False
+            console.print()
+        else:
+            verbose_print(
+                f"[cyan]No active vLLM container found on port {self.vllm_manager.vllm_port}[/cyan]"
+            )
+
+        # Determine if this is a vLLM model service based on the target service name
+        is_vllm_model_service = "vllm" in target.lower() and target != "vllm-proxy"
+
+        # Route to appropriate reinit method based on service type
+        if is_vllm_model_service:
+            return self._reinit_vllm_model_service(target, service_name, dry_run)
+        else:
+            return self._reinit_standard_service(
+                target, service_name, build_type, dry_run
+            )
 
     def _handle_start_failure(self, target: str, start_result) -> None:
         """Handle service start failure with detailed error reporting"""
