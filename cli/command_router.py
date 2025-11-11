@@ -460,15 +460,22 @@ class CommandRouter:
 
     def _handle_ps(self, args):
         self.handle_command_verbose(args)
+        from core.config import verbose_print
+
         try:
+            cmd = [
+                "podman",
+                "ps",
+                "-a",
+                "--format",
+                "{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}",
+            ]
+
+            # Show command in verbose mode
+            verbose_print(f"exec: {' '.join(cmd)}")
+
             result = subprocess.run(
-                [
-                    "podman",
-                    "ps",
-                    "-a",
-                    "--format",
-                    "{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}",
-                ],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=10,
