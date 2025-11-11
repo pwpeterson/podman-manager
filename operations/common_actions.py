@@ -271,8 +271,19 @@ class CommonActionsFormatter:
         self, template, container_name, service_name, port, target=None
     ):
         """Substitute placeholders in command templates"""
+        # For systemctl and journalctl commands, use service_name (includes .service suffix)
+        # For podman commands, use container_name (without .service suffix)
+        if "systemctl" in template or "journalctl" in template:
+            name_for_template = (
+                service_name or f"{container_name}.service"
+                if container_name
+                else "CONTAINER"
+            )
+        else:
+            name_for_template = container_name or "CONTAINER"
+
         substitutions = {
-            "{container_name}": container_name or "CONTAINER",
+            "{container_name}": name_for_template,
             "{target_name}": target or container_name or "TARGET",
             "{port}": port or "PORT",
             "{hostname}": "localhost",
