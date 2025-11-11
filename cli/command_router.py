@@ -724,7 +724,7 @@ class CommandRouter:
                 console.print(f"[red]Error running command: {e}[/red]")
 
         # Show common actions after successful logs display
-        self._show_common_actions_for_command("logs", args.target)
+        self._show_common_actions_for_command("logs", args.target, container_name)
         return True
 
     def _handle_diag(self, args):
