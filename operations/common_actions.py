@@ -237,7 +237,7 @@ class CommonActionsFormatter:
                 "troubleshooting",
             ]
 
-        console.print("[bold green]More available actions:[/bold green]")
+        console.print("\n[bold green]More available actions:[/bold green]")
 
         # Always use detailed format - pass target for PM shortcuts
         self._show_detailed_format(
