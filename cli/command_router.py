@@ -460,7 +460,6 @@ class CommandRouter:
 
     def _handle_ps(self, args):
         self.handle_command_verbose(args)
-        from core.config import verbose_print
 
         try:
             cmd = [
@@ -471,8 +470,11 @@ class CommandRouter:
                 "{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}",
             ]
 
-            # Show command in verbose mode
-            verbose_print(f"exec: {' '.join(cmd)}")
+            # Show command in verbose mode with cyan color
+            from core.config import _verbose_enabled
+
+            if _verbose_enabled:
+                console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
             result = subprocess.run(
                 cmd,
