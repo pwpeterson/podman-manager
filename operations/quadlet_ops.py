@@ -1,6 +1,6 @@
 """Quadlet container operations for vLLM services - Refactored with modular architecture."""
 
-from typing import List
+from typing import List, Optional
 
 from ai_system.ai_diagnostics import AIDiagnostics
 from ai_system.log_analyzer import LogAnalyzer
@@ -77,7 +77,9 @@ class QuadletOperations:
         """Stop and remove a service or stack"""
         return self.service_lifecycle.remove(target)
 
-    def restart(self, target: str, build: bool = False, vllm_model: str = None) -> bool:
+    def restart(
+        self, target: str, build: bool = False, vllm_model: Optional[str] = None
+    ) -> bool:
         """Restart a service or stack"""
         return self.service_lifecycle.restart(target, build, vllm_model)
 
@@ -125,7 +127,7 @@ class QuadletOperations:
         lines: int = 50,
         vllm_url: str = "http://localhost:8002",
         verbose: bool = False,
-        ai_agent: str | None = None,
+        ai_agent: Optional[str] = None,
     ) -> None:
         """AI-powered analysis of service logs for root causes and solutions"""
         self.ai_diagnostics.ai_analyze_logs(target, lines, vllm_url, verbose, ai_agent)
@@ -206,12 +208,12 @@ class QuadletOperations:
         """Show system disk usage"""
         self.system_monitor.show_system_df()
 
-    def health_check(self, target: str | None = None) -> None:
+    def health_check(self, target: Optional[str] = None) -> None:
         """Perform comprehensive health check on services or entire system"""
         self.system_monitor.health_check(target)
 
     def monitor_services(
-        self, services: List[str] | None = None, interval: int = 5
+        self, services: Optional[List[str]] = None, interval: int = 5
     ) -> None:
         """Monitor services in real-time"""
         self.system_monitor.monitor_services(services, interval)
@@ -238,8 +240,8 @@ class QuadletOperations:
         self,
         target: str,
         build: bool = False,
-        build_type: str | None = None,
-        vllm_model: str | None = None,
+        build_type: Optional[str] = None,
+        vllm_model: Optional[str] = None,
         dry_run: bool = False,
     ) -> bool:
         """Stop service, reload daemon, and restart service (useful for .container file changes)"""

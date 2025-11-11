@@ -1,6 +1,7 @@
 """Service lifecycle operations for quadlet containers."""
 
 import subprocess
+from typing import Optional
 
 from core.config import console, verbose_print
 from core.simple_fuzzy_matcher import find_container
@@ -129,7 +130,9 @@ class ServiceLifecycle:
 
         return self._remove_service(target)
 
-    def restart(self, target: str, build: bool = False, vllm_model: str = None) -> bool:
+    def restart(
+        self, target: str, build: bool = False, vllm_model: Optional[str] = None
+    ) -> bool:
         """Restart a service or stack"""
         # Clear cache at the start of the operation
         self.manager._clear_auto_match_cache()

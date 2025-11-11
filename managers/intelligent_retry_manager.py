@@ -312,6 +312,11 @@ class IntelligentRetryManager:
                 should_apply = Confirm.ask("Apply this fix?", default=True)
 
             if should_apply:
+                # Ensure commands is a list of strings
+                if isinstance(commands, str):
+                    commands = [commands]
+                elif not isinstance(commands, list):
+                    commands = []
                 success = self._execute_fix_commands(commands)
                 if success:
                     console.print(f"[green]✅ Fix {i} applied successfully[/green]")
@@ -382,7 +387,11 @@ class IntelligentRetryManager:
         )
 
     def _log_failed_retry(
-        self, target: str, attempt: int, fixes: List[Dict], exception: str = None
+        self,
+        target: str,
+        attempt: int,
+        fixes: List[Dict],
+        exception: Optional[str] = None,
     ) -> None:
         """Log failed retry attempt."""
         self.retry_history.append(
