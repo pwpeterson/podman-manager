@@ -71,7 +71,7 @@ class ServiceLifecycle:
         # PRIORITY 4: Try container resolution using fuzzy matching
         container = find_container(target)
         if container:
-            return self._start_service_with_build(target, build=build)
+            return self._start_service_with_build(container["name"], build=build)
 
         # Fallback to old service name resolution for backward compatibility
         service_name = self.manager._find_service_name(target, "start")
@@ -99,7 +99,7 @@ class ServiceLifecycle:
         # PRIORITY 3: Try container resolution using fuzzy matching
         container = find_container(target)
         if container:
-            return self.manager.stop_service(target)
+            return self.manager.stop_service(container["name"])
 
         # Fallback to old service name resolution for backward compatibility
         service_name = self.manager._find_service_name(target, "stop")
@@ -196,13 +196,19 @@ class ServiceLifecycle:
         # If we found a service, call manager.restart_service directly to avoid duplicate resolution
         if service_name:
             if build:
-                # Stop first
-                self.manager.stop_service(target, quiet=True)
+                # Stop first - use resolved container name if available
+                stop_target = (
+                    container_name.replace(".service", "") if container else target
+                )
+                self.manager.stop_service(stop_target, quiet=True)
                 # Build - delegate to container_builder
                 from operations.container_builder import ContainerBuilder
 
                 builder = ContainerBuilder(self.manager)
-                if not builder.build_service(target):
+                build_target = (
+                    container_name.replace(".service", "") if container else target
+                )
+                if not builder.build_service(build_target):
                     return False
                 # Reload daemon
                 self.manager.reload_daemon()

@@ -176,18 +176,20 @@ class QuadletDisplayManager:
                         short_name, {"installed": False, "source": False}
                     )
 
+                    # Only show services that are actually installed
+                    # Skip services that are only available in source but not installed
+                    if not status["installed"]:
+                        continue
+
                     if status["installed"] and status["source"]:
                         # Green: installed and available in source
                         color = "green"
                     elif status["installed"] and not status["source"]:
                         # Yellow: installed but only in systemd
                         color = "yellow"
-                    elif not status["installed"] and status["source"]:
-                        # Red: available in source but not installed
-                        color = "red"
                     else:
-                        # Default: unknown status
-                        color = "yellow"
+                        # Default: installed status
+                        color = "green"
 
                     # Remove .service suffix from display name
                     clean_name = full_name.replace(".service", "").replace(
@@ -663,7 +665,11 @@ class QuadletDisplayManager:
             return None
 
     def _get_all_container_statuses(self, verbose=False):
-        """Get all container statuses at once using a single podman ps command with timeout protection"""
+        """Get all container statuses at once using a single podman ps command with timeout protection
+
+        When podman is unresponsive, this will return an empty dict, triggering systemd fallback
+        in _get_service_status_from_cache which now provides more accurate status reporting.
+        """
         try:
             cmd = ["podman", "ps", "-a", "--format", "{{.Names}};{{.Status}}"]
 
@@ -691,6 +697,77 @@ class QuadletDisplayManager:
             return {}
         except Exception:
             return {}
+
+    def _parse_systemctl_status(self, status_output: str, service_name: str) -> str:
+        """
+        Parse systemctl status output to extract status information.
+
+        Example input:
+        "● vllm-glm4-9b-chat.service - Podman container-vllm-glm4-9b-chat.service
+           Loaded: loaded (/home/user/.config/systemd/user/vllm-glm4-9b-chat.service; enabled; preset: enabled)
+           Active: active (running) since Tue 2025-11-11 13:08:46 CST; 1h 2min ago
+        "
+
+        Returns formatted status string with Rich markup.
+        """
+        lines = status_output.strip().split("\n")
+
+        # Look for the Active line
+        for line in lines:
+            line = line.strip()
+            if line.startswith("Active:"):
+                # Parse "Active: active (running) since Tue 2025-11-11 13:08:46 CST; 1h 2min ago"
+                # Extract the status and time info
+                try:
+                    # Split on 'since' to separate status from timestamp
+                    if " since " in line:
+                        status_part = line.split(" since ")[0].replace("Active: ", "")
+                        time_part = line.split("; ")[-1] if "; " in line else ""
+
+                        # Clean up the status part
+                        status_clean = status_part.strip()
+
+                        # Format based on status
+                        if "active (running)" in status_clean:
+                            if time_part:
+                                return f"[green]active (systemd) {time_part}[/green]"
+                            else:
+                                return "[green]active (systemd)[/green]"
+                        elif "active" in status_clean and "start" in status_clean:
+                            return "[yellow]starting (systemd)[/yellow]"
+                        elif "failed" in status_clean:
+                            return "[red]failed (systemd)[/red]"
+                        elif "inactive" in status_clean:
+                            return "[yellow]inactive (systemd)[/yellow]"
+                        else:
+                            return f"[dim]{status_clean} (systemd)[/dim]"
+                    else:
+                        # Handle cases without 'since'
+                        status_part = line.replace("Active: ", "").strip()
+                        if "active (running)" in status_part:
+                            return "[green]active (systemd)[/green]"
+                        elif "failed" in status_part:
+                            return "[red]failed (systemd)[/red]"
+                        elif "inactive" in status_part:
+                            return "[yellow]inactive (systemd)[/yellow]"
+                        else:
+                            return f"[dim]{status_part} (systemd)[/dim]"
+                except Exception:
+                    # Fallback if parsing fails
+                    return "[dim]unknown (systemd)[/dim]"
+
+        # Look for Loaded line to check if service exists
+        for line in lines:
+            line = line.strip()
+            if line.startswith("Loaded:"):
+                if "not-found" in line or "not found" in line:
+                    return "[white]not found[/white]"
+                elif "loaded" in line:
+                    # Service exists but no Active line found - unusual case
+                    return "[dim]unknown (systemd)[/dim]"
+
+        # If we get here, service likely doesn't exist
+        return "[white]not found[/white]"
 
     def _get_service_status_from_cache(self, service_name, all_container_statuses):
         """Get service status from cached container statuses with systemd fallback"""
@@ -727,31 +804,27 @@ class QuadletDisplayManager:
 
             # Fallback: check systemd service status when podman is unresponsive
             try:
-                cmd = ["systemctl", "--user", "is-active", f"{service_name}.service"]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+                # Use systemctl status to get human-readable status information
+                cmd_status = [
+                    "systemctl",
+                    "--user",
+                    "status",
+                    f"{service_name}.service",
+                    "--no-pager",
+                    "--lines=0",  # Don't show log lines, just status
+                ]
+                status_result = subprocess.run(
+                    cmd_status, capture_output=True, text=True, timeout=3
+                )
 
-                if result.returncode == 0:
-                    return "[green]active (systemd)[/green]"
-                else:
-                    # Check if service exists but is inactive
-                    cmd_status = [
-                        "systemctl",
-                        "--user",
-                        "show",
-                        f"{service_name}.service",
-                        "--property=LoadState",
-                    ]
-                    status_result = subprocess.run(
-                        cmd_status, capture_output=True, text=True, timeout=3
+                # Parse the status output
+                if status_result.stdout:
+                    return self._parse_systemctl_status(
+                        status_result.stdout, service_name
                     )
+                else:
+                    return "[white]not found[/white]"
 
-                    if (
-                        status_result.returncode == 0
-                        and "LoadState=loaded" in status_result.stdout
-                    ):
-                        return "[yellow]inactive (systemd)[/yellow]"
-                    else:
-                        return "[white]not found[/white]"
             except subprocess.TimeoutExpired:
                 return "[red]timeout[/red]"
             except Exception:
