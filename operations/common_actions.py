@@ -221,9 +221,10 @@ class CommonActionsFormatter:
             service_name = f"{container_name}.service"
         elif not service_name and target:
             # Fallback to target if container_name not available
-            simplified_target = target.split("-")[-1] if "-" in target else target
-            service_name = f"{simplified_target}.service"
-            container_name = target
+            # For systemctl commands, we need the full service name with .service suffix
+            service_name = f"{target}.service"
+            if not container_name:
+                container_name = target
         if not port:
             port = "8000"  # Default port for examples
 
