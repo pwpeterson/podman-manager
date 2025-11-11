@@ -133,10 +133,10 @@ class CommonActionsFormatter:
             "pm_shortcuts": {
                 "label": "PM Command Shortcuts",
                 "commands": [
-                    ("View podman logs", "pm logs {container_name}"),
-                    ("Diagnose issues", "pm diag {container_name}"),
-                    ("Restart service", "pm restart {container_name}"),
-                    ("Reinitialize", "pm reinit {container_name}"),
+                    ("View podman logs", "pm logs {target_name}"),
+                    ("Diagnose issues", "pm diag {target_name}"),
+                    ("Restart service", "pm restart {target_name}"),
+                    ("Reinitialize", "pm reinit {target_name}"),
                     ("View all containers", "pm ps"),
                 ],
             },
@@ -238,10 +238,14 @@ class CommonActionsFormatter:
 
         console.print("[bold green]More available actions:[/bold green]")
 
-        # Always use detailed format
-        self._show_detailed_format(container_name, service_name, port, categories)
+        # Always use detailed format - pass target for PM shortcuts
+        self._show_detailed_format(
+            container_name, service_name, port, categories, target
+        )
 
-    def _show_detailed_format(self, container_name, service_name, port, categories):
+    def _show_detailed_format(
+        self, container_name, service_name, port, categories, target=None
+    ):
         """Show detailed format with categorized commands"""
         for category_key in categories:
             if category_key not in self.actions:
@@ -253,7 +257,7 @@ class CommonActionsFormatter:
             for label, command_template in category["commands"]:
                 # Substitute placeholders
                 command = self._substitute_placeholders(
-                    command_template, container_name, service_name, port
+                    command_template, container_name, service_name, port, target
                 )
                 console.print(
                     f"    [green]✓ {label:20}:[/green] [white]{command}[/white]"
@@ -262,10 +266,13 @@ class CommonActionsFormatter:
         # Add a newline after all categories are displayed
         console.print()
 
-    def _substitute_placeholders(self, template, container_name, service_name, port):
+    def _substitute_placeholders(
+        self, template, container_name, service_name, port, target=None
+    ):
         """Substitute placeholders in command templates"""
         substitutions = {
             "{container_name}": container_name or "CONTAINER",
+            "{target_name}": target or container_name or "TARGET",
             "{port}": port or "PORT",
             "{hostname}": "localhost",
         }
