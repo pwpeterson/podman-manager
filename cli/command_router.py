@@ -451,6 +451,7 @@ class CommandRouter:
 
     # Status and information command handlers
     def _handle_list(self, args):
+        self.handle_command_verbose(args)
         if args.target:
             self.display.show_status(args.target)
         else:
@@ -458,6 +459,7 @@ class CommandRouter:
         return True
 
     def _handle_ps(self, args):
+        self.handle_command_verbose(args)
         try:
             result = subprocess.run(
                 [
