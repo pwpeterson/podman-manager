@@ -1077,8 +1077,8 @@ class VLLMModelManager:
         self, target: str, new_vllm_model: str, build_type: Optional[str] = None
     ) -> bool:
         """Reinit a service and switch vLLM model if it's a vLLM-related service"""
-        # First perform the vLLM model switch if this is a vLLM service
-        if "vllm" in target.lower() or target in ["vllm-proxy", "vllm-stack"]:
+        # First perform the vLLM model switch if this is a vLLM model service (exclude vllm-proxy)
+        if "vllm" in target.lower() and target not in ["vllm-proxy", "vllm-stack"]:
             console.print(
                 "[green]Performing vLLM model switch as part of reinit...[/green]"
             )
