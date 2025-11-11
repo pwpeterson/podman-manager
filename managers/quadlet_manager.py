@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 
 from loguru import logger
 
+from ai_analyzer.spinner_manager import safe_spinner
 from core.config import (  # pyright: ignore[reportAttributeAccessIssue]
     console,
     verbose_print,
@@ -1113,9 +1114,31 @@ class QuadletManager:
             stack_name = service_name[6:]  # Remove "STACK:" prefix
             return stack_manager.down(stack_name)
 
+        # Check if this is the 9b-thinking service to add spinner
+        is_9b_thinking = (
+            "9b-thinking" in target.lower()
+            or "vllm-glm41-9b-thinking" in service_name.lower()
+        )
+
         # First try normal stop
         cmd = ["systemctl", "--user", "stop", service_name]
-        result = self._run_systemctl_command(cmd, f"stop_{target}", quiet=quiet)
+
+        if is_9b_thinking and not quiet:
+            # Use spinner for 9b-thinking service
+            from core.config import _verbose_enabled
+
+            if _verbose_enabled:
+                # In verbose mode, show the message without spinner
+                console.print("\n[green]Stopping vllm-glm41-9b-thinking...[/green]")
+                result = self._run_systemctl_command(cmd, f"stop_{target}", quiet=False)
+            else:
+                # In non-verbose mode, use spinner
+                with safe_spinner("Stopping vllm-glm41-9b-thinking", verbose=False):
+                    result = self._run_systemctl_command(
+                        cmd, f"stop_{target}", quiet=True
+                    )
+        else:
+            result = self._run_systemctl_command(cmd, f"stop_{target}", quiet=quiet)
 
         # Check if service and container are actually stopped
         def is_service_stopped():
@@ -1163,8 +1186,14 @@ class QuadletManager:
                 display_name = (
                     target if target in self.quadlet_services else service_name
                 )
-                console.print(f"\n[green]Stopping  {display_name}[/green]")
-                console.print(f"  [green]Stopped {display_name}[/green]")
+
+                if is_9b_thinking:
+                    # Special message for 9b-thinking service
+                    console.print("\n[green]Stopping  vllm-glm41-9b-thinking[/green]")
+                    console.print("  [green]stopped vllm-glm41-9b-thinking[/green]")
+                else:
+                    console.print(f"\n[green]Stopping  {display_name}[/green]")
+                    console.print(f"  [green]Stopped {display_name}[/green]")
             return True
         else:
             # If normal stop fails or service is still running, try aggressive stopping
@@ -1183,8 +1212,16 @@ class QuadletManager:
 
                 if is_service_stopped():
                     if not quiet:
-                        console.print(f"\n[green]Stopping  {target}[/green]")
-                        console.print(f"  [green]Stopped {target}[/green]")
+                        if is_9b_thinking:
+                            console.print(
+                                "\n[green]Stopping  vllm-glm41-9b-thinking[/green]"
+                            )
+                            console.print(
+                                "  [green]stopped vllm-glm41-9b-thinking[/green]"
+                            )
+                        else:
+                            console.print(f"\n[green]Stopping  {target}[/green]")
+                            console.print(f"  [green]Stopped {target}[/green]")
                     return True
 
                 # If still running, try SIGKILL
@@ -1198,10 +1235,18 @@ class QuadletManager:
 
                 if is_service_stopped():
                     if not quiet:
-                        console.print(f"\n[green]Stopping  {target}[/green]")
-                        console.print(
-                            f"  [green]Stopped {target} (force killed)[/green]"
-                        )
+                        if is_9b_thinking:
+                            console.print(
+                                "\n[green]Stopping  vllm-glm41-9b-thinking[/green]"
+                            )
+                            console.print(
+                                "  [green]stopped vllm-glm41-9b-thinking (force killed)[/green]"
+                            )
+                        else:
+                            console.print(f"\n[green]Stopping  {target}[/green]")
+                            console.print(
+                                f"  [green]Stopped {target} (force killed)[/green]"
+                            )
                     return True
 
                 # Last resort: try to kill the container directly
@@ -1268,10 +1313,18 @@ class QuadletManager:
 
                 if is_service_stopped():
                     if not quiet:
-                        console.print(f"\n[green]Stopping  {target}[/green]")
-                        console.print(
-                            f"  [green]Stopped {target} (containers eliminated)[/green]"
-                        )
+                        if is_9b_thinking:
+                            console.print(
+                                "\n[green]Stopping  vllm-glm41-9b-thinking[/green]"
+                            )
+                            console.print(
+                                "  [green]stopped vllm-glm41-9b-thinking (containers eliminated)[/green]"
+                            )
+                        else:
+                            console.print(f"\n[green]Stopping  {target}[/green]")
+                            console.print(
+                                f"  [green]Stopped {target} (containers eliminated)[/green]"
+                            )
                     return True
                 elif containers_found and not quiet:
                     console.print(
