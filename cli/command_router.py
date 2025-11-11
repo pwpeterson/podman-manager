@@ -876,9 +876,9 @@ class CommandRouter:
         self.handle_command_verbose(args)
 
         try:
-            from managers.enhanced_reinit_manager import EnhancedReinitManager
+            from managers.reinit_manager import ReinitManager
 
-            enhanced_manager = EnhancedReinitManager(self.manager)
+            enhanced_manager = ReinitManager(self.manager)
 
             # Determine build type
             build_type = None
