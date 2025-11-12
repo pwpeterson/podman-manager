@@ -71,11 +71,11 @@ class ServiceManager:
                     model_name = agent.get("model_name", "")
                     if model_name == service_name:
                         verbose_print(
-                            f"[cyan]Found vLLM model service: {service_name}[/cyan]"
+                            f"[cyan]Is {service_name} a vLLM model: true[/cyan]"
                         )
                         return True
 
-            verbose_print(f"[cyan]Service {service_name} is not a vLLM model[/cyan]")
+            verbose_print(f"[cyan]Is {service_name} a vLLM model: false[/cyan]")
             return False
 
         except Exception as e:
