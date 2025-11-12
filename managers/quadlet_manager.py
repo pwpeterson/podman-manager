@@ -1169,7 +1169,7 @@ class QuadletManager:
             partial_match_stopped = not partial_result.stdout.strip()
 
             # Check for the full service name as container name too
-            full_name = service_name.replace(".service", "")
+            full_name = service_name.replace(".service", "") if service_name else target
             full_cmd = ["podman", "ps", "-q", "--filter", f"name={full_name}"]
             full_result = subprocess.run(full_cmd, capture_output=True, text=True)
             full_match_stopped = not full_result.stdout.strip()
@@ -1283,30 +1283,24 @@ class QuadletManager:
                         f"[cyan]Found containers: {', '.join(containers_found)}[/cyan]"
                     )
 
-                # Kill all found containers
+                # Stop all found containers using systemctl --user (safer for Quadlet services)
                 for actual_container_name in containers_found:
                     if not quiet:
                         console.print(
-                            f"[yellow]Killing container: {actual_container_name}[/yellow]"
+                            f"[yellow]Force stopping service: {actual_container_name}[/yellow]"
                         )
 
-                    # Try kill first
-                    container_kill_cmd = ["podman", "kill", actual_container_name]
-                    subprocess.run(container_kill_cmd, capture_output=True, text=True)
+                    # Use systemctl --user stop for safer Quadlet service management
+                    service_name = f"{actual_container_name}.service"
+                    stop_cmd = ["systemctl", "--user", "stop", service_name]
+                    verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
+                    subprocess.run(stop_cmd, capture_output=True, text=True)
 
-                    # Try stop with force
-                    container_stop_cmd = [
-                        "podman",
-                        "stop",
-                        "-t",
-                        "1",
-                        actual_container_name,
-                    ]
-                    subprocess.run(container_stop_cmd, capture_output=True, text=True)
-
-                    # Force remove
-                    rm_cmd = ["podman", "rm", "-f", actual_container_name]
-                    subprocess.run(rm_cmd, capture_output=True, text=True)
+                    # Container removal is handled automatically by systemctl service lifecycle
+                    if not quiet:
+                        console.print(
+                            f"[green]Service {service_name} stopped (container cleanup handled by systemctl)[/green]"
+                        )
 
                 # Wait and check if everything is stopped
                 time.sleep(2)

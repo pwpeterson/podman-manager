@@ -766,45 +766,38 @@ class ServiceLifecycle:
                 else service_name
             )
 
-        # Try to remove the container
+        # Use systemctl --user to stop the service (safer for Quadlet services)
+        # Container removal is handled automatically by systemctl service lifecycle
         try:
-            import subprocess
+            service_name = f"{container_name}.service"
 
-            # First try to stop the container if it's still running
-            stop_cmd = ["podman", "stop", container_name]
-            subprocess.run(stop_cmd, capture_output=True, text=True, timeout=10)
-
-            # Remove the container
-            remove_cmd = ["podman", "rm", "-f", container_name]
+            # Stop the service using systemctl --user
+            stop_cmd = ["systemctl", "--user", "stop", service_name]
+            verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
             result = subprocess.run(
-                remove_cmd, capture_output=True, text=True, timeout=10
+                stop_cmd, capture_output=True, text=True, timeout=30
             )
 
-            if result.returncode == 0:
-                if not quiet:
-                    console.print(f"[green]Removing {target}...[/green]")
-                    console.print(f"  [green]Removed {target}[/green]")
-                return True
-            else:
-                if not quiet:
-                    # Only show error if container actually exists
-                    if "no such container" not in result.stderr.lower():
-                        console.print(
-                            f"[yellow]Could not remove container {container_name}: {result.stderr.strip()}[/yellow]"
-                        )
-                    else:
-                        console.print(
-                            f"[green]Container {container_name} already removed[/green]"
-                        )
-                return True  # Consider it success if container doesn't exist
+            if not quiet:
+                console.print(f"[green]Removing {target}...[/green]")
+                if result.returncode == 0:
+                    console.print(
+                        f"  [green]Removed {target} (systemctl handles container cleanup)[/green]"
+                    )
+                else:
+                    console.print(
+                        f"  [yellow]Service {service_name} was not running or already stopped[/yellow]"
+                    )
+
+            # Always return True since systemctl handles the lifecycle properly
+            # Even if the service wasn't running, the "removal" is successful
+            return True
 
         except subprocess.TimeoutExpired:
             if not quiet:
-                console.print(f"[red]Timeout removing container {container_name}[/red]")
+                console.print(f"[red]Timeout stopping service {service_name}[/red]")
             return False
         except Exception as e:
             if not quiet:
-                console.print(
-                    f"[red]Error removing container {container_name}: {e}[/red]"
-                )
+                console.print(f"[red]Error stopping service {service_name}: {e}[/red]")
             return False
