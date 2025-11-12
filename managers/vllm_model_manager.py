@@ -68,6 +68,17 @@ class VLLMModelManager:
             # Find the current vLLM container using port 8005
             current_container = self._find_current_vllm_container()
 
+            # Show completion message without spinner
+            if current_container:
+                progress.update(
+                    task,
+                    description=f"[green]Found active vLLM model: {current_container}[/green]",
+                )
+            else:
+                progress.update(
+                    task, description="[yellow]No active vLLM model found[/yellow]"
+                )
+            time.sleep(0.5)  # Brief pause to show completion
             progress.remove_task(task)
 
         if current_container:
@@ -211,6 +222,11 @@ class VLLMModelManager:
                         description=f"[yellow]Waiting for {current_vllm_container} to stop... ({elapsed_time}s)[/yellow]",
                     )
 
+                # Show completion message without spinner
+                progress.update(
+                    task, description=f"[green]Stopped {current_vllm_container}[/green]"
+                )
+                time.sleep(0.5)  # Brief pause to show completion
                 progress.remove_task(task)
 
         # If port is still in use, force kill processes
@@ -231,6 +247,11 @@ class VLLMModelManager:
 
                 killed = self._kill_process_on_port(self.vllm_port)
                 if not killed:
+                    progress.update(
+                        task,
+                        description=f"[red]Failed to kill process on port {self.vllm_port}[/red]",
+                    )
+                    time.sleep(0.5)  # Brief pause to show completion
                     progress.remove_task(task)
                     console.print(
                         f"[red]Failed to kill existing process on port {self.vllm_port}[/red]"
@@ -252,6 +273,11 @@ class VLLMModelManager:
                         description=f"[yellow]Waiting for port {self.vllm_port} to be released... ({elapsed_time}s)[/yellow]",
                     )
 
+                # Show completion message without spinner
+                progress.update(
+                    task, description=f"[green]Port {self.vllm_port} released[/green]"
+                )
+                time.sleep(0.5)  # Brief pause to show completion
                 progress.remove_task(task)
 
         if self._is_port_in_use(self.vllm_port):
@@ -304,6 +330,11 @@ class VLLMModelManager:
 
                 # Check if the vLLM service is responding on port 8005
                 if self._is_vllm_service_ready(container_name):
+                    # Show completion message without spinner
+                    progress.update(
+                        task, description=f"[green]{container_name} is ready[/green]"
+                    )
+                    time.sleep(0.5)  # Brief pause to show completion
                     progress.remove_task(task)
                     return True
 
@@ -313,6 +344,11 @@ class VLLMModelManager:
                     description=f"[yellow]Waiting for {container_name} to be ready... ({elapsed_time}s)[/yellow]",
                 )
 
+            # Show timeout completion message without spinner
+            progress.update(
+                task, description=f"[yellow]{container_name} startup timeout[/yellow]"
+            )
+            time.sleep(0.5)  # Brief pause to show completion
             progress.remove_task(task)
             console.print(
                 f"[yellow]Warning: {container_name} may not be fully ready after {max_wait_time}s[/yellow]"

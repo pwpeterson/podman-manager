@@ -38,20 +38,43 @@ class VLLMReinitFlow:
             return True
 
         # Detection step - find current active vLLM model
+        verbose_print(
+            f"[cyan]Starting vLLM container detection for {display_name}[/cyan]"
+        )
         current_container = self.vllm_manager._find_current_vllm_container()
+        verbose_print(
+            f"[cyan]Detection result: current_container = {current_container}[/cyan]"
+        )
+
+        # Ensure we only follow one path to prevent duplicate service restarts
         if current_container:
             # Route to active vLLM model flow
-            return self._reinit_active_vllm_model_service(
+            verbose_print(
+                f"[cyan]Detected active vLLM container: {current_container}, using active flow[/cyan]"
+            )
+            result = self._reinit_active_vllm_model_service(
                 target, service_name, current_container
             )
+            verbose_print(f"[cyan]Active flow completed with result: {result}[/cyan]")
+            return result
         else:
             # Route to non-active vLLM model flow
-            return self._reinit_non_active_vllm_model_service(target, service_name)
+            verbose_print(
+                "[cyan]No active vLLM container detected, using non-active flow[/cyan]"
+            )
+            result = self._reinit_non_active_vllm_model_service(target, service_name)
+            verbose_print(
+                f"[cyan]Non-active flow completed with result: {result}[/cyan]"
+            )
+            return result
 
     def _reinit_active_vllm_model_service(
         self, target: str, service_name: str, current_container: str
     ) -> bool:
         """Handle vLLM model reinit when there's an active vLLM model"""
+        verbose_print(
+            f"[cyan]_reinit_active_vllm_model_service started for {service_name} with current_container={current_container}[/cyan]"
+        )
         display_name = (
             service_name.replace(".service", "")
             if service_name.endswith(".service")
@@ -103,12 +126,19 @@ class VLLMReinitFlow:
         console.print()
 
         # Restart vllm-proxy and mcp-vllm-delegator
-        return self.container_manager.restart_vllm_support_services(display_name)
+        success = self.container_manager.restart_vllm_support_services(display_name)
+        verbose_print(
+            f"[cyan]Active vLLM model service reinit completed with success={success}[/cyan]"
+        )
+        return success
 
     def _reinit_non_active_vllm_model_service(
         self, target: str, service_name: str
     ) -> bool:
         """Handle vLLM model reinit when there's no active vLLM model"""
+        verbose_print(
+            f"[cyan]_reinit_non_active_vllm_model_service started for {service_name}[/cyan]"
+        )
         display_name = (
             service_name.replace(".service", "")
             if service_name.endswith(".service")
@@ -138,7 +168,11 @@ class VLLMReinitFlow:
         console.print()
 
         # Restart vllm-proxy and mcp-vllm-delegator
-        return self.container_manager.restart_vllm_support_services(display_name)
+        success = self.container_manager.restart_vllm_support_services(display_name)
+        verbose_print(
+            f"[cyan]Non-active vLLM model service reinit completed with success={success}[/cyan]"
+        )
+        return success
 
     def _handle_start_failure(self, target: str, start_result) -> None:
         """Handle service start failure with detailed error reporting"""

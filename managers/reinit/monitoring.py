@@ -60,6 +60,9 @@ class ReinitMonitor:
             }
             verification_results.append(("Performance", performance_check))
 
+            # Show completion message without spinner
+            progress.update(task, description="[green]Verification completed[/green]")
+            time.sleep(0.5)  # Brief pause to show completion
             progress.remove_task(task)
 
         # Display verification results

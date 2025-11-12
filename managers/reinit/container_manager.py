@@ -114,12 +114,23 @@ class ContainerManager:
                 stop_process.kill()
                 success = False
 
-            progress.remove_task(task)
-
+            # Show completion message without spinner
             if success:
+                progress.update(
+                    task,
+                    description=f"[green]Stopped {container_name}[/green]",
+                )
+                time.sleep(0.5)  # Brief pause to show completion
+                progress.remove_task(task)
                 console.print(f"[green]  Stopped {container_name}[/green]")
                 return True
             else:
+                progress.update(
+                    task,
+                    description=f"[yellow]Failed to stop {container_name}[/yellow]",
+                )
+                time.sleep(0.5)  # Brief pause to show completion
+                progress.remove_task(task)
                 console.print(f"[yellow]  Failed to stop {container_name}[/yellow]")
                 return False
 
@@ -136,11 +147,24 @@ class ContainerManager:
             task = progress.add_task("operation", total=None)
             verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
-            if self.vllm_manager._run_command(cmd):
+            command_success = self.vllm_manager._run_command(cmd)
+
+            # Show completion message without spinner
+            if command_success:
+                progress.update(
+                    task,
+                    description=f"[green]{success_msg}[/green]",
+                )
+                time.sleep(0.5)  # Brief pause to show completion
                 progress.remove_task(task)
                 console.print(f"[green]  {success_msg}[/green]")
                 return True
             else:
+                progress.update(
+                    task,
+                    description=f"[yellow]{fail_msg}[/yellow]",
+                )
+                time.sleep(0.5)  # Brief pause to show completion
                 progress.remove_task(task)
                 console.print(f"[yellow]  {fail_msg}[/yellow]")
                 return False
@@ -285,6 +309,9 @@ class ContainerManager:
 
     def restart_vllm_support_services(self, display_name: str) -> bool:
         """Restart vllm-proxy and mcp-vllm-delegator services"""
+        verbose_print(
+            f"[cyan]restart_vllm_support_services called for {display_name}[/cyan]"
+        )
         # Restart vllm-proxy with polling-based monitoring
         if not self.monitor_container_stop("vllm-proxy"):
             console.print(
@@ -304,33 +331,14 @@ class ContainerManager:
         console.print("[green]Starting vllm-proxy...[/green]")
         if self.start_vllm_proxy(display_name):
             console.print("[green]  Started vllm-proxy[/green]")
+            # Note: start_vllm_proxy() calls vllm_manager._restart_vllm_proxy() which also restarts mcp-vllm-delegator
+            # So we don't need to restart mcp-vllm-delegator separately to avoid duplicate operations
+            verbose_print(
+                "[cyan]mcp-vllm-delegator was restarted automatically by vllm-proxy restart[/cyan]"
+            )
         else:
             console.print("[red]  Failed to start vllm-proxy[/red]")
             return False
-        console.print()
-
-        # Restart mcp-vllm-delegator with polling-based monitoring
-        if not self.monitor_container_stop("mcp-vllm-delegator"):
-            console.print(
-                "[yellow]  mcp-vllm-delegator was not running or failed to stop[/yellow]"
-            )
-        console.print()
-
-        console.print("[green]Removing mcp-vllm-delegator...[/green]")
-        if self.remove_container_with_message("mcp-vllm-delegator"):
-            console.print("[green]  Removed mcp-vllm-delegator[/green]")
-        else:
-            console.print(
-                "[yellow]  mcp-vllm-delegator was not found or failed to remove[/yellow]"
-            )
-        console.print()
-
-        console.print("[green]Starting mcp-vllm-delegator...[/green]")
-        if self.start_mcp_vllm_delegator():
-            console.print("[green]  Started mcp-vllm-delegator[/green]")
-        else:
-            console.print("[yellow]  Failed to start mcp-vllm-delegator[/yellow]")
-            # Don't fail the entire operation if mcp-vllm-delegator fails
         console.print()
 
         console.print(f"[green]Successfully reinitialized {display_name}[/green]")
