@@ -83,23 +83,16 @@ class VLLMReinitFlow:
         console.print(f"[green]Current 8005: {current_container}[/green]")
         console.print()
 
-        # Stop the current active vLLM model
+        # Stop the current active vLLM model using systemctl
         console.print(f"[green]Stopping {current_container}...[/green]")
-        if self.container_manager.stop_container_with_message(current_container):
+        stop_result = self.service_manager.stop_service(
+            f"{current_container}.service", current_container, quiet=True
+        )
+        if stop_result.returncode == 0:
             console.print(f"[green]  Stopped {current_container}[/green]")
         else:
             console.print(
                 f"[yellow]  {current_container} was not running or failed to stop[/yellow]"
-            )
-        console.print()
-
-        # Remove the current active vLLM model
-        console.print(f"[green]Removing {current_container}...[/green]")
-        if self.container_manager.remove_container_with_message(current_container):
-            console.print(f"[green]  Removed {current_container}[/green]")
-        else:
-            console.print(
-                f"[yellow]  {current_container} was not found or failed to remove[/yellow]"
             )
         console.print()
 
@@ -298,9 +291,12 @@ class VLLMReinitFlow:
             f"[cyan]restart_vllm_support_services_no_spinner called for {display_name}[/cyan]"
         )
 
-        # Stop vllm-proxy
+        # Stop vllm-proxy using systemctl
         console.print("[green]Stopping vllm-proxy...[/green]")
-        if self.container_manager.stop_container_with_message("vllm-proxy"):
+        stop_result = self.service_manager.stop_service(
+            "vllm-proxy.service", "vllm-proxy", quiet=True
+        )
+        if stop_result.returncode == 0:
             console.print("[green]  Stopped vllm-proxy[/green]")
         else:
             console.print(
@@ -308,27 +304,26 @@ class VLLMReinitFlow:
             )
         console.print()
 
-        # Remove vllm-proxy
-        console.print("[green]Removing vllm-proxy...[/green]")
-        if self.container_manager.remove_container_with_message("vllm-proxy"):
-            console.print("[green]  Removed vllm-proxy[/green]")
-        else:
-            console.print(
-                "[yellow]  vllm-proxy was not found or failed to remove[/yellow]"
-            )
-        console.print()
-
-        # Start vllm-proxy
+        # Start vllm-proxy using systemctl
         console.print("[green]Starting vllm-proxy...[/green]")
-        if self.container_manager.start_vllm_proxy(display_name):
+        start_result = self.service_manager.start_service(
+            "vllm-proxy.service", "vllm-proxy", quiet=False
+        )
+        if start_result.returncode == 0:
             console.print("[green]  Started vllm-proxy[/green]")
-            # Note: start_vllm_proxy() calls vllm_manager._restart_vllm_proxy() which also restarts mcp-vllm-delegator
-            # So we don't need to restart mcp-vllm-delegator separately to avoid duplicate operations
-            verbose_print(
-                "[cyan]mcp-vllm-delegator was restarted automatically by vllm-proxy restart[/cyan]"
-            )
         else:
             console.print("[red]  Failed to start vllm-proxy[/red]")
+            return False
+
+        # Start mcp-vllm-delegator using systemctl
+        console.print("[green]Starting mcp-vllm-delegator...[/green]")
+        start_result = self.service_manager.start_service(
+            "mcp-vllm-delegator.service", "mcp-vllm-delegator", quiet=False
+        )
+        if start_result.returncode == 0:
+            console.print("[green]  Started mcp-vllm-delegator[/green]")
+        else:
+            console.print("[red]  Failed to start mcp-vllm-delegator[/red]")
             return False
         console.print()
 
