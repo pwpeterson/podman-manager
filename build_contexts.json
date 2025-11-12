@@ -6,22 +6,22 @@
       "context": "/home/pwp/srv/coding_agent/mcp/mcp-crawl4ai-rag",
       "image_name": "localhost/mcp-crawl4ai-rag:latest"
     },
-    "vllm-proxy": {
-      "build_dir": "/home/pwp/srv/system/vllm-proxy",
-      "dockerfile": "Dockerfile.vllm-proxy",
-      "context": "/home/pwp/srv/system/vllm-proxy",
-      "image_name": "localhost/vllm-proxy:latest"
-    },
     "mcp-vllm-delegator": {
       "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
       "dockerfile": "Dockerfile.mcp-vllm-delegator",
       "context": "/home/pwp/srv/coding_agent/mcp/mcp-vllm-delegator",
       "image_name": "localhost/mcp-vllm-delegator:latest"
+    },
+    "sys-services-vllm-proxy": {
+      "build_dir": "/home/pwp/srv/sys-services/vllm-proxy",
+      "dockerfile": "Dockerfile.sys-services-vllm-proxy",
+      "context": "/home/pwp/srv/sys-services/vllm-proxy",
+      "image_name": "localhost/vllm-proxy:latest"
     }
   },
   "podman_build_services": [
     "mcp-crawl4ai-rag",
-    "vllm-proxy",
+    "sys-services-vllm-proxy",
     "mcp-vllm-delegator"
   ]
 }

@@ -44,6 +44,14 @@ class VLLMReinitFlow:
             f"[cyan]Detection result: current_container = {current_container}[/cyan]"
         )
 
+        # Always show detection result first
+        if current_container:
+            console.print(f"[green]Current 8005: {current_container}[/green]")
+            console.print()
+        else:
+            console.print("[yellow]No active vLLM model detected on port 8005[/yellow]")
+            console.print()
+
         # Ensure we only follow one path to prevent duplicate service restarts
         if current_container:
             # Route to active vLLM model flow
@@ -78,10 +86,6 @@ class VLLMReinitFlow:
             if service_name.endswith(".service")
             else service_name
         )
-
-        # Show detection result
-        console.print(f"[green]Current 8005: {current_container}[/green]")
-        console.print()
 
         # Stop the current active vLLM model using systemctl
         console.print(f"[green]Stopping {current_container}...[/green]")
@@ -118,7 +122,7 @@ class VLLMReinitFlow:
         console.print(f"[green]  Started {display_name}[/green]")
         console.print()
 
-        # Restart vllm-proxy and mcp-vllm-delegator without spinners
+        # Restart sys-services-vllm-proxy and mcp-vllm-delegator without spinners
         success = self._restart_vllm_support_services_no_spinner(display_name)
         verbose_print(
             f"[cyan]Active vLLM model service reinit completed with success={success}[/cyan]"
@@ -160,7 +164,7 @@ class VLLMReinitFlow:
         console.print(f"[green]  Started {display_name}[/green]")
         console.print()
 
-        # Restart vllm-proxy and mcp-vllm-delegator without spinners
+        # Restart sys-services-vllm-proxy and mcp-vllm-delegator without spinners
         success = self._restart_vllm_support_services_no_spinner(display_name)
         verbose_print(
             f"[cyan]Non-active vLLM model service reinit completed with success={success}[/cyan]"
@@ -269,51 +273,60 @@ class VLLMReinitFlow:
     def _get_ai_agent_info(self, analyzer) -> str:
         """Get information about which AI agent is being used."""
         try:
-            # Try to get the current AI agent from the analyzer
-            if hasattr(analyzer, "current_agent") and analyzer.current_agent:
-                agent_name = analyzer.current_agent.get("name", "Unknown")
-                agent_type = analyzer.current_agent.get("agent_type", "Unknown")
-                return f"{agent_name} ({agent_type})"
-            elif hasattr(analyzer, "ai_agents") and analyzer.ai_agents:
-                # Get the first available agent
-                first_agent = next(iter(analyzer.ai_agents.values()), {})
-                agent_name = first_agent.get("name", "Unknown")
-                agent_type = first_agent.get("agent_type", "Unknown")
+            # Import the global ai_agent_manager
+            from ai_system.ai_agents import ai_agent_manager
+
+            # Get the default agent from the manager
+            default_agent = ai_agent_manager.get_agent()
+            if default_agent:
+                agent_name = default_agent.config.display_name
+                agent_type = default_agent.config.agent_type
                 return f"{agent_name} ({agent_type})"
             else:
-                return "No AI agent configured"
-        except Exception:
-            return "AI agent detection failed"
+                # Check if there are any configured agents
+                available_agents = ai_agent_manager.list_available_agents()
+                if available_agents:
+                    return f"Agents configured but none available: {', '.join(available_agents)}"
+                else:
+                    all_agents = ai_agent_manager.list_agents()
+                    if all_agents:
+                        return f"Agents configured but unavailable: {', '.join(all_agents)}"
+                    else:
+                        return "No AI agents configured"
+        except Exception as e:
+            return f"AI agent detection failed: {str(e)}"
 
     def _restart_vllm_support_services_no_spinner(self, display_name: str) -> bool:
-        """Restart vllm-proxy and mcp-vllm-delegator services without spinners"""
+        """Restart sys-services-vllm-proxy and mcp-vllm-delegator services without spinners"""
         verbose_print(
             f"[cyan]restart_vllm_support_services_no_spinner called for {display_name}[/cyan]"
         )
 
-        # Stop vllm-proxy using systemctl
-        console.print("[green]Stopping vllm-proxy...[/green]")
+        # Stop sys-services-vllm-proxy using systemctl
+        console.print("[green]Stopping sys-services-vllm-proxy...[/green]")
         stop_result = self.service_manager.stop_service(
-            "vllm-proxy.service", "vllm-proxy", quiet=True
+            "sys-services-vllm-proxy.service", "sys-services-vllm-proxy", quiet=True
         )
         if stop_result.returncode == 0:
-            console.print("[green]  Stopped vllm-proxy[/green]")
+            console.print("[green]  Stopped sys-services-vllm-proxy[/green]")
         else:
             console.print(
-                "[yellow]  vllm-proxy was not running or failed to stop[/yellow]"
+                "[yellow]  sys-services-vllm-proxy was not running or failed to stop[/yellow]"
             )
         console.print()
 
-        # Start vllm-proxy using systemctl
-        console.print("[green]Starting vllm-proxy...[/green]")
+        # Start sys-services-vllm-proxy using systemctl
+        console.print("[green]Starting sys-services-vllm-proxy...[/green]")
         start_result = self.service_manager.start_service(
-            "vllm-proxy.service", "vllm-proxy", quiet=False
+            "sys-services-vllm-proxy.service", "sys-services-vllm-proxy", quiet=False
         )
         if start_result.returncode == 0:
-            console.print("[green]  Started vllm-proxy[/green]")
+            console.print("[green]  Started sys-services-vllm-proxy[/green]")
         else:
-            console.print("[red]  Failed to start vllm-proxy[/red]")
+            console.print("[red]  Failed to start sys-services-vllm-proxy[/red]")
             return False
+        console.print()
+        console.print()
 
         # Start mcp-vllm-delegator using systemctl
         console.print("[green]Starting mcp-vllm-delegator...[/green]")

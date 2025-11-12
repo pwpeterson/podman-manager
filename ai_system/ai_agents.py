@@ -412,20 +412,14 @@ class AIAgentManager:
     def _find_default_agent(self) -> Optional[str]:
         """Find the best default agent"""
         # Try to load fallback order from config file
-        fallback_order = [
-            "vllm-qwen25",
-            "claude-sonnet",
-            "gpt-4",
-        ]  # Default fallback order
+        fallback_order = []
 
         if self.config_file.exists():
             try:
                 with open(self.config_file, "r") as f:
                     config_data = json.load(f)
                     agent_preferences = config_data.get("agent_preferences", {})
-                    fallback_order = agent_preferences.get(
-                        "fallback_order", fallback_order
-                    )
+                    fallback_order = agent_preferences.get("fallback_order", [])
             except (json.JSONDecodeError, IOError):
                 pass
 
@@ -434,7 +428,7 @@ class AIAgentManager:
             if agent_name in self.agents and self.agents[agent_name].is_available():
                 return agent_name
 
-        # If none from fallback order are available, prefer local agents first
+        # If no fallback order or none available, prefer local agents first
         local_agents = [
             name
             for name, agent in self.agents.items()
@@ -478,15 +472,22 @@ class AIAgentManager:
                 # Load default agent if specified and available
                 saved_default = config_data.get("default_agent")
                 if saved_default and saved_default in self.agents:
-                    self.default_agent = saved_default
-                    # If saved default is not available, fall back to auto-selection
-                    if not self.agents[saved_default].is_available():
+                    # Check if the saved default is available
+                    if self.agents[saved_default].is_available():
+                        self.default_agent = saved_default
+                    else:
+                        # If saved default is not available, fall back to auto-selection
                         self.default_agent = self._find_default_agent()
+                else:
+                    # If no saved default or agent doesn't exist, use auto-selection
+                    self.default_agent = self._find_default_agent()
 
             except (json.JSONDecodeError, IOError) as e:
                 console.print(
                     f"[yellow]Warning: Could not load AI config: {e}[/yellow]"
                 )
+                # Fall back to auto-selection on error
+                self.default_agent = self._find_default_agent()
 
     def _save_persistent_config(self) -> None:
         """Save persistent configuration to file"""
