@@ -831,8 +831,11 @@ class VLLMModelManager:
                         # Format is: "container_name    port_mappings"
                         parts = line.split("\t")
                         if len(parts) >= 1:
-                            container_name = parts[0].strip()
-                            if container_name:
+                            raw_container_name = parts[0].strip()
+                            if raw_container_name:
+                                # Remove port mapping info like '0.0.0.0:8005->8005/tcp' from container name
+                                # Container name should be everything before any spaces or port info
+                                container_name = raw_container_name.split()[0].strip()
                                 verbose_print(
                                     f"[cyan]Found container using port {self.vllm_port}: {container_name}[/cyan]"
                                 )
