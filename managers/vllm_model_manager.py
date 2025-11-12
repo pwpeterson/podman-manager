@@ -805,46 +805,31 @@ class VLLMModelManager:
     def _find_current_vllm_container(self) -> Optional[str]:
         """Find the currently running vLLM container using port 8005"""
         try:
-            # Method 1: Check all vLLM containers and inspect their network settings (most reliable)
-            container_name = self._find_vllm_container_by_inspection()
-            if container_name:
-                verbose_print(
-                    f"[cyan]Found vLLM container by inspection: {container_name}[/cyan]"
-                )
-                return container_name
-
-            # Method 2: Check running containers with port mapping
-            cmd = ["podman", "ps", "--format", "{{.Names}}\t{{.Ports}}"]
+            # Simplified and faster detection: Check running vLLM containers first
+            cmd = ["podman", "ps", "--filter", "name=vllm", "--format", "{{.Names}}"]
             result = subprocess.run(
-                cmd, capture_output=True, text=True, check=True, timeout=10
+                cmd, capture_output=True, text=True, check=True, timeout=5
             )
 
+            running_vllm_containers = []
             for line in result.stdout.strip().split("\n"):
-                if line.strip():
-                    parts = line.split("\t")
-                    if len(parts) >= 2:
-                        container_name = parts[0].strip()
-                        ports = parts[1].strip()
+                container_name = line.strip()
+                # Exclude vllm-proxy as it's not a vLLM model container
+                if container_name and container_name != "vllm-proxy":
+                    running_vllm_containers.append(container_name)
 
-                        # Check if this is a vLLM container using port 8005
-                        if "vllm" in container_name.lower() and (
-                            "8005" in ports or "0.0.0.0:8005" in ports
-                        ):
-                            verbose_print(
-                                f"[cyan]Found vLLM container using port 8005: {container_name}[/cyan]"
-                            )
-                            return container_name
-
-            # Method 3: Use process enumeration (with timeout protection)
-            container_name = self._find_container_by_port_process()
-            if container_name:
-                verbose_print(
-                    f"[cyan]Found vLLM container by process: {container_name}[/cyan]"
-                )
-                return container_name
+            # Check which one is using port 8005 (simplified check)
+            for container_name in running_vllm_containers:
+                if self._is_port_in_use(self.vllm_port):
+                    # Quick port check - if port 8005 is in use and we have a running vLLM container,
+                    # it's likely the active one
+                    verbose_print(
+                        f"[cyan]Found active vLLM container: {container_name} (port {self.vllm_port} in use)[/cyan]"
+                    )
+                    return container_name
 
             verbose_print(
-                f"[cyan]No vLLM container found using port {self.vllm_port}[/cyan]"
+                f"[cyan]No active vLLM container found (port {self.vllm_port} not in use)[/cyan]"
             )
             return None
 
