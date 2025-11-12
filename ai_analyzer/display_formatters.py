@@ -397,7 +397,6 @@ class InteractiveAnalysisHandler:
         self.original_prompt = None
         self.original_analysis_result = None
         self._collected_data = None
-        self._setup_keyboard_handler()
 
     def set_context(self, original_prompt: str, original_analysis_result: str) -> None:
         """Set context from original analysis"""
@@ -417,13 +416,13 @@ class InteractiveAnalysisHandler:
             "[bright_yellow]Ask follow-up questions about the analysis.[/bright_yellow]"
         )
         console.print(
-            "[dim]Type your question (can be multiple lines). Type 'submit' on a new line to submit, or press Enter with no input to exit.[/dim]"
+            "[dim]Type your question and press Enter to submit, or press Enter with no input to exit.[/dim]"
         )
 
         while True:
             try:
                 console.print("\n[bold yellow]==>[/bold yellow] ", end="")
-                user_input = self._read_multiline_input()
+                user_input = self._read_single_line_input()
 
                 if not user_input or not user_input.strip():
                     break
@@ -469,201 +468,13 @@ class InteractiveAnalysisHandler:
         console.print(f"[green]AI analysis for {display_name} completed[/green]")
         console.print()
 
-    def _setup_keyboard_handler(self) -> None:
-        """Setup keyboard handling for interactive input"""
+    def _read_single_line_input(self) -> str:
+        """Read single line input - Enter to submit, empty line to exit"""
         try:
-            import termios  # noqa: F401
-            import tty  # noqa: F401
-
-            self._has_termios = True
-        except ImportError:
-            # Windows or system without termios
-            self._has_termios = False
-
-    def _read_multiline_input(self) -> str:
-        """Read multi-line input with keyboard shortcuts (submit to submit, ^z to exit)"""
-        # Use the simple approach for better reliability
-        return self._read_simple_multiline()
-
-    def _read_simple_multiline(self) -> str:
-        """Simple multiline input using standard input without raw mode"""
-        lines = []
-
-        try:
-            while True:
-                try:
-                    line = input()
-
-                    # Check for empty line first (most common case)
-                    if line.strip() == "":
-                        if not lines:
-                            # Empty line with no content, exit immediately
-                            return ""
-                        else:
-                            # Empty line with existing content, continue collecting input
-                            lines.append(line)
-                            continue
-
-                    # Check for exit command
-                    if line.strip() == "^z" or line.strip().lower() in [
-                        "quit",
-                        "exit",
-                        "q",
-                    ]:
-                        # Clear any shell job control messages
-                        import sys
-
-                        sys.stdout.write("\r\033[K")  # Clear current line
-                        sys.stdout.flush()
-                        console.print("[dim]Exiting interactive analysis...[/dim]")
-                        return ""
-
-                    # Check for submit command
-                    if line.strip().lower() in ["^enter", "submit", "send"]:
-                        if lines:
-                            console.print("[dim]Submitting question...[/dim]")
-                            # Strip trailing whitespace from each line
-                            cleaned_lines = [line.rstrip() for line in lines]
-                            return "\n".join(cleaned_lines).strip()
-                        else:
-                            console.print(
-                                "[yellow]No question entered. Press Enter with no input to exit.[/yellow]"
-                            )
-                            continue
-
-                    # Add line to input
-                    lines.append(line)
-
-                except EOFError:
-                    # Handle Ctrl+D
-                    # Clear any shell job control messages
-                    import sys
-
-                    sys.stdout.write("\r\033[K")  # Clear current line
-                    sys.stdout.flush()
-
-                    if lines:
-                        console.print("[dim]Submitting question...[/dim]")
-                        cleaned_lines = [line.rstrip() for line in lines]
-                        return "\n".join(cleaned_lines).strip()
-                    else:
-                        console.print("[dim]Exiting interactive analysis...[/dim]")
-                        return ""
-
-        except KeyboardInterrupt:
-            # Clear any shell job control messages
-            import sys
-
-            sys.stdout.write("\r\033[K")  # Clear current line
-            sys.stdout.flush()
-            console.print("\n[dim]Interactive analysis interrupted.[/dim]")
+            user_input = input().strip()
+            return user_input
+        except (KeyboardInterrupt, EOFError):
             return ""
-
-    def _read_with_termios(self) -> str:
-        """Read input using termios for proper keyboard handling (Unix/Linux/macOS)"""
-        import sys
-        import termios
-        import tty
-
-        lines = []
-        current_line = ""
-
-        # Save terminal settings
-        old_settings = termios.tcgetattr(sys.stdin)
-
-        try:
-            # Set terminal to raw mode for character-by-character input
-            tty.setraw(sys.stdin.fileno())
-
-            while True:
-                char = sys.stdin.read(1)
-
-                # Handle Ctrl+Z (exit)
-                if ord(char) == 26:  # Ctrl+Z
-                    console.print("\n[dim]Exiting interactive analysis...[/dim]")
-                    return ""
-
-                # Handle Enter (new line) - check for Ctrl+Enter combination
-                elif ord(char) == 13 or ord(char) == 10:  # Enter/Return or LF
-                    # If this is just Enter with no content and no existing lines, exit
-                    if not current_line.strip() and not lines:
-                        return ""
-
-                    lines.append(current_line)
-                    current_line = ""
-                    sys.stdout.write("\n")
-                    sys.stdout.flush()
-
-                # Handle Backspace
-                elif ord(char) == 127:  # Backspace
-                    if current_line:
-                        current_line = current_line[:-1]
-                        # Move cursor back, print space, move back again
-                        sys.stdout.write("\b \b")
-                        sys.stdout.flush()
-
-                # Handle Ctrl+C (interrupt)
-                elif ord(char) == 3:  # Ctrl+C
-                    raise KeyboardInterrupt
-
-                # Handle regular characters (printable ASCII)
-                elif 32 <= ord(char) <= 126:
-                    current_line += char
-                    sys.stdout.write(char)
-                    sys.stdout.flush()
-
-        except KeyboardInterrupt:
-            console.print("\n[dim]Interactive analysis interrupted.[/dim]")
-            return ""
-        finally:
-            # Restore terminal settings
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-
-    def _read_fallback(self) -> str:
-        """Fallback input method for systems without termios (Windows)"""
-        console.print(
-            "[dim]Note: Using fallback input mode. Type your question and press Enter twice to submit, or type 'quit' to exit.[/dim]"
-        )
-
-        lines = []
-        empty_line_count = 0
-
-        while True:
-            try:
-                line = input()
-
-                # Check for quit command
-                if line.strip().lower() in ["quit", "exit", "q"]:
-                    console.print("[dim]Exiting interactive analysis...[/dim]")
-                    return ""
-
-                # Check for empty line (potential submit)
-                if not line.strip():
-                    empty_line_count += 1
-                    if empty_line_count >= 2 and lines:
-                        # Two empty lines in a row with content = submit
-                        console.print("[dim]Submitting question...[/dim]")
-                        # Strip trailing whitespace from each line to prevent formatting issues
-                        cleaned_lines = [line.rstrip() for line in lines]
-                        return "\n".join(cleaned_lines).strip()
-                    elif empty_line_count >= 2:
-                        console.print(
-                            "[yellow]No question entered. Type 'quit' to exit.[/yellow]"
-                        )
-                        console.print("[bold yellow]==>[/bold yellow] ", end="")
-                        empty_line_count = 0
-                        continue
-                else:
-                    empty_line_count = 0
-                    lines.append(line)
-
-            except (KeyboardInterrupt, EOFError):
-                console.print("\n[dim]Interactive analysis interrupted.[/dim]")
-                return ""
-
-        # Strip trailing whitespace from each line to prevent formatting issues
-        cleaned_lines = [line.rstrip() for line in lines]
-        return "\n".join(cleaned_lines).strip()
 
     def _process_followup_question(
         self, analysis_type: str, target: str, question: str, verbose: bool = False
