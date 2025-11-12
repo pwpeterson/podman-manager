@@ -832,9 +832,8 @@ class VLLMModelManager:
                         parts = line.split("\t")
                         if len(parts) >= 1:
                             container_name = parts[0].strip()
-                            # Exclude vllm-proxy and mcp-vllm-delegator as they're not vLLM model containers
+                            # Exclude proxy and delegator containers as they're not vLLM model containers
                             if container_name and container_name not in [
-                                "vllm-proxy",
                                 "mcp-vllm-delegator",
                                 "sys-services-vllm-proxy",
                             ]:
