@@ -67,7 +67,7 @@ if all_container_statuses:  # If podman responded
     # Check exact match
     if service_name in all_container_statuses:
         return self._format_status(all_container_statuses[service_name])
-    
+
     # Check variations and partial matches
     for variation in variations:
         if variation in all_container_statuses:

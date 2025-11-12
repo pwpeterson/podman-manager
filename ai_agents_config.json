@@ -11,11 +11,11 @@
   },
   "agents": [
     {
-      "name": "vllm-qwen25",
+      "name": "vllm-qwen25-coder-32b",
       "display_name": "Qwen2.5 Coder 32B (Local)",
       "agent_type": "local_vllm",
       "endpoint": "http://localhost:8002:8002",
-      "model_name": "vllm-qwen25-coder-32b-instruct-awq",
+      "model_name": "vllm-qwen25-coder-32b",
       "api_key_env": null,
       "max_tokens": 2048,
       "temperature": 0.1,

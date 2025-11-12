@@ -518,7 +518,7 @@ class VLLMModelManager:
             return False
 
     def get_available_vllm_models(self) -> list:
-        """Get list of available vLLM model containers"""
+        """Get list of available vLLM model containers (excluding vllm-proxy)"""
         try:
             # List all containers with vllm in the name
             cmd = [
@@ -534,8 +534,13 @@ class VLLMModelManager:
 
             containers = []
             for line in result.stdout.strip().split("\n"):
-                if line.strip() and line.strip() != self.proxy_container:
-                    containers.append(line.strip())
+                container_name = line.strip()
+                # Exclude vllm-proxy and mcp-vllm-delegator as they are not vLLM model containers
+                if container_name and container_name not in [
+                    "vllm-proxy",
+                    "mcp-vllm-delegator",
+                ]:
+                    containers.append(container_name)
 
             return containers
         except subprocess.CalledProcessError:
@@ -910,8 +915,11 @@ class VLLMModelManager:
                         container_name = parts[0].strip()
                         container_id = parts[1].strip()
 
-                        # Check if this container contains our process
-                        if "vllm" in container_name.lower():
+                        # Check if this container contains our process (exclude vllm-proxy)
+                        if (
+                            "vllm" in container_name.lower()
+                            and container_name != "vllm-proxy"
+                        ):
                             inspect_cmd = [
                                 "podman",
                                 "inspect",
@@ -946,7 +954,7 @@ class VLLMModelManager:
             return False
 
     def _find_vllm_container_by_inspection(self) -> Optional[str]:
-        """Find vLLM container by inspecting all vLLM containers"""
+        """Find vLLM container by inspecting all vLLM containers (excluding vllm-proxy)"""
         try:
             # Get all containers (running and stopped) with vllm in the name
             cmd = [
@@ -970,30 +978,21 @@ class VLLMModelManager:
                         container_name = parts[0].strip()
                         status = parts[1].strip()
 
-                        if "Up" in status or "running" in status.lower():
+                        # Exclude vllm-proxy as it's not a vLLM model container (uses port 8002, not 8005)
+                        if (
+                            "Up" in status or "running" in status.lower()
+                        ) and container_name != "vllm-proxy":
                             running_vllm_containers.append(container_name)
 
-            # If only one vLLM container is running, assume it's using port 8005
-            if len(running_vllm_containers) == 1:
-                verbose_print(
-                    f"[cyan]Found single running vLLM container: {running_vllm_containers[0]}[/cyan]"
-                )
-                return running_vllm_containers[0]
-            elif len(running_vllm_containers) > 1:
-                # Multiple vLLM containers running, try to determine which one is using port 8005
-                for container_name in running_vllm_containers:
-                    if self._container_uses_port(container_name, self.vllm_port):
-                        verbose_print(
-                            f"[cyan]Found vLLM container using port 8005: {container_name}[/cyan]"
-                        )
-                        return container_name
+            # Check each container to see which one is actually using port 8005
+            for container_name in running_vllm_containers:
+                if self._container_uses_port(container_name, self.vllm_port):
+                    verbose_print(
+                        f"[cyan]Found vLLM container using port 8005: {container_name}[/cyan]"
+                    )
+                    return container_name
 
-                # If we can't determine which one, return the first one
-                verbose_print(
-                    f"[cyan]Multiple vLLM containers running, using first: {running_vllm_containers[0]}[/cyan]"
-                )
-                return running_vllm_containers[0]
-
+            # If no container is using port 8005, return None
             return None
         except subprocess.CalledProcessError:
             return None
