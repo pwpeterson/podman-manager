@@ -832,11 +832,7 @@ class VLLMModelManager:
                         parts = line.split("\t")
                         if len(parts) >= 1:
                             container_name = parts[0].strip()
-                            # Exclude proxy and delegator containers as they're not vLLM model containers
-                            if container_name and container_name not in [
-                                "mcp-vllm-delegator",
-                                "sys-services-vllm-proxy",
-                            ]:
+                            if container_name:
                                 verbose_print(
                                     f"[cyan]Found container using port {self.vllm_port}: {container_name}[/cyan]"
                                 )
