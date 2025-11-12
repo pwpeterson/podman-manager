@@ -1,8 +1,11 @@
 """Monitoring and display functionality for reinit operations."""
 
+import subprocess
 import time
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+from rich.live import Live
+from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
@@ -220,3 +223,281 @@ class ReinitMonitor:
 
         except Exception as e:
             console.print(f"[yellow]Pre-reinit AI analysis failed: {e}[/yellow]")
+
+    def monitor_service_stopping(self, target: str, timeout: int = 30) -> bool:
+        """Monitor a service during the stopping process with real-time feedback."""
+        console.print(f"[yellow]🛑 Monitoring service stopping: {target}[/yellow]")
+
+        service_name = self.manager._find_service_name(target)
+        if not service_name or service_name.startswith("STACK:"):
+            service_name = target
+
+        start_time = time.time()
+
+        # Create a live display for real-time monitoring
+        with Live(
+            self._create_stopping_status_panel(service_name, "Initiating stop...", 0),
+            console=console,
+            refresh_per_second=2,
+        ) as live:
+
+            while time.time() - start_time < timeout:
+                try:
+                    # Check service status
+                    status_info = self._get_service_stopping_status(service_name)
+                    elapsed = time.time() - start_time
+
+                    # Update the live display
+                    live.update(
+                        self._create_stopping_status_panel(
+                            service_name, status_info["status"], elapsed, status_info
+                        )
+                    )
+
+                    # Check if service has stopped
+                    if status_info["stopped"]:
+                        console.print(
+                            f"[green]✅ Service {service_name} stopped successfully in {elapsed:.1f}s[/green]"
+                        )
+                        return True
+
+                    # Check if service is stuck
+                    if status_info["stuck"]:
+                        console.print(
+                            f"[red]⚠️  Service {service_name} appears stuck during stopping[/red]"
+                        )
+                        return False
+
+                    time.sleep(0.5)  # Check every 500ms
+
+                except Exception as e:
+                    console.print(f"[red]Error monitoring service stopping: {e}[/red]")
+                    return False
+
+        # Timeout reached
+        console.print(
+            f"[red]⏰ Timeout reached waiting for {service_name} to stop[/red]"
+        )
+        return False
+
+    def _get_service_stopping_status(self, service_name: str) -> Dict[str, Any]:
+        """Get detailed status of a service during stopping process."""
+        try:
+            # Check systemctl status
+            result = subprocess.run(
+                ["systemctl", "--user", "status", service_name],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            status_output = result.stdout.lower()
+
+            # Determine current state
+            if "inactive (dead)" in status_output:
+                return {
+                    "status": "Stopped",
+                    "stopped": True,
+                    "stuck": False,
+                    "details": "Service successfully stopped",
+                }
+            elif "deactivating" in status_output:
+                return {
+                    "status": "Deactivating",
+                    "stopped": False,
+                    "stuck": False,
+                    "details": "Service is deactivating",
+                }
+            elif "stop-sigterm" in status_output:
+                return {
+                    "status": "Sending SIGTERM",
+                    "stopped": False,
+                    "stuck": False,
+                    "details": "Graceful shutdown in progress",
+                }
+            elif "stop-sigkill" in status_output:
+                return {
+                    "status": "Sending SIGKILL",
+                    "stopped": False,
+                    "stuck": True,
+                    "details": "Force killing service",
+                }
+            elif "active (running)" in status_output:
+                return {
+                    "status": "Still Running",
+                    "stopped": False,
+                    "stuck": False,
+                    "details": "Service still active",
+                }
+            elif "failed" in status_output:
+                return {
+                    "status": "Failed",
+                    "stopped": True,
+                    "stuck": False,
+                    "details": "Service failed during stop",
+                }
+            else:
+                return {
+                    "status": "Unknown State",
+                    "stopped": False,
+                    "stuck": False,
+                    "details": "Unable to determine state",
+                }
+
+        except subprocess.TimeoutExpired:
+            return {
+                "status": "Status Check Timeout",
+                "stopped": False,
+                "stuck": True,
+                "details": "systemctl command timed out",
+            }
+        except Exception as e:
+            return {
+                "status": "Error",
+                "stopped": False,
+                "stuck": False,
+                "details": f"Status check failed: {str(e)[:50]}...",
+            }
+
+    def _create_stopping_status_panel(
+        self,
+        service_name: str,
+        status: str,
+        elapsed: float,
+        status_info: Optional[Dict] = None,
+    ) -> Panel:
+        """Create a rich panel showing service stopping status."""
+
+        # Create status content
+        content_lines = [
+            f"Service: [bold cyan]{service_name}[/bold cyan]",
+            f"Status: [yellow]{status}[/yellow]",
+            f"Elapsed: [dim]{elapsed:.1f}s[/dim]",
+        ]
+
+        if status_info and "details" in status_info:
+            content_lines.append(f"Details: [dim]{status_info['details']}[/dim]")
+
+        # Add progress indicators based on status
+        if status_info:
+            if status_info["stopped"]:
+                content_lines.append("[green]✅ Service stopped[/green]")
+            elif status_info["stuck"]:
+                content_lines.append("[red]⚠️  Service appears stuck[/red]")
+            else:
+                content_lines.append("[yellow]⏳ Stopping in progress...[/yellow]")
+
+        content = "\n".join(content_lines)
+
+        return Panel(
+            content,
+            title="[bold]Service Stopping Monitor[/bold]",
+            border_style="yellow",
+            padding=(1, 2),
+        )
+
+    def monitor_container_stopping(self, target: str, timeout: int = 30) -> bool:
+        """Monitor container during stopping process."""
+        console.print(f"[yellow]🐳 Monitoring container stopping: {target}[/yellow]")
+
+        try:
+            from core.simple_fuzzy_matcher import find_container
+
+            container = find_container(target)
+
+            if not container:
+                console.print(f"[red]Container not found for {target}[/red]")
+                return False
+
+            container_name = container["name"]
+            start_time = time.time()
+
+            with Live(
+                self._create_container_stopping_panel(
+                    container_name, "Initiating stop...", 0
+                ),
+                console=console,
+                refresh_per_second=2,
+            ) as live:
+
+                while time.time() - start_time < timeout:
+                    try:
+                        # Check container status
+                        result = subprocess.run(
+                            [
+                                "podman",
+                                "ps",
+                                "-a",
+                                "--format",
+                                "{{.Names}} {{.Status}}",
+                                "--filter",
+                                f"name={container_name}",
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                        )
+
+                        elapsed = time.time() - start_time
+
+                        if result.returncode == 0 and result.stdout.strip():
+                            status_line = result.stdout.strip()
+
+                            if "Exited" in status_line:
+                                console.print(
+                                    f"[green]✅ Container {container_name} stopped in {elapsed:.1f}s[/green]"
+                                )
+                                return True
+                            elif "Up" in status_line:
+                                live.update(
+                                    self._create_container_stopping_panel(
+                                        container_name, "Still running", elapsed
+                                    )
+                                )
+                            else:
+                                live.update(
+                                    self._create_container_stopping_panel(
+                                        container_name, "Stopping", elapsed
+                                    )
+                                )
+                        else:
+                            console.print(
+                                f"[green]✅ Container {container_name} stopped (not found in ps)[/green]"
+                            )
+                            return True
+
+                        time.sleep(0.5)
+
+                    except Exception as e:
+                        console.print(f"[red]Error monitoring container: {e}[/red]")
+                        return False
+
+            console.print(
+                f"[red]⏰ Timeout waiting for container {container_name} to stop[/red]"
+            )
+            return False
+
+        except Exception as e:
+            console.print(f"[red]Error setting up container monitoring: {e}[/red]")
+            return False
+
+    def _create_container_stopping_panel(
+        self, container_name: str, status: str, elapsed: float
+    ) -> Panel:
+        """Create a rich panel showing container stopping status."""
+
+        content = "\n".join(
+            [
+                f"Container: [bold cyan]{container_name}[/bold cyan]",
+                f"Status: [yellow]{status}[/yellow]",
+                f"Elapsed: [dim]{elapsed:.1f}s[/dim]",
+                "[yellow]⏳ Stopping in progress...[/yellow]",
+            ]
+        )
+
+        return Panel(
+            content,
+            title="[bold]Container Stopping Monitor[/bold]",
+            border_style="blue",
+            padding=(1, 2),
+        )

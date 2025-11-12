@@ -199,17 +199,58 @@ class HealthChecker:
     def _check_network_connectivity(self, target: str) -> Dict[str, str]:
         """Check network connectivity for services that need it."""
         try:
-            # For vLLM services, check if ports are available
-            if "vllm" in target.lower():
+            # Check ports based on specific service types
+            if "vllm" in target.lower() and target not in [
+                "vllm-proxy",
+                "mcp-vllm-delegator",
+            ]:
                 import socket
 
-                # Check if vLLM port 8005 is available or properly used
+                # vLLM model services use port 8005
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     result = s.connect_ex(("localhost", 8005))
                     if result == 0:
-                        return {"status": "info", "details": "vLLM port 8005 in use"}
+                        return {
+                            "status": "info",
+                            "details": "vLLM model port 8005 in use",
+                        }
                     else:
-                        return {"status": "good", "details": "vLLM port 8005 available"}
+                        return {
+                            "status": "good",
+                            "details": "vLLM model port 8005 available",
+                        }
+            elif target == "vllm-proxy":
+                import socket
+
+                # vllm-proxy uses port 8002
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    result = s.connect_ex(("localhost", 8002))
+                    if result == 0:
+                        return {
+                            "status": "info",
+                            "details": "vLLM proxy port 8002 in use",
+                        }
+                    else:
+                        return {
+                            "status": "good",
+                            "details": "vLLM proxy port 8002 available",
+                        }
+            elif target == "mcp-vllm-delegator":
+                import socket
+
+                # mcp-vllm-delegator uses port 8003
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    result = s.connect_ex(("localhost", 8003))
+                    if result == 0:
+                        return {
+                            "status": "info",
+                            "details": "MCP vLLM delegator port 8003 in use",
+                        }
+                    else:
+                        return {
+                            "status": "good",
+                            "details": "MCP vLLM delegator port 8003 available",
+                        }
 
             return {"status": "good", "details": "Network connectivity OK"}
 
@@ -303,28 +344,76 @@ class HealthChecker:
 
             # Check if container is running
             if container["status"] == "running":
-                # For vLLM services, check if they're responding
-                if "vllm" in target.lower():
+                # For different service types, check appropriate health endpoints
+                if target == "mcp-vllm-delegator":
                     try:
                         import requests
 
+                        response = requests.get(
+                            "http://localhost:8003/health", timeout=5
+                        )
+                        if response.status_code == 200:
+                            return {
+                                "status": "good",
+                                "details": "MCP vLLM delegator healthy and responding",
+                            }
+                        else:
+                            return {
+                                "status": "warning",
+                                "details": "MCP vLLM delegator running but not responding",
+                            }
+                    except Exception:
+                        return {
+                            "status": "info",
+                            "details": "MCP vLLM delegator running (health check unavailable)",
+                        }
+                elif "vllm" in target.lower() and target not in [
+                    "vllm-proxy",
+                    "mcp-vllm-delegator",
+                ]:
+                    try:
+                        import requests
+
+                        # vLLM model services use port 8005
                         response = requests.get(
                             "http://localhost:8005/health", timeout=5
                         )
                         if response.status_code == 200:
                             return {
                                 "status": "good",
-                                "details": "Container healthy and responding",
+                                "details": "vLLM model service healthy and responding",
                             }
                         else:
                             return {
                                 "status": "warning",
-                                "details": "Container running but not responding",
+                                "details": "vLLM model service running but not responding",
                             }
                     except Exception:
                         return {
                             "status": "info",
-                            "details": "Container running (health check unavailable)",
+                            "details": "vLLM model service running (health check unavailable)",
+                        }
+                elif target == "vllm-proxy":
+                    try:
+                        import requests
+
+                        response = requests.get(
+                            "http://localhost:8002/health", timeout=5
+                        )
+                        if response.status_code == 200:
+                            return {
+                                "status": "good",
+                                "details": "vLLM proxy healthy and responding",
+                            }
+                        else:
+                            return {
+                                "status": "warning",
+                                "details": "vLLM proxy running but not responding",
+                            }
+                    except Exception:
+                        return {
+                            "status": "info",
+                            "details": "vLLM proxy running (health check unavailable)",
                         }
                 else:
                     return {"status": "good", "details": "Container running normally"}

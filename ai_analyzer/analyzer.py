@@ -366,23 +366,26 @@ class AIAnalyzer:
             console.print("[red]No AI agents available[/red]")
             return None
 
+        # Show which agents we're trying
+        console.print("[cyan]🤖 AI Agent Selection:[/cyan]")
+
         # Check if the agent is available before announcing it
         if not agent.is_available():
             # Show that the preferred agent is not available
             if agent_name:
                 console.print(
-                    f"[yellow]Requested AI agent '{agent.config.display_name}' is not available.[/yellow]"
+                    f"  [red]❌[/red] {agent.config.display_name} - [yellow]Not available (requested)[/yellow]"
                 )
             else:
                 console.print(
-                    f"[yellow]Default AI agent '{agent.config.display_name}' is not available.[/yellow]"
+                    f"  [red]❌[/red] {agent.config.display_name} - [yellow]Not available (default)[/yellow]"
                 )
 
-            # Try to find an available fallback agent
-            fallback_agent = self._find_fallback_agent(agent.config.name)
+            # Try to find an available fallback agent with detailed logging
+            fallback_agent = self._find_fallback_agent_with_logging(agent.config.name)
             if fallback_agent:
                 console.print(
-                    f"[green]Falling back to {fallback_agent.config.display_name}...[/green]"
+                    f"  [green]✅[/green] {fallback_agent.config.display_name} - [green]Selected for analysis[/green]"
                 )
                 console.print()
                 agent = fallback_agent
@@ -391,7 +394,9 @@ class AIAnalyzer:
                 return None
         else:
             # Show which agent we're using (only if it's available)
-            console.print(f"[green]Using AI agent: {agent.config.display_name}[/green]")
+            console.print(
+                f"  [green]✅[/green] {agent.config.display_name} - [green]Selected for analysis[/green]"
+            )
             console.print()
 
         # Use the agent (either original or fallback)
@@ -409,28 +414,66 @@ class AIAnalyzer:
             console.print(f"[red]AI analysis failed: {e}[/red]")
             return None
 
-    def _find_fallback_agent(self, failed_agent_name: str) -> Optional[Any]:
-        """Find an available fallback agent"""
-        # Get fallback order from config or use default
-        fallback_order = [
-            "vllm-qwen25",
-            "claude-sonnet",
-            "gpt-4",
-            "claude-haiku",
-            "gpt-3.5-turbo",
-        ]
+    def _find_fallback_agent_with_logging(
+        self, failed_agent_name: str
+    ) -> Optional[Any]:
+        """Find an available fallback agent with detailed logging"""
+        # Get fallback order from agent manager config or use configured agents
+        try:
+            # Try to get fallback order from ai_agents_config.json
+            import json
+            from pathlib import Path
+
+            config_file = Path("ai_agents_config.json")
+            if config_file.exists():
+                with open(config_file, "r") as f:
+                    config_data = json.load(f)
+                    fallback_order = config_data.get("agent_preferences", {}).get(
+                        "fallback_order", []
+                    )
+            else:
+                fallback_order = []
+
+            # If no fallback order in config, use all configured agents
+            if not fallback_order:
+                fallback_order = list(ai_agent_manager.agents.keys())
+
+        except Exception:
+            # Fallback to hardcoded list if config reading fails
+            fallback_order = [
+                "vllm-qwen25",
+                "claude-sonnet",
+                "gpt-4",
+                "claude-haiku",
+                "gpt-3.5-turbo",
+            ]
 
         # Remove the failed agent from fallback order
         if failed_agent_name in fallback_order:
             fallback_order.remove(failed_agent_name)
 
-        # Try each agent in fallback order
+        # Try each agent in fallback order with logging
         for agent_name in fallback_order:
             agent = ai_agent_manager.get_agent(agent_name)
-            if agent and agent.is_available():
-                return agent
+            if agent:
+                if agent.is_available():
+                    console.print(
+                        f"  [green]✅[/green] {agent.config.display_name} - [green]Available (fallback)[/green]"
+                    )
+                    return agent
+                else:
+                    # Show more detailed reason for unavailability
+                    reason = self._get_unavailability_reason(agent)
+                    console.print(
+                        f"  [red]❌[/red] {agent.config.display_name} - [yellow]{reason}[/yellow]"
+                    )
+            else:
+                console.print(
+                    f"  [red]❌[/red] {agent_name} - [yellow]Agent not configured[/yellow]"
+                )
 
         # If no specific fallback found, try any available agent
+        console.print("  [cyan]Checking all configured agents...[/cyan]")
         available_agents = ai_agent_manager.list_available_agents()
         if available_agents:
             # Filter out the failed agent
@@ -438,6 +481,54 @@ class AIAnalyzer:
                 name for name in available_agents if name != failed_agent_name
             ]
             if available_agents:
-                return ai_agent_manager.get_agent(available_agents[0])
+                agent = ai_agent_manager.get_agent(available_agents[0])
+                if agent:
+                    console.print(
+                        f"  [green]✅[/green] {agent.config.display_name} - [green]Available (any available)[/green]"
+                    )
+                    return agent
 
+        console.print("  [red]❌[/red] No available AI agents found")
         return None
+
+    def _get_unavailability_reason(self, agent) -> str:
+        """Get a detailed reason why an agent is unavailable"""
+        try:
+            if agent.config.agent_type == "local_vllm":
+                if not agent.config.endpoint:
+                    return "No endpoint configured"
+                # Try to determine if it's a network issue or service down
+                import requests
+
+                try:
+                    response = requests.get(
+                        f"{agent.config.endpoint}/health", timeout=2
+                    )
+                    if response.status_code != 200:
+                        return f"Service unhealthy (HTTP {response.status_code})"
+                except requests.ConnectionError:
+                    return "Connection refused (service not running)"
+                except requests.Timeout:
+                    return "Connection timeout"
+                except Exception as e:
+                    return f"Network error: {str(e)[:30]}..."
+                return "Service check failed"
+            elif agent.config.agent_type in ["claude", "openai"]:
+                import os
+
+                api_key_env = agent.config.api_key_env or (
+                    "ANTHROPIC_API_KEY"
+                    if agent.config.agent_type == "claude"
+                    else "OPENAI_API_KEY"
+                )
+                if not os.getenv(api_key_env):
+                    return f"Missing {api_key_env} environment variable"
+                return "API key configured but service unavailable"
+            else:
+                return "Unknown agent type"
+        except Exception:
+            return "Not available"
+
+    def _find_fallback_agent(self, failed_agent_name: str) -> Optional[Any]:
+        """Find an available fallback agent (legacy method for compatibility)"""
+        return self._find_fallback_agent_with_logging(failed_agent_name)
