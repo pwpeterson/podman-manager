@@ -851,6 +851,7 @@ class CommandRouter:
 
     # Service lifecycle command handlers
     def _handle_reinit(self, args):
+        """Handle both standard and enhanced reinit commands."""
         # Make verbose mode the default for reinit unless --quiet is specified
         if not getattr(args, "quiet", False):
             set_verbose(True)
@@ -869,41 +870,36 @@ class CommandRouter:
         # Get vLLM model if specified
         vllm_model = getattr(args, "vllm_model", None)
 
-        # Get dry_run flag if specified
-        dry_run = getattr(args, "dry_run", False)
-
-        return self.try_with_fallback(
-            self.container_ops.reinit,
-            args.target,
-            build_type=build_type,
-            vllm_model=vllm_model,
-            dry_run=dry_run,
+        # Check if this is enhanced reinit (has enhanced-specific attributes)
+        is_enhanced = hasattr(args, "enable_ai_guidance") or hasattr(
+            args, "enable_retry"
         )
 
-    def _handle_enhanced_reinit(self, args):
-        """Handle enhanced reinit with proactive AI troubleshooting."""
-        # Make verbose mode the default for enhanced-reinit unless --quiet is specified
-        if not getattr(args, "quiet", False):
-            set_verbose(True)
+        if is_enhanced:
+            return self._handle_enhanced_reinit_logic(args, build_type, vllm_model)
         else:
-            self.handle_command_verbose(args)
+            # Standard reinit
+            dry_run = getattr(args, "dry_run", False)
+            return self.try_with_fallback(
+                self.container_ops.reinit,
+                args.target,
+                build_type=build_type,
+                vllm_model=vllm_model,
+                dry_run=dry_run,
+            )
 
+    def _handle_enhanced_reinit(self, args):
+        """Handle enhanced reinit - delegates to unified handler."""
+        return self._handle_reinit(args)
+
+    def _handle_enhanced_reinit_logic(self, args, build_type, vllm_model):
+        """Handle enhanced reinit logic with proactive AI troubleshooting."""
         try:
             from managers.reinit_manager import ReinitManager
 
             enhanced_manager = ReinitManager(self.manager)
 
-            # Determine build type
-            build_type = None
-            if getattr(args, "build", False):
-                build_type = "legacy"  # -b flag (backward compatibility)
-            elif getattr(args, "podman_build", False):
-                build_type = "podman"
-            elif getattr(args, "quadlet_build", False):
-                build_type = "quadlet"
-
-            # Get options
-            vllm_model = getattr(args, "vllm_model", None)
+            # Get enhanced options
             enable_ai_guidance = getattr(args, "enable_ai_guidance", True)
             enable_retry = getattr(args, "enable_retry", True)
 
@@ -958,7 +954,15 @@ class CommandRouter:
         except ImportError as e:
             console.print(f"[red]Enhanced reinit not available: {e}[/red]")
             console.print("[dim]Falling back to standard reinit...[/dim]")
-            return self._handle_reinit(args)
+            # Fall back to standard reinit
+            dry_run = getattr(args, "dry_run", False)
+            return self.try_with_fallback(
+                self.container_ops.reinit,
+                args.target,
+                build_type=build_type,
+                vllm_model=vllm_model,
+                dry_run=dry_run,
+            )
         except Exception as e:
             console.print(f"[red]Enhanced reinit failed: {e}[/red]")
             return False
