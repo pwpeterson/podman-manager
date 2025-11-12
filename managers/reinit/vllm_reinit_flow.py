@@ -233,9 +233,7 @@ class VLLMReinitFlow:
         container = find_container(target)
         container_name = container["name"] if container else target
 
-        console.print(
-            f"[red]{container_name} is running but is generating error messages.[/red]"
-        )
+        console.print(f"[red]{container_name} failed to start.[/red]")
         console.print("[dim]Starting AI failure analysis...[/dim]")
 
         try:
