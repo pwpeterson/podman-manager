@@ -38,9 +38,7 @@ class VLLMReinitFlow:
             return True
 
         # Detection step - find current active vLLM model
-        verbose_print(
-            f"[cyan]Starting vLLM container detection for {display_name}[/cyan]"
-        )
+        verbose_print("[cyan]Detecting active vLLM model using port 8005[/cyan]")
         current_container = self.vllm_manager._find_current_vllm_container()
         verbose_print(
             f"[cyan]Detection result: current_container = {current_container}[/cyan]"
