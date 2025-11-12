@@ -316,9 +316,10 @@ def _add_status_commands(subparsers):
 
 def _add_lifecycle_commands(subparsers):
     """Add service lifecycle commands"""
-    # Reinit command
+    # Unified Reinit command (supports both standard and enhanced features)
     reinit_parser = subparsers.add_parser(
-        "reinit", help="Stop, reload daemon, and restart stack or service"
+        "reinit",
+        help="Stop, reload daemon, and restart stack or service with optional AI enhancements",
     )
     reinit_parser.add_argument(
         "target",
@@ -364,11 +365,30 @@ def _add_lifecycle_commands(subparsers):
         action="store_true",
         help="Show what would be done without actually executing commands",
     )
+    # Enhanced features (optional)
+    reinit_parser.add_argument(
+        "--no-ai-guidance",
+        action="store_false",
+        dest="enable_ai_guidance",
+        help="Disable AI guidance and analysis (enhanced mode)",
+    )
+    reinit_parser.add_argument(
+        "--no-retry",
+        action="store_false",
+        dest="enable_retry",
+        help="Disable intelligent retry on failure (enhanced mode)",
+    )
+    reinit_parser.add_argument(
+        "--no-auto-fixes",
+        action="store_false",
+        dest="enable_auto_fixes",
+        help="Disable automatic application of low-risk fixes (enhanced mode)",
+    )
 
-    # Enhanced Reinit command
+    # Enhanced Reinit command (alias for backward compatibility)
     enhanced_reinit_parser = subparsers.add_parser(
         "enhanced-reinit",
-        help="Enhanced reinit with proactive AI troubleshooting and health checks",
+        help="Enhanced reinit with proactive AI troubleshooting (alias for 'reinit' with enhanced features)",
     )
     enhanced_reinit_parser.add_argument(
         "target",
@@ -408,6 +428,11 @@ def _add_lifecycle_commands(subparsers):
     enhanced_reinit_parser.add_argument(
         "--vllm-model",
         help="Switch vLLM model during reinit (e.g., vllm-qwen25-coder-32b)",
+    )
+    enhanced_reinit_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without actually executing commands",
     )
     enhanced_reinit_parser.add_argument(
         "--no-ai-guidance",
