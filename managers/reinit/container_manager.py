@@ -270,9 +270,10 @@ class ContainerManager:
             return success
 
     def stop_container_with_message(self, container_name: str) -> bool:
-        """Stop a container with proper error handling"""
+        """Stop a container using systemctl --user (safer for Quadlet services)"""
         try:
-            stop_cmd = ["podman", "stop", container_name]
+            service_name = f"{container_name}.service"
+            stop_cmd = ["systemctl", "--user", "stop", service_name]
             verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
             result = subprocess.run(
                 stop_cmd, capture_output=True, text=True, timeout=30
@@ -282,14 +283,14 @@ class ContainerManager:
             return False
 
     def remove_container_with_message(self, container_name: str) -> bool:
-        """Remove a container with proper error handling"""
-        try:
-            rm_cmd = ["podman", "rm", container_name]
-            verbose_print(f"[cyan]exec: {' '.join(rm_cmd)}[/cyan]")
-            result = subprocess.run(rm_cmd, capture_output=True, text=True, timeout=30)
-            return result.returncode == 0
-        except Exception:
-            return False
+        """Remove a container - with systemctl, this is handled automatically"""
+        # When using systemctl --user, container removal is handled automatically
+        # by the service lifecycle. We just return True since systemctl stop
+        # already handles proper cleanup.
+        verbose_print(
+            f"[cyan]Container {container_name} removal handled by systemctl service lifecycle[/cyan]"
+        )
+        return True
 
     def start_vllm_proxy(self, backend_container: str) -> bool:
         """Start vllm-proxy with the correct backend URL"""
