@@ -29,7 +29,6 @@ class ServiceManager:
             return True
         else:
             console.print(f"[green]Removing {service_file_name}...[/green]")
-            verbose_print(f"[cyan]exec: rm -f {service_file_path}[/cyan]")
             try:
                 if os.path.exists(service_file_path):
                     os.remove(service_file_path)
@@ -87,7 +86,6 @@ class ServiceManager:
     ) -> subprocess.CompletedProcess:
         """Start a systemd service"""
         start_cmd = ["systemctl", "--user", "restart", service_name]
-        verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
 
         return self.manager._run_systemctl_command(
             start_cmd,
@@ -100,7 +98,6 @@ class ServiceManager:
     ) -> subprocess.CompletedProcess:
         """Stop a systemd service"""
         stop_cmd = ["systemctl", "--user", "stop", service_name]
-        verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
 
         return self.manager._run_systemctl_command(
             stop_cmd, f"stop_{target}", quiet=quiet
