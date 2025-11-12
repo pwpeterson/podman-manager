@@ -1,5 +1,7 @@
 """vLLM-specific reinit flow management."""
 
+from datetime import datetime
+
 from core.config import console, verbose_print
 
 
@@ -88,15 +90,21 @@ class VLLMReinitFlow:
         )
 
         # Stop the current active vLLM model using systemctl
-        console.print(f"[green]Stopping {current_container}...[/green]")
+        stop_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(
+            f"[green]{stop_timestamp} | Stopping {current_container}...[/green]"
+        )
         stop_result = self.service_manager.stop_service(
             f"{current_container}.service", current_container, quiet=True
         )
+        stopped_timestamp = datetime.now().strftime("%H:%M:%S")
         if stop_result.returncode == 0:
-            console.print(f"[green]  Stopped {current_container}[/green]")
+            console.print(
+                f"[green]{stopped_timestamp} |   Stopped {current_container}[/green]"
+            )
         else:
             console.print(
-                f"[yellow]  {current_container} was not running or failed to stop[/yellow]"
+                f"[yellow]{stopped_timestamp} |   {current_container} was not running or failed to stop[/yellow]"
             )
         console.print()
 
@@ -106,7 +114,8 @@ class VLLMReinitFlow:
         console.print()
 
         # Start the new vLLM model
-        console.print(f"[green]Starting {display_name}...[/green]")
+        start_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(f"[green]{start_timestamp} | Starting {display_name}...[/green]")
         start_result = self.service_manager.start_service(
             service_name, target, quiet=False
         )
@@ -119,7 +128,8 @@ class VLLMReinitFlow:
             self._run_reinit_failure_analysis(target, error_message)
             return False
 
-        console.print(f"[green]  Started {display_name}[/green]")
+        started_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(f"[green]{started_timestamp} |   Started {display_name}[/green]")
         console.print()
 
         # Restart sys-services-vllm-proxy and mcp-vllm-delegator without spinners
@@ -148,7 +158,8 @@ class VLLMReinitFlow:
         console.print()
 
         # Start the new vLLM model
-        console.print(f"[green]Starting {display_name}...[/green]")
+        start_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(f"[green]{start_timestamp} | Starting {display_name}...[/green]")
         start_result = self.service_manager.start_service(
             service_name, target, quiet=False
         )
@@ -161,7 +172,8 @@ class VLLMReinitFlow:
             self._run_reinit_failure_analysis(target, error_message)
             return False
 
-        console.print(f"[green]  Started {display_name}[/green]")
+        started_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(f"[green]{started_timestamp} |   Started {display_name}[/green]")
         console.print()
 
         # Restart sys-services-vllm-proxy and mcp-vllm-delegator without spinners
@@ -303,42 +315,67 @@ class VLLMReinitFlow:
         )
 
         # Stop sys-services-vllm-proxy using systemctl
-        console.print("[green]Stopping sys-services-vllm-proxy...[/green]")
+        stop_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(
+            f"[green]{stop_timestamp} | Stopping sys-services-vllm-proxy...[/green]"
+        )
         stop_result = self.service_manager.stop_service(
             "sys-services-vllm-proxy.service", "sys-services-vllm-proxy", quiet=True
         )
+        stopped_timestamp = datetime.now().strftime("%H:%M:%S")
         if stop_result.returncode == 0:
-            console.print("[green]  Stopped sys-services-vllm-proxy[/green]")
+            console.print(
+                f"[green]{stopped_timestamp} |   Stopped sys-services-vllm-proxy[/green]"
+            )
         else:
             console.print(
-                "[yellow]  sys-services-vllm-proxy was not running or failed to stop[/yellow]"
+                f"[yellow]{stopped_timestamp} |   sys-services-vllm-proxy was not running or failed to stop[/yellow]"
             )
         console.print()
 
         # Start sys-services-vllm-proxy using systemctl
-        console.print("[green]Starting sys-services-vllm-proxy...[/green]")
+        start_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(
+            f"[green]{start_timestamp} | Starting sys-services-vllm-proxy...[/green]"
+        )
         start_result = self.service_manager.start_service(
             "sys-services-vllm-proxy.service", "sys-services-vllm-proxy", quiet=False
         )
+        started_timestamp = datetime.now().strftime("%H:%M:%S")
         if start_result.returncode == 0:
-            console.print("[green]  Started sys-services-vllm-proxy[/green]")
+            console.print(
+                f"[green]{started_timestamp} |   Started sys-services-vllm-proxy[/green]"
+            )
         else:
-            console.print("[red]  Failed to start sys-services-vllm-proxy[/red]")
+            console.print(
+                f"[red]{started_timestamp} |   Failed to start sys-services-vllm-proxy[/red]"
+            )
             return False
         console.print()
         console.print()
 
         # Start mcp-vllm-delegator using systemctl
-        console.print("[green]Starting mcp-vllm-delegator...[/green]")
+        start_timestamp2 = datetime.now().strftime("%H:%M:%S")
+        console.print(
+            f"[green]{start_timestamp2} | Starting mcp-vllm-delegator...[/green]"
+        )
         start_result = self.service_manager.start_service(
             "mcp-vllm-delegator.service", "mcp-vllm-delegator", quiet=False
         )
+        started_timestamp2 = datetime.now().strftime("%H:%M:%S")
         if start_result.returncode == 0:
-            console.print("[green]  Started mcp-vllm-delegator[/green]")
+            console.print(
+                f"[green]{started_timestamp2} |   Started mcp-vllm-delegator[/green]"
+            )
         else:
-            console.print("[red]  Failed to start mcp-vllm-delegator[/red]")
+            console.print(
+                f"[red]{started_timestamp2} |   Failed to start mcp-vllm-delegator[/red]"
+            )
             return False
         console.print()
 
-        console.print(f"[green]Successfully reinitialized {display_name}[/green]")
+        success_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(
+            f"[green]{success_timestamp} | Successfully reinitialized {display_name}[/green]"
+        )
         return True

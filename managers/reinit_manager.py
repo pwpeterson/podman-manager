@@ -1,5 +1,7 @@
 """Refactored reinit operations with specialized components for better maintainability."""
 
+from datetime import datetime
+
 from core.config import console
 
 from .reinit import (
@@ -184,12 +186,15 @@ class ReinitManager:
             if service_name.endswith(".service")
             else service_name
         )
+        timestamp = datetime.now().strftime("%H:%M:%S")
         if dry_run:
             console.print(
                 f"\n[yellow]DRY RUN: Would reinitialize {display_name}...[/yellow]\n"
             )
         else:
-            console.print(f"\n[green]Reinitializing {display_name}...[/green]\n")
+            console.print(
+                f"\n[green]{timestamp} | Reinitializing {display_name}...[/green]\n"
+            )
 
         # Determine if this is a vLLM model service by checking ai_agents_config.json
         is_vllm_model_service = self.service_manager.is_vllm_model_service(display_name)
@@ -225,16 +230,20 @@ class ReinitManager:
             return True
 
         # Step 1: Stop the service
-        console.print(f"[green]Stopping {display_name}...[/green]")
+        stop_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(f"[green]{stop_timestamp} | Stopping {display_name}...[/green]")
         stop_result = self.service_manager.stop_service(
             service_name, target, quiet=True
         )
 
+        stopped_timestamp = datetime.now().strftime("%H:%M:%S")
         if stop_result.returncode == 0:
-            console.print(f"[green]  Stopped {display_name}[/green]")
+            console.print(
+                f"[green]{stopped_timestamp} |   Stopped {display_name}[/green]"
+            )
         else:
             console.print(
-                f"[yellow]  {display_name} was not running or failed to stop[/yellow]"
+                f"[yellow]{stopped_timestamp} |   {display_name} was not running or failed to stop[/yellow]"
             )
         console.print()
 
@@ -248,18 +257,26 @@ class ReinitManager:
         console.print()
 
         # Step 4: Start the service
-        console.print(f"[green]Starting {display_name}...[/green]")
+        start_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(f"[green]{start_timestamp} | Starting {display_name}...[/green]")
         start_result = self.service_manager.start_service(
             service_name, target, quiet=False
         )
 
+        started_timestamp = datetime.now().strftime("%H:%M:%S")
         if start_result.returncode == 0:
-            console.print(f"[green]  Started {display_name}.[/green]")
+            console.print(
+                f"[green]{started_timestamp} |   Started {display_name}.[/green]"
+            )
             console.print()
-            console.print(f"[green]Successfully reinitialized {display_name}[/green]")
+            console.print(
+                f"[green]{started_timestamp} | Successfully reinitialized {display_name}[/green]"
+            )
             return True
         else:
-            console.print(f"[red]  Failed to start {display_name}[/red]")
+            console.print(
+                f"[red]{started_timestamp} |   Failed to start {display_name}[/red]"
+            )
             self.vllm_flow._handle_start_failure(target, start_result)
             error_message = start_result.stderr.strip() if start_result.stderr else ""
             self.vllm_flow._run_reinit_failure_analysis(target, error_message)
