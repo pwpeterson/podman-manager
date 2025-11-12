@@ -89,7 +89,8 @@ class VLLMModelManager:
 
             # Stop the current container gracefully
             console.print(f"[green]Stopping {current_container}...[/green]")
-            stop_cmd = ["podman", "stop", "-t", "60", current_container]
+            service_name = f"{current_container}.service"
+            stop_cmd = ["systemctl", "--user", "stop", service_name]
             verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
 
             if self._run_command(stop_cmd):
@@ -143,7 +144,8 @@ class VLLMModelManager:
             )
 
             # Stop the current container gracefully
-            stop_cmd = ["podman", "stop", "-t", "60", current_container]
+            service_name = f"{current_container}.service"
+            stop_cmd = ["systemctl", "--user", "stop", service_name]
             verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
 
             if self._run_command(stop_cmd):
@@ -203,7 +205,8 @@ class VLLMModelManager:
                 task = progress.add_task("stopping", total=None)
 
                 # Stop the container gracefully
-                stop_cmd = ["podman", "stop", "-t", "60", current_vllm_container]
+                service_name = f"{current_vllm_container}.service"
+                stop_cmd = ["systemctl", "--user", "stop", service_name]
                 verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
                 self._run_command(stop_cmd, suppress_errors=True)
 
@@ -293,7 +296,8 @@ class VLLMModelManager:
         """Start the new vLLM backend container and wait for it to be ready"""
         console.print(f"[green]Starting {container_name}...[/green]")
 
-        start_cmd = ["podman", "start", container_name]
+        service_name = f"{container_name}.service"
+        start_cmd = ["systemctl", "--user", "start", service_name]
         verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
 
         if not self._run_command(start_cmd):
@@ -447,7 +451,8 @@ class VLLMModelManager:
 
         # Use the standard container start command for mcp-vllm-delegator
         # This assumes the container is already configured and just needs to be started
-        start_cmd = ["podman", "start", mcp_container]
+        service_name = f"{mcp_container}.service"
+        start_cmd = ["systemctl", "--user", "start", service_name]
         verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
 
         if self._run_command(start_cmd):
@@ -487,15 +492,17 @@ class VLLMModelManager:
 
     def _stop_container(self, container_name: str) -> bool:
         """Stop a container"""
-        stop_cmd = ["podman", "stop", container_name]
+        service_name = f"{container_name}.service"
+        stop_cmd = ["systemctl", "--user", "stop", service_name]
         verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
         return self._run_command(stop_cmd, suppress_errors=True)
 
     def _remove_container(self, container_name: str) -> bool:
         """Remove a container"""
-        rm_cmd = ["podman", "rm", container_name]
-        verbose_print(f"[cyan]exec: {' '.join(rm_cmd)}[/cyan]")
-        self._run_command(rm_cmd, suppress_errors=True)
+        # Container removal is handled automatically by systemctl service lifecycle
+        verbose_print(
+            f"[cyan]Container {container_name} removal handled by systemctl[/cyan]"
+        )
         # Always return True for remove operations to show "Removed" message
         # Even if container doesn't exist, we consider it "removed"
         return True

@@ -250,27 +250,27 @@ class ContainerBuilder:
                     text=True,
                 )
 
-                # Stop container if running
+                # Stop container using systemctl --user (safer for Quadlet services)
                 if (
                     inspect_result.returncode == 0
                     and inspect_result.stdout.strip() == "true"
                 ):
-                    verbose_print(f"[cyan]exec: podman stop {container_name}[/cyan]")
+                    service_name = f"{container_name}.service"
+                    verbose_print(
+                        f"[cyan]exec: systemctl --user stop {service_name}[/cyan]"
+                    )
                     subprocess.run(
-                        ["podman", "stop", container_name],
+                        ["systemctl", "--user", "stop", service_name],
                         capture_output=True,
                         text=True,
                     )
-                    console.print(f"[green]Stopped container: {container_name}[/green]")
-
-                # Remove container
-                verbose_print(f"[cyan]exec: podman rm {container_name}[/cyan]")
-                subprocess.run(
-                    ["podman", "rm", container_name],
-                    capture_output=True,
-                    text=True,
-                )
-                console.print(f"[green]Removed container: {container_name}[/green]")
+                    console.print(
+                        f"[green]Stopped service: {service_name} (container cleanup handled by systemctl)[/green]"
+                    )
+                else:
+                    console.print(
+                        f"[green]Container {container_name} was not running[/green]"
+                    )
 
         except Exception as e:
             verbose_print(f"[dim]Error during container cleanup: {e}[/dim]")
@@ -1008,17 +1008,16 @@ class ContainerBuilder:
                 )
                 return result.returncode == 0 and result.stdout.strip() == "true"
 
-            # Stop and remove existing container if it exists (quietly)
+            # Stop existing container using systemctl --user (safer for Quadlet services)
             if container_exists():
                 if container_running():
+                    service_name = f"{CONTAINER_NAME}.service"
                     subprocess.run(
-                        ["podman", "stop", CONTAINER_NAME],
+                        ["systemctl", "--user", "stop", service_name],
                         capture_output=True,
                         text=True,
                     )
-                subprocess.run(
-                    ["podman", "rm", CONTAINER_NAME], capture_output=True, text=True
-                )
+                    # Container removal is handled automatically by systemctl service lifecycle
 
             # Remove old image to force rebuild (quietly)
             subprocess.run(
@@ -1114,14 +1113,13 @@ class ContainerBuilder:
             # Stop and remove existing container if it exists (quietly)
             if container_exists():
                 if container_running():
+                    service_name = f"{CONTAINER_NAME}.service"
                     subprocess.run(
-                        ["podman", "stop", CONTAINER_NAME],
+                        ["systemctl", "--user", "stop", service_name],
                         capture_output=True,
                         text=True,
                     )
-                subprocess.run(
-                    ["podman", "rm", CONTAINER_NAME], capture_output=True, text=True
-                )
+                    # Container removal is handled automatically by systemctl service lifecycle
 
             # Remove old image to force rebuild (quietly)
             subprocess.run(

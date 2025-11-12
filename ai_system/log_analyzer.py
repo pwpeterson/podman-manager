@@ -515,10 +515,16 @@ class LogAnalyzer:
                 "[yellow]⏰ Container test timed out (30s) - may be running but not responding[/yellow]"
             )
             # Try to stop the test container
-            subprocess.run(["podman", "stop", container_name], capture_output=True)
+            service_name = f"{container_name}.service"
+            subprocess.run(
+                ["systemctl", "--user", "stop", service_name], capture_output=True
+            )
         except KeyboardInterrupt:
             console.print("\n[yellow]Test interrupted by user[/yellow]")
-            subprocess.run(["podman", "stop", container_name], capture_output=True)
+            service_name = f"{container_name}.service"
+            subprocess.run(
+                ["systemctl", "--user", "stop", service_name], capture_output=True
+            )
 
         self._show_troubleshooting_tips(target, service_name)
 
@@ -846,10 +852,16 @@ class LogAnalyzer:
                 "[yellow]⏰ Container test timed out (30s) - may be running but not responding[/yellow]"
             )
             # Try to stop the test container
-            subprocess.run(["podman", "stop", container_name], capture_output=True)
+            service_name = f"{container_name}.service"
+            subprocess.run(
+                ["systemctl", "--user", "stop", service_name], capture_output=True
+            )
         except KeyboardInterrupt:
             console.print("\n[yellow]Test interrupted by user[/yellow]")
-            subprocess.run(["podman", "stop", container_name], capture_output=True)
+            service_name = f"{container_name}.service"
+            subprocess.run(
+                ["systemctl", "--user", "stop", service_name], capture_output=True
+            )
         except Exception as e:
             console.print(f"[red]Error running container test: {e}[/red]")
 

@@ -218,10 +218,9 @@ class IntelligentRetryManager:
             fixes.extend(
                 [
                     {
-                        "title": "Stop and remove container",
+                        "title": "Stop container service",
                         "commands": [
-                            f"podman stop {target} || true",
-                            f"podman rm {target} || true",
+                            f"systemctl --user stop {target}.service || true",
                         ],
                         "description": "Force remove existing container",
                         "risk_level": "medium",
