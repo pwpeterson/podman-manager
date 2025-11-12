@@ -83,12 +83,14 @@ class VLLMReinitFlow:
         console.print(f"[green]Current 8005: {current_container}[/green]")
         console.print()
 
-        # Stop the current active vLLM model with polling-based monitoring
-        if not self.container_manager.monitor_container_stop(current_container):
+        # Stop the current active vLLM model
+        console.print(f"[green]Stopping {current_container}...[/green]")
+        if self.container_manager.stop_container_with_message(current_container):
+            console.print(f"[green]  Stopped {current_container}[/green]")
+        else:
             console.print(
-                f"[red]Failed to stop active vLLM model {current_container}[/red]"
+                f"[yellow]  {current_container} was not running or failed to stop[/yellow]"
             )
-            return False
         console.print()
 
         # Remove the current active vLLM model
@@ -123,8 +125,8 @@ class VLLMReinitFlow:
         console.print(f"[green]  Started {display_name}[/green]")
         console.print()
 
-        # Restart vllm-proxy and mcp-vllm-delegator
-        success = self.container_manager.restart_vllm_support_services(display_name)
+        # Restart vllm-proxy and mcp-vllm-delegator without spinners
+        success = self._restart_vllm_support_services_no_spinner(display_name)
         verbose_print(
             f"[cyan]Active vLLM model service reinit completed with success={success}[/cyan]"
         )
@@ -165,8 +167,8 @@ class VLLMReinitFlow:
         console.print(f"[green]  Started {display_name}[/green]")
         console.print()
 
-        # Restart vllm-proxy and mcp-vllm-delegator
-        success = self.container_manager.restart_vllm_support_services(display_name)
+        # Restart vllm-proxy and mcp-vllm-delegator without spinners
+        success = self._restart_vllm_support_services_no_spinner(display_name)
         verbose_print(
             f"[cyan]Non-active vLLM model service reinit completed with success={success}[/cyan]"
         )
@@ -289,3 +291,46 @@ class VLLMReinitFlow:
                 return "No AI agent configured"
         except Exception:
             return "AI agent detection failed"
+
+    def _restart_vllm_support_services_no_spinner(self, display_name: str) -> bool:
+        """Restart vllm-proxy and mcp-vllm-delegator services without spinners"""
+        verbose_print(
+            f"[cyan]restart_vllm_support_services_no_spinner called for {display_name}[/cyan]"
+        )
+
+        # Stop vllm-proxy
+        console.print("[green]Stopping vllm-proxy...[/green]")
+        if self.container_manager.stop_container_with_message("vllm-proxy"):
+            console.print("[green]  Stopped vllm-proxy[/green]")
+        else:
+            console.print(
+                "[yellow]  vllm-proxy was not running or failed to stop[/yellow]"
+            )
+        console.print()
+
+        # Remove vllm-proxy
+        console.print("[green]Removing vllm-proxy...[/green]")
+        if self.container_manager.remove_container_with_message("vllm-proxy"):
+            console.print("[green]  Removed vllm-proxy[/green]")
+        else:
+            console.print(
+                "[yellow]  vllm-proxy was not found or failed to remove[/yellow]"
+            )
+        console.print()
+
+        # Start vllm-proxy
+        console.print("[green]Starting vllm-proxy...[/green]")
+        if self.container_manager.start_vllm_proxy(display_name):
+            console.print("[green]  Started vllm-proxy[/green]")
+            # Note: start_vllm_proxy() calls vllm_manager._restart_vllm_proxy() which also restarts mcp-vllm-delegator
+            # So we don't need to restart mcp-vllm-delegator separately to avoid duplicate operations
+            verbose_print(
+                "[cyan]mcp-vllm-delegator was restarted automatically by vllm-proxy restart[/cyan]"
+            )
+        else:
+            console.print("[red]  Failed to start vllm-proxy[/red]")
+            return False
+        console.print()
+
+        console.print(f"[green]Successfully reinitialized {display_name}[/green]")
+        return True
