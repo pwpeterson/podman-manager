@@ -851,7 +851,11 @@ class CommandRouter:
 
     # Service lifecycle command handlers
     def _handle_reinit(self, args):
-        self.handle_command_verbose(args)
+        # Make verbose mode the default for reinit unless --quiet is specified
+        if not getattr(args, "quiet", False):
+            set_verbose(True)
+        else:
+            self.handle_command_verbose(args)
 
         # Determine build type
         build_type = None
@@ -878,7 +882,11 @@ class CommandRouter:
 
     def _handle_enhanced_reinit(self, args):
         """Handle enhanced reinit with proactive AI troubleshooting."""
-        self.handle_command_verbose(args)
+        # Make verbose mode the default for enhanced-reinit unless --quiet is specified
+        if not getattr(args, "quiet", False):
+            set_verbose(True)
+        else:
+            self.handle_command_verbose(args)
 
         try:
             from managers.reinit_manager import ReinitManager

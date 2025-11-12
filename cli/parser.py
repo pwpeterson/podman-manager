@@ -328,7 +328,13 @@ def _add_lifecycle_commands(subparsers):
         "-v",
         "--verbose",
         action="store_true",
-        help="Show detailed command execution (exec lines)",
+        help="Show detailed command execution (exec lines) - enabled by default",
+    )
+    reinit_parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Disable verbose output (opposite of default verbose behavior)",
     )
     build_group = reinit_parser.add_mutually_exclusive_group()
     build_group.add_argument(
@@ -372,7 +378,13 @@ def _add_lifecycle_commands(subparsers):
         "-v",
         "--verbose",
         action="store_true",
-        help="Show detailed command execution (exec lines)",
+        help="Show detailed command execution (exec lines) - enabled by default",
+    )
+    enhanced_reinit_parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Disable verbose output (opposite of default verbose behavior)",
     )
     enhanced_build_group = enhanced_reinit_parser.add_mutually_exclusive_group()
     enhanced_build_group.add_argument(
