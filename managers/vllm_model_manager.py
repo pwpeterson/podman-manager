@@ -812,55 +812,41 @@ class VLLMModelManager:
     def _find_current_vllm_container(self) -> Optional[str]:
         """Find the currently running vLLM container using port 8005"""
         try:
-            # First check if port 8005 is in use at all
-            if not self._is_port_in_use(self.vllm_port):
-                verbose_print(
-                    f"[cyan]Port {self.vllm_port} is not in use - no active vLLM model[/cyan]"
-                )
-                return None
-
-            # Get running vLLM containers (exclude vllm-proxy)
-            cmd = ["podman", "ps", "--filter", "name=vllm", "--format", "{{.Names}}"]
+            # Use simplified command to find container using port 8005
+            cmd = ["podman", "ps", "--format", "table {{.Names}}\t{{.Ports}}"]
             result = subprocess.run(
                 cmd, capture_output=True, text=True, check=True, timeout=5
             )
 
-            running_vllm_containers = []
-            for line in result.stdout.strip().split("\n"):
-                container_name = line.strip()
-                # Exclude vllm-proxy and mcp-vllm-delegator as they're not vLLM model containers
-                if container_name and container_name not in [
-                    "vllm-proxy",
-                    "mcp-vllm-delegator",
-                ]:
-                    running_vllm_containers.append(container_name)
+            # Filter for containers using port 8005
+            grep_cmd = ["grep", "8005"]
+            grep_result = subprocess.run(
+                grep_cmd, input=result.stdout, capture_output=True, text=True
+            )
 
-            # If we only have one running vLLM container and port 8005 is in use, it's likely the active one
-            if len(running_vllm_containers) == 1:
-                container_name = running_vllm_containers[0]
-                verbose_print(
-                    f"[cyan]Found single running vLLM container: {container_name} (port {self.vllm_port} in use)[/cyan]"
-                )
-                return container_name
-            elif len(running_vllm_containers) > 1:
-                # Multiple containers - need to check which one is actually using port 8005
-                for container_name in running_vllm_containers:
-                    if self._container_uses_port(container_name, self.vllm_port):
-                        verbose_print(
-                            f"[cyan]Found vLLM container using port {self.vllm_port}: {container_name}[/cyan]"
-                        )
-                        return container_name
+            if grep_result.returncode == 0 and grep_result.stdout.strip():
+                # Parse the output to get container name
+                for line in grep_result.stdout.strip().split("\n"):
+                    if line.strip():
+                        # Format is: "container_name    port_mappings"
+                        parts = line.split("\t")
+                        if len(parts) >= 1:
+                            container_name = parts[0].strip()
+                            # Exclude vllm-proxy and mcp-vllm-delegator as they're not vLLM model containers
+                            if container_name and container_name not in [
+                                "vllm-proxy",
+                                "mcp-vllm-delegator",
+                                "sys-services-vllm-proxy",
+                            ]:
+                                verbose_print(
+                                    f"[cyan]Found container using port {self.vllm_port}: {container_name}[/cyan]"
+                                )
+                                return container_name
 
-                # Fallback: if port is in use but we can't determine which container, return the first one
-                verbose_print(
-                    f"[cyan]Port {self.vllm_port} in use but can't determine container, using first: {running_vllm_containers[0]}[/cyan]"
-                )
-                return running_vllm_containers[0]
-            else:
-                verbose_print(
-                    f"[cyan]Port {self.vllm_port} in use but no running vLLM containers found[/cyan]"
-                )
-                return None
+            verbose_print(
+                f"[cyan]No container found using port {self.vllm_port}[/cyan]"
+            )
+            return None
 
         except subprocess.TimeoutExpired:
             verbose_print("[cyan]Container detection timed out[/cyan]")
