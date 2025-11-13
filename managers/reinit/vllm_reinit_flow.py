@@ -136,8 +136,8 @@ class VLLMReinitFlow:
         )
         console.print()
 
-        # Restart sys-services-vllm-proxy and mcp-vllm-delegator without spinners
-        success = self._restart_vllm_support_services_no_spinner(display_name)
+        # Restart sys-services-vllm-proxy and mcp-vllm-delegator
+        success = self.restart_vllm_support_services(display_name)
         verbose_print(
             f"[cyan]Active vLLM model service reinit completed with success={success}[/cyan]"
         )
@@ -184,8 +184,8 @@ class VLLMReinitFlow:
         )
         console.print()
 
-        # Restart sys-services-vllm-proxy and mcp-vllm-delegator without spinners
-        success = self._restart_vllm_support_services_no_spinner(display_name)
+        # Restart sys-services-vllm-proxy and mcp-vllm-delegator
+        success = self.restart_vllm_support_services(display_name)
         verbose_print(
             f"[cyan]Non-active vLLM model service reinit completed with success={success}[/cyan]"
         )
@@ -316,10 +316,10 @@ class VLLMReinitFlow:
         except Exception as e:
             return f"AI agent detection failed: {str(e)}"
 
-    def _restart_vllm_support_services_no_spinner(self, display_name: str) -> bool:
-        """Restart sys-services-vllm-proxy and mcp-vllm-delegator services without spinners"""
+    def restart_vllm_support_services(self, display_name: str) -> bool:
+        """Restart sys-services-vllm-proxy and mcp-vllm-delegator services"""
         verbose_print(
-            f"[cyan]restart_vllm_support_services_no_spinner called for {display_name}[/cyan]"
+            f"[cyan]restart_vllm_support_services called for {display_name}[/cyan]"
         )
 
         # Stop sys-services-vllm-proxy using systemctl
