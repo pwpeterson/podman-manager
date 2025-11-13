@@ -126,7 +126,7 @@ class ReinitManager:
                 target, service_name, build_type=build_type, dry_run=dry_run
             )
         else:
-            console.print(f"[red]Service '{target}' not found[/red]")
+            console.print(f"[red]Service '{target}' was not found[/red]")
             return False
 
     def enhanced_reinit(
