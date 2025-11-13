@@ -813,42 +813,37 @@ class VLLMModelManager:
 
     def _find_current_vllm_container(self) -> Optional[str]:
         """Find the currently running vLLM container using port 8005"""
-        # Use the suggested command with grep for more reliable detection
-        cmd_str = "podman ps --format '{{.Names}}\t{{.Ports}}' | grep 8005"
+        # Use awk to directly extract container name with port 8005
+        cmd_str = (
+            "podman ps --format '{{.Names}} {{.Ports}}' | awk '/8005->/ {print $1}'"
+        )
         verbose_print(f"[cyan]exec: {cmd_str}[/cyan]")
 
         try:
-            # Use shell=True to properly handle the pipe
+            # Use shell=True to properly handle the pipe and awk
             result = subprocess.run(
                 cmd_str, shell=True, capture_output=True, text=True, timeout=60
             )
 
             if result.returncode == 0 and result.stdout.strip():
+                container_name = result.stdout.strip()
                 verbose_print(
-                    f"[cyan]Command completed successfully, found output: {result.stdout.strip()}[/cyan]"
+                    f"[cyan]Command completed successfully, found container: {container_name}[/cyan]"
                 )
 
-                # Parse the grep output
-                for line in result.stdout.strip().split("\n"):
-                    if line.strip():
-                        verbose_print(f"[cyan]Processing line: {line}[/cyan]")
-                        # Format is: "container_name    port_mappings"
-                        parts = line.split("\t")
-                        if len(parts) >= 1:
-                            raw_container_name = parts[0].strip()
-                            if (
-                                raw_container_name
-                                and raw_container_name != "sys-services-vllm-proxy"
-                            ):
-                                # Remove any extra whitespace or formatting
-                                container_name = raw_container_name.split()[0].strip()
-                                verbose_print(
-                                    f"[cyan]Found container using port {self.vllm_port}: {container_name}[/cyan]"
-                                )
-                                return container_name
+                # Exclude sys-services-vllm-proxy as it uses port 8002, not 8005
+                if container_name and container_name != "sys-services-vllm-proxy":
+                    verbose_print(
+                        f"[cyan]Found container using port {self.vllm_port}: {container_name}[/cyan]"
+                    )
+                    return container_name
+                else:
+                    verbose_print(
+                        f"[cyan]Container {container_name} is sys-services-vllm-proxy, ignoring[/cyan]"
+                    )
             else:
                 verbose_print(
-                    f"[cyan]No container found using port {self.vllm_port} (grep returned no results)[/cyan]"
+                    f"[cyan]No container found using port {self.vllm_port} (awk returned no results)[/cyan]"
                 )
 
             # Fallback: try a simpler approach
