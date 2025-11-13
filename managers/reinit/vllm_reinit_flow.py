@@ -95,7 +95,7 @@ class VLLMReinitFlow:
             f"[green]{stop_timestamp} | Stopping {current_container}...[/green]"
         )
         stop_result = self.service_manager.stop_service(
-            f"{current_container}.service", current_container, quiet=True
+            f"{current_container}.service", current_container, quiet=False
         )
         stopped_timestamp = datetime.now().strftime("%H:%M:%S")
         if stop_result.returncode == 0:
