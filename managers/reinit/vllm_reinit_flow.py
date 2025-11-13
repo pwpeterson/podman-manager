@@ -315,7 +315,7 @@ class VLLMReinitFlow:
         # Start sys-services-vllm-proxy using systemctl
         start_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(
-            f"[green]{start_timestamp} | Starting sys-services-vllm-proxy...[/green]"
+            f"[green]{start_timestamp} | Restarting sys-services-vllm-proxy...[/green]"
         )
         start_result = self.service_manager.start_service(
             "sys-services-vllm-proxy.service", "sys-services-vllm-proxy", quiet=False
@@ -323,20 +323,19 @@ class VLLMReinitFlow:
         started_timestamp = datetime.now().strftime("%H:%M:%S")
         if start_result.returncode == 0:
             console.print(
-                f"[green]{started_timestamp} |   Started sys-services-vllm-proxy[/green]"
+                f"[green]{started_timestamp} |   Restarted sys-services-vllm-proxy[/green]"
             )
         else:
             console.print(
-                f"[red]{started_timestamp} |   Failed to start sys-services-vllm-proxy[/red]"
+                f"[red]{started_timestamp} |   Failed to restart sys-services-vllm-proxy[/red]"
             )
             return False
-        console.print()
         console.print()
 
         # Start mcp-vllm-delegator using systemctl
         start_timestamp2 = datetime.now().strftime("%H:%M:%S")
         console.print(
-            f"[green]{start_timestamp2} | Starting mcp-vllm-delegator...[/green]"
+            f"[green]{start_timestamp2} | Restarting mcp-vllm-delegator...[/green]"
         )
         start_result = self.service_manager.start_service(
             "mcp-vllm-delegator.service", "mcp-vllm-delegator", quiet=False
@@ -344,11 +343,11 @@ class VLLMReinitFlow:
         started_timestamp2 = datetime.now().strftime("%H:%M:%S")
         if start_result.returncode == 0:
             console.print(
-                f"[green]{started_timestamp2} |   Started mcp-vllm-delegator[/green]"
+                f"[green]{started_timestamp2} |   Restarted mcp-vllm-delegator[/green]"
             )
         else:
             console.print(
-                f"[red]{started_timestamp2} |   Failed to start mcp-vllm-delegator[/red]"
+                f"[red]{started_timestamp2} |   Failed to restart mcp-vllm-delegator[/red]"
             )
             return False
         console.print()
