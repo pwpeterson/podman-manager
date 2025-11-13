@@ -115,7 +115,9 @@ class VLLMReinitFlow:
 
         # Start the new vLLM model
         start_timestamp = datetime.now().strftime("%H:%M:%S")
-        console.print(f"[green]{start_timestamp} | Starting {display_name}...[/green]")
+        console.print(
+            f"[green]{start_timestamp} | Restarting {display_name}...[/green]"
+        )
         start_result = self.service_manager.start_service(
             service_name, target, quiet=False
         )
@@ -129,7 +131,9 @@ class VLLMReinitFlow:
             return False
 
         started_timestamp = datetime.now().strftime("%H:%M:%S")
-        console.print(f"[green]{started_timestamp} |   Started {display_name}[/green]")
+        console.print(
+            f"[green]{started_timestamp} |   Restarted {display_name}[/green]"
+        )
         console.print()
 
         # Restart sys-services-vllm-proxy and mcp-vllm-delegator without spinners
@@ -159,7 +163,9 @@ class VLLMReinitFlow:
 
         # Start the new vLLM model
         start_timestamp = datetime.now().strftime("%H:%M:%S")
-        console.print(f"[green]{start_timestamp} | Starting {display_name}...[/green]")
+        console.print(
+            f"[green]{start_timestamp} | Restarting {display_name}...[/green]"
+        )
         start_result = self.service_manager.start_service(
             service_name, target, quiet=False
         )
@@ -173,7 +179,9 @@ class VLLMReinitFlow:
             return False
 
         started_timestamp = datetime.now().strftime("%H:%M:%S")
-        console.print(f"[green]{started_timestamp} |   Started {display_name}[/green]")
+        console.print(
+            f"[green]{started_timestamp} |   Restarted {display_name}[/green]"
+        )
         console.print()
 
         # Restart sys-services-vllm-proxy and mcp-vllm-delegator without spinners

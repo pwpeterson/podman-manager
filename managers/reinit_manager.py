@@ -258,7 +258,9 @@ class ReinitManager:
 
         # Step 4: Start the service
         start_timestamp = datetime.now().strftime("%H:%M:%S")
-        console.print(f"[green]{start_timestamp} | Starting {display_name}...[/green]")
+        console.print(
+            f"[green]{start_timestamp} | Restarting {display_name}...[/green]"
+        )
         start_result = self.service_manager.start_service(
             service_name, target, quiet=False
         )
@@ -266,7 +268,7 @@ class ReinitManager:
         started_timestamp = datetime.now().strftime("%H:%M:%S")
         if start_result.returncode == 0:
             console.print(
-                f"[green]{started_timestamp} |   Started {display_name}.[/green]"
+                f"[green]{started_timestamp} |   Restarted {display_name}.[/green]"
             )
             console.print()
             console.print(
@@ -275,7 +277,7 @@ class ReinitManager:
             return True
         else:
             console.print(
-                f"[red]{started_timestamp} |   Failed to start {display_name}[/red]"
+                f"[red]{started_timestamp} |   Failed to restart {display_name}[/red]"
             )
             self.vllm_flow._handle_start_failure(target, start_result)
             error_message = start_result.stderr.strip() if start_result.stderr else ""
