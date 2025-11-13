@@ -328,7 +328,7 @@ class VLLMReinitFlow:
             f"[green]{stop_timestamp} | Stopping sys-services-vllm-proxy...[/green]"
         )
         stop_result = self.service_manager.stop_service(
-            "sys-services-vllm-proxy.service", "sys-services-vllm-proxy", quiet=True
+            "sys-services-vllm-proxy.service", "sys-services-vllm-proxy", quiet=False
         )
         stopped_timestamp = datetime.now().strftime("%H:%M:%S")
         if stop_result.returncode == 0:
