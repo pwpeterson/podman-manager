@@ -813,16 +813,23 @@ class VLLMModelManager:
 
     def _find_current_vllm_container(self) -> Optional[str]:
         """Find the currently running vLLM container using port 8005"""
+        # Show the exact command being executed
+        cmd = ["podman", "ps", "--format", "{{.Names}}\t{{.Ports}}"]
+        verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+
         try:
-            # Use a more direct approach - get all running containers and check ports
-            cmd = ["podman", "ps", "--format", "{{.Names}}\t{{.Ports}}"]
             result = subprocess.run(
-                cmd, capture_output=True, text=True, check=True, timeout=10
+                cmd, capture_output=True, text=True, check=True, timeout=15
+            )
+
+            verbose_print(
+                "[cyan]Command completed successfully, parsing output...[/cyan]"
             )
 
             # Parse output directly in Python instead of using grep
             for line in result.stdout.strip().split("\n"):
                 if line.strip() and "8005" in line:
+                    verbose_print(f"[cyan]Found line with port 8005: {line}[/cyan]")
                     # Format is: "container_name    port_mappings"
                     parts = line.split("\t")
                     if len(parts) >= 1:
@@ -839,20 +846,68 @@ class VLLMModelManager:
                             return container_name
 
             verbose_print(
-                f"[cyan]No container found using port {self.vllm_port}[/cyan]"
+                f"[cyan]No container found using port {self.vllm_port} in podman ps output[/cyan]"
             )
-            return None
+
+            # Fallback: try a simpler approach
+            return self._find_container_fallback()
 
         except subprocess.TimeoutExpired:
-            verbose_print("[cyan]Container detection timed out[/cyan]")
-            return None
+            verbose_print(
+                "[cyan]Container detection timed out, trying fallback method[/cyan]"
+            )
+            return self._find_container_fallback()
         except subprocess.CalledProcessError as e:
             verbose_print(f"[cyan]Error finding current vLLM container: {e}[/cyan]")
-            return None
+            return self._find_container_fallback()
         except Exception as e:
             verbose_print(
                 f"[cyan]Unexpected error finding current vLLM container: {e}[/cyan]"
             )
+            return self._find_container_fallback()
+
+    def _find_container_fallback(self) -> Optional[str]:
+        """Fallback method to find vLLM container using simpler commands"""
+        try:
+            # Method 1: Check if port 8005 is in use first
+            if not self._is_port_in_use(self.vllm_port):
+                verbose_print(f"[cyan]Port {self.vllm_port} is not in use[/cyan]")
+                return None
+
+            verbose_print(
+                f"[cyan]Port {self.vllm_port} is in use, finding container...[/cyan]"
+            )
+
+            # Method 2: Use simpler podman ps command
+            cmd = ["podman", "ps", "--format", "{{.Names}}"]
+            verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, check=True, timeout=10
+            )
+
+            # Check each container to see if it's using port 8005
+            for line in result.stdout.strip().split("\n"):
+                container_name = line.strip()
+                if (
+                    container_name
+                    and "vllm" in container_name.lower()
+                    and container_name != "sys-services-vllm-proxy"
+                ):
+                    # Check if this container is using port 8005
+                    if self._container_uses_port(container_name, self.vllm_port):
+                        verbose_print(
+                            f"[cyan]Fallback found container using port {self.vllm_port}: {container_name}[/cyan]"
+                        )
+                        return container_name
+
+            verbose_print(
+                f"[cyan]Fallback: No vLLM container found using port {self.vllm_port}[/cyan]"
+            )
+            return None
+
+        except Exception as e:
+            verbose_print(f"[cyan]Fallback method also failed: {e}[/cyan]")
             return None
 
     def _find_container_by_port_process(self) -> Optional[str]:
