@@ -870,10 +870,8 @@ class CommandRouter:
         # Get vLLM model if specified
         vllm_model = getattr(args, "vllm_model", None)
 
-        # Check if this is enhanced reinit (has enhanced-specific attributes)
-        is_enhanced = hasattr(args, "enable_ai_guidance") or hasattr(
-            args, "enable_retry"
-        )
+        # Check if this is enhanced reinit (command name is 'enhanced-reinit')
+        is_enhanced = args.command == "enhanced-reinit"
 
         if is_enhanced:
             return self._handle_enhanced_reinit_logic(args, build_type, vllm_model)
