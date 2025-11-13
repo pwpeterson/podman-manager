@@ -812,34 +812,26 @@ class VLLMModelManager:
     def _find_current_vllm_container(self) -> Optional[str]:
         """Find the currently running vLLM container using port 8005"""
         try:
-            # Use simplified command to find container using port 8005
-            cmd = ["podman", "ps", "--format", "table {{.Names}}\t{{.Ports}}"]
+            # Use a more direct approach - get all running containers and check ports
+            cmd = ["podman", "ps", "--format", "{{.Names}}\t{{.Ports}}"]
             result = subprocess.run(
-                cmd, capture_output=True, text=True, check=True, timeout=5
+                cmd, capture_output=True, text=True, check=True, timeout=10
             )
 
-            # Filter for containers using port 8005
-            grep_cmd = ["grep", "8005"]
-            grep_result = subprocess.run(
-                grep_cmd, input=result.stdout, capture_output=True, text=True
-            )
-
-            if grep_result.returncode == 0 and grep_result.stdout.strip():
-                # Parse the output to get container name
-                for line in grep_result.stdout.strip().split("\n"):
-                    if line.strip():
-                        # Format is: "container_name    port_mappings"
-                        parts = line.split("\t")
-                        if len(parts) >= 1:
-                            raw_container_name = parts[0].strip()
-                            if raw_container_name:
-                                # Remove port mapping info like '0.0.0.0:8005->8005/tcp' from container name
-                                # Container name should be everything before any spaces or port info
-                                container_name = raw_container_name.split()[0].strip()
-                                verbose_print(
-                                    f"[cyan]Found container using port {self.vllm_port}: {container_name}[/cyan]"
-                                )
-                                return container_name
+            # Parse output directly in Python instead of using grep
+            for line in result.stdout.strip().split("\n"):
+                if line.strip() and "8005" in line:
+                    # Format is: "container_name    port_mappings"
+                    parts = line.split("\t")
+                    if len(parts) >= 1:
+                        raw_container_name = parts[0].strip()
+                        if raw_container_name and raw_container_name != "vllm-proxy":
+                            # Remove any extra whitespace or formatting
+                            container_name = raw_container_name.split()[0].strip()
+                            verbose_print(
+                                f"[cyan]Found container using port {self.vllm_port}: {container_name}[/cyan]"
+                            )
+                            return container_name
 
             verbose_print(
                 f"[cyan]No container found using port {self.vllm_port}[/cyan]"
