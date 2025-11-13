@@ -819,7 +819,7 @@ class VLLMModelManager:
 
         try:
             result = subprocess.run(
-                cmd, capture_output=True, text=True, check=True, timeout=15
+                cmd, capture_output=True, text=True, check=True, timeout=60
             )
 
             verbose_print(
