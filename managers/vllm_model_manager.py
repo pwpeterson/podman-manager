@@ -22,10 +22,12 @@ class VLLMModelManager:
     def __init__(self, manager):
         self.manager = manager
         self.vllm_port = 8005
-        self.proxy_container = "vllm-proxy"
+        self.proxy_container = "sys-services-vllm-proxy"
         self.proxy_port = 8002
         self.network_name = "local-ai-network"
-        self.proxy_image = "vllm-proxy:latest"  # Default, can be configured
+        self.proxy_image = (
+            "sys-services-vllm-proxy:latest"  # Default, can be configured
+        )
 
     def switch_vllm_model(
         self, new_model_container: str, proxy_image: Optional[str] = None
@@ -561,7 +563,7 @@ class VLLMModelManager:
             return False
 
     def get_available_vllm_models(self) -> list:
-        """Get list of available vLLM model containers (excluding vllm-proxy)"""
+        """Get list of available vLLM model containers (excluding sys-services-vllm-proxy)"""
         try:
             # List all containers with vllm in the name
             cmd = [
@@ -578,9 +580,9 @@ class VLLMModelManager:
             containers = []
             for line in result.stdout.strip().split("\n"):
                 container_name = line.strip()
-                # Exclude vllm-proxy and mcp-vllm-delegator as they are not vLLM model containers
+                # Exclude sys-services-vllm-proxy and mcp-vllm-delegator as they are not vLLM model containers
                 if container_name and container_name not in [
-                    "vllm-proxy",
+                    "sys-services-vllm-proxy",
                     "mcp-vllm-delegator",
                 ]:
                     containers.append(container_name)
@@ -825,7 +827,10 @@ class VLLMModelManager:
                     parts = line.split("\t")
                     if len(parts) >= 1:
                         raw_container_name = parts[0].strip()
-                        if raw_container_name and raw_container_name != "vllm-proxy":
+                        if (
+                            raw_container_name
+                            and raw_container_name != "sys-services-vllm-proxy"
+                        ):
                             # Remove any extra whitespace or formatting
                             container_name = raw_container_name.split()[0].strip()
                             verbose_print(
@@ -941,10 +946,10 @@ class VLLMModelManager:
                         container_name = parts[0].strip()
                         container_id = parts[1].strip()
 
-                        # Check if this container contains our process (exclude vllm-proxy)
+                        # Check if this container contains our process (exclude sys-services-vllm-proxy)
                         if (
                             "vllm" in container_name.lower()
-                            and container_name != "vllm-proxy"
+                            and container_name != "sys-services-vllm-proxy"
                         ):
                             inspect_cmd = [
                                 "podman",
@@ -980,7 +985,7 @@ class VLLMModelManager:
             return False
 
     def _find_vllm_container_by_inspection(self) -> Optional[str]:
-        """Find vLLM container by inspecting all vLLM containers (excluding vllm-proxy)"""
+        """Find vLLM container by inspecting all vLLM containers (excluding sys-services-vllm-proxy)"""
         try:
             # Get all containers (running and stopped) with vllm in the name
             cmd = [
@@ -1004,10 +1009,10 @@ class VLLMModelManager:
                         container_name = parts[0].strip()
                         status = parts[1].strip()
 
-                        # Exclude vllm-proxy as it's not a vLLM model container (uses port 8002, not 8005)
+                        # Exclude sys-services-vllm-proxy as it's not a vLLM model container (uses port 8002, not 8005)
                         if (
                             "Up" in status or "running" in status.lower()
-                        ) and container_name != "vllm-proxy":
+                        ) and container_name != "sys-services-vllm-proxy":
                             running_vllm_containers.append(container_name)
 
             # Check each container to see which one is actually using port 8005
@@ -1102,8 +1107,11 @@ class VLLMModelManager:
         self, target: str, new_vllm_model: str, build_type: Optional[str] = None
     ) -> bool:
         """Reinit a service and switch vLLM model if it's a vLLM-related service"""
-        # First perform the vLLM model switch if this is a vLLM model service (exclude vllm-proxy)
-        if "vllm" in target.lower() and target not in ["vllm-proxy", "vllm-stack"]:
+        # First perform the vLLM model switch if this is a vLLM model service (exclude sys-services-vllm-proxy)
+        if "vllm" in target.lower() and target not in [
+            "sys-services-vllm-proxy",
+            "vllm-stack",
+        ]:
             console.print(
                 "[green]Performing vLLM model switch as part of reinit...[/green]"
             )
