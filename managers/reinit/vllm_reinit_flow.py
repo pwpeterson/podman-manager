@@ -259,11 +259,8 @@ class VLLMReinitFlow:
             # Create analyzer instance with manager
             analyzer = AIAnalyzer(self.manager)
 
-            # Display which AI agent is being used
-            ai_agent_info = self._get_ai_agent_info(analyzer)
-            console.print(f"[cyan]Using AI agent: {ai_agent_info}[/cyan]\n")
-
             # Run unified AI analysis with error context and verbose mode
+            # The analyzer will handle AI agent selection and display
             result = analyzer.ai_analyze(
                 analysis_type="reinit_failure",
                 target=target,
@@ -289,32 +286,6 @@ class VLLMReinitFlow:
         except Exception as e:
             verbose_print(f"  [cyan]exec: AI analysis failed with error: {e}[/cyan]")
             console.print(f"[yellow]⚠️  AI analysis failed: {e}[/yellow]")
-
-    def _get_ai_agent_info(self, analyzer) -> str:
-        """Get information about which AI agent is being used."""
-        try:
-            # Import the global ai_agent_manager
-            from ai_system.ai_agents import ai_agent_manager
-
-            # Get the default agent from the manager
-            default_agent = ai_agent_manager.get_agent()
-            if default_agent:
-                agent_name = default_agent.config.display_name
-                agent_type = default_agent.config.agent_type
-                return f"{agent_name} ({agent_type})"
-            else:
-                # Check if there are any configured agents
-                available_agents = ai_agent_manager.list_available_agents()
-                if available_agents:
-                    return f"Agents configured but none available: {', '.join(available_agents)}"
-                else:
-                    all_agents = ai_agent_manager.list_agents()
-                    if all_agents:
-                        return f"Agents configured but unavailable: {', '.join(all_agents)}"
-                    else:
-                        return "No AI agents configured"
-        except Exception as e:
-            return f"AI agent detection failed: {str(e)}"
 
     def restart_vllm_support_services(self, display_name: str) -> bool:
         """Restart sys-services-vllm-proxy and mcp-vllm-delegator services"""
