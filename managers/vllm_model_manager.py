@@ -813,41 +813,43 @@ class VLLMModelManager:
 
     def _find_current_vllm_container(self) -> Optional[str]:
         """Find the currently running vLLM container using port 8005"""
-        # Show the exact command being executed
-        cmd = ["podman", "ps", "--format", "{{.Names}}\t{{.Ports}}"]
-        verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
+        # Use the suggested command with grep for more reliable detection
+        cmd_str = "podman ps --format '{{.Names}}\t{{.Ports}}' | grep 8005"
+        verbose_print(f"[cyan]exec: {cmd_str}[/cyan]")
 
         try:
+            # Use shell=True to properly handle the pipe
             result = subprocess.run(
-                cmd, capture_output=True, text=True, check=True, timeout=60
+                cmd_str, shell=True, capture_output=True, text=True, timeout=60
             )
 
-            verbose_print(
-                "[cyan]Command completed successfully, parsing output...[/cyan]"
-            )
+            if result.returncode == 0 and result.stdout.strip():
+                verbose_print(
+                    f"[cyan]Command completed successfully, found output: {result.stdout.strip()}[/cyan]"
+                )
 
-            # Parse output directly in Python instead of using grep
-            for line in result.stdout.strip().split("\n"):
-                if line.strip() and "8005" in line:
-                    verbose_print(f"[cyan]Found line with port 8005: {line}[/cyan]")
-                    # Format is: "container_name    port_mappings"
-                    parts = line.split("\t")
-                    if len(parts) >= 1:
-                        raw_container_name = parts[0].strip()
-                        if (
-                            raw_container_name
-                            and raw_container_name != "sys-services-vllm-proxy"
-                        ):
-                            # Remove any extra whitespace or formatting
-                            container_name = raw_container_name.split()[0].strip()
-                            verbose_print(
-                                f"[cyan]Found container using port {self.vllm_port}: {container_name}[/cyan]"
-                            )
-                            return container_name
-
-            verbose_print(
-                f"[cyan]No container found using port {self.vllm_port} in podman ps output[/cyan]"
-            )
+                # Parse the grep output
+                for line in result.stdout.strip().split("\n"):
+                    if line.strip():
+                        verbose_print(f"[cyan]Processing line: {line}[/cyan]")
+                        # Format is: "container_name    port_mappings"
+                        parts = line.split("\t")
+                        if len(parts) >= 1:
+                            raw_container_name = parts[0].strip()
+                            if (
+                                raw_container_name
+                                and raw_container_name != "sys-services-vllm-proxy"
+                            ):
+                                # Remove any extra whitespace or formatting
+                                container_name = raw_container_name.split()[0].strip()
+                                verbose_print(
+                                    f"[cyan]Found container using port {self.vllm_port}: {container_name}[/cyan]"
+                                )
+                                return container_name
+            else:
+                verbose_print(
+                    f"[cyan]No container found using port {self.vllm_port} (grep returned no results)[/cyan]"
+                )
 
             # Fallback: try a simpler approach
             return self._find_container_fallback()
