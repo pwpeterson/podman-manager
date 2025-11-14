@@ -22,6 +22,8 @@ else:
 
 from core.config import console, is_verbose, verbose_print
 from core.fuzzy_matcher import FuzzyMatcher
+from core.service_discovery import get_service_discovery
+from core.validation_utils import get_validation_utils
 
 
 class EnvironmentManager:
@@ -1304,6 +1306,10 @@ class QuadletInstaller:
         """Initialize the installer with component managers."""
         self.quadlet_base_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
 
+        # Get shared utilities
+        self.discovery = get_service_discovery()
+        self.validation = get_validation_utils()
+
         # Component managers
         self.env_manager = EnvironmentManager()
         self.systemd_manager = SystemdManager()
@@ -1324,15 +1330,7 @@ class QuadletInstaller:
 
     def discover_stacks(self) -> List[str]:
         """Discover available stacks in the quadlet directory."""
-        stacks = []
-        for item in self.quadlet_base_dir.iterdir():
-            if (
-                item.is_dir()
-                and item.name not in ["scripts", "docs"]
-                and self._has_quadlet_files(item)
-            ):
-                stacks.append(item.name)
-        return sorted(stacks)
+        return self.discovery.get_available_stacks()
 
     def _has_quadlet_files(self, directory: Path) -> bool:
         """Check if directory contains container files (excluding .disabled files)."""
@@ -1346,43 +1344,15 @@ class QuadletInstaller:
 
     def get_stack_files(self, stack_name: str) -> List[str]:
         """Get quadlet files for a stack, excluding network and volume files."""
-        stack_dir = self.quadlet_base_dir / stack_name
-        if not stack_dir.exists():
-            return []
-
-        files = []
-        # Only include container files, exclude network and volume files
-        quadlet_extensions = [".container"]
-        for ext in quadlet_extensions:
-            for file in stack_dir.glob(f"*{ext}"):
-                if not file.name.endswith(".disabled"):
-                    files.append(file.name)
-
-        return sorted(files)
+        return self.discovery.get_stack_files(stack_name)
 
     def get_service_names(self, stack_name: str) -> List[str]:
         """Get service names from quadlet files."""
-        stack_dir = self.quadlet_base_dir / stack_name
-        if not stack_dir.exists():
-            return []
-
-        services = []
-        for file in stack_dir.glob("*.container"):
-            if not file.name.endswith(".disabled"):
-                services.append(file.stem)
-        return sorted(services)
+        return self.discovery.get_service_names(stack_name)
 
     def find_service_in_stacks(self, service_name: str) -> Optional[Tuple[str, str]]:
         """Find which stack contains a specific service."""
-        available_stacks = self.discover_stacks()
-        for stack in available_stacks:
-            stack_dir = self.quadlet_base_dir / stack
-            container_file = f"{service_name}.container"
-            container_path = stack_dir / container_file
-
-            if container_path.exists() and not container_file.endswith(".disabled"):
-                return (stack, container_file)
-        return None
+        return self.discovery.find_service_in_stacks(service_name)
 
     def validate_stack_or_service(self, name: str) -> Tuple[bool, str, Optional[str]]:
         """Validate that a stack or service exists with fuzzy matching support."""

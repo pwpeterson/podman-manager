@@ -89,22 +89,32 @@ class VLLMReinitFlow:
             else service_name
         )
 
-        # Stop the current active vLLM model using systemctl
+        # Stop the current active vLLM model using vLLM manager's robust stopping mechanism
         stop_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(
             f"[green]{stop_timestamp} | Stopping {current_container}...[/green]"
         )
-        stop_result = self.service_manager.stop_service(
-            f"{current_container}.service", current_container, quiet=False
-        )
+
+        # Import spinner utility
+        from ai_analyzer.spinner_manager import safe_spinner
+        from core.config import _verbose_enabled
+
+        # Use vLLM manager's silent stopping method which has better timeout handling
+        with safe_spinner(
+            f"Stopping {current_container}...", console, verbose=_verbose_enabled
+        ):
+            stop_success = (
+                self.vllm_manager._detect_and_stop_current_vllm_model_silent()
+            )
+
         stopped_timestamp = datetime.now().strftime("%H:%M:%S")
-        if stop_result.returncode == 0:
+        if stop_success:
             console.print(
                 f"[green]{stopped_timestamp} |   Stopped {current_container}[/green]"
             )
         else:
             console.print(
-                f"[yellow]{stopped_timestamp} |   {current_container} was not running or failed to stop[/yellow]"
+                f"[yellow]{stopped_timestamp} |   {current_container} stop failed or timed out[/yellow]"
             )
         console.print()
 
@@ -298,6 +308,9 @@ class VLLMReinitFlow:
         console.print(
             f"[green]{stop_timestamp} | Stopping sys-services-vllm-proxy...[/green]"
         )
+        verbose_print(
+            "[cyan]exec: systemctl --user stop sys-services-vllm-proxy.service[/cyan]"
+        )
         stop_result = self.service_manager.stop_service(
             "sys-services-vllm-proxy.service", "sys-services-vllm-proxy", quiet=False
         )
@@ -312,7 +325,19 @@ class VLLMReinitFlow:
             )
         console.print()
 
-        # Start sys-services-vllm-proxy using systemctl
+        # Show VLLM_URL update message
+        vllm_url = f"http://{display_name}:8005"
+        console.print(f"[cyan]Updating VLLM_URL to: {vllm_url}[/cyan]")
+        console.print()
+
+        # Service file removal is handled by the main reinit flow, no need to duplicate here
+
+        # Reload systemd daemon
+        if not self.service_manager.reload_daemon():
+            return False
+        console.print()
+
+        # Start sys-services-vllm-proxy using systemctl (this will regenerate the service with new VLLM_URL)
         start_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(
             f"[green]{start_timestamp} | Restarting sys-services-vllm-proxy...[/green]"

@@ -813,16 +813,17 @@ class VLLMModelManager:
 
     def _find_current_vllm_container(self) -> Optional[str]:
         """Find the currently running vLLM container using port 8005"""
-        # Use awk to directly extract container name with port 8005
+        # Use the faster command to detect active vLLM model using port 8005
         cmd_str = (
-            "podman ps --format '{{.Names}} {{.Ports}}' | awk '/8005->/ {print $1}'"
+            "PID=$(sudo ss -tulpn | grep 8005 | grep -oP 'pid=\\K[0-9]+'); "
+            "cat /proc/$PID/cgroup | grep -oP '/app\\.slice/\\K[^.]+(?=\\.service)'"
         )
         verbose_print(f"[cyan]exec: {cmd_str}[/cyan]")
 
         try:
-            # Use shell=True to properly handle the pipe and awk
+            # Use shell=True to properly handle the pipe and command substitution
             result = subprocess.run(
-                cmd_str, shell=True, capture_output=True, text=True, timeout=60
+                cmd_str, shell=True, capture_output=True, text=True, timeout=10
             )
 
             if result.returncode == 0 and result.stdout.strip():
@@ -843,7 +844,7 @@ class VLLMModelManager:
                     )
             else:
                 verbose_print(
-                    f"[cyan]No container found using port {self.vllm_port} (awk returned no results)[/cyan]"
+                    f"[cyan]No container found using port {self.vllm_port} (command returned no results)[/cyan]"
                 )
 
             # Fallback: try a simpler approach

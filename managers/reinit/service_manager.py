@@ -29,15 +29,14 @@ class ServiceManager:
             return True
         else:
             console.print(f"[green]Removing {service_file_name}...[/green]")
+            verbose_print(f"[cyan]exec: rm -f {service_file_name}[/cyan]")
             try:
                 if os.path.exists(service_file_path):
                     os.remove(service_file_path)
                     console.print(f"[green]  Removed {service_file_name}[/green]")
                 else:
                     console.print(f"[green]  Removed {service_file_name}[/green]")
-                    verbose_print(
-                        f"[cyan]Service file {service_file_path} does not exist, skipping removal[/cyan]"
-                    )
+                    # Don't show the "does not exist" message as it's confusing
                 return True
             except Exception as e:
                 console.print(

@@ -232,6 +232,9 @@ class ReinitManager:
         # Step 1: Stop the service
         stop_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(f"[green]{stop_timestamp} | Stopping {display_name}...[/green]")
+        from core.config import verbose_print
+
+        verbose_print(f"[cyan]exec: systemctl --user stop {service_name}[/cyan]")
         stop_result = self.service_manager.stop_service(
             service_name, target, quiet=True
         )

@@ -13,6 +13,8 @@ from core.config import (  # pyright: ignore[reportAttributeAccessIssue]
     verbose_print,
 )
 from core.fuzzy_matcher import FuzzyMatcher
+from core.service_discovery import get_service_discovery
+from core.validation_utils import get_validation_utils
 
 
 class QuadletManager:
@@ -22,26 +24,38 @@ class QuadletManager:
         # Project name for display purposes
         self.project_name = project_name
 
+        # Get shared service discovery and validation utilities
+        self.discovery = get_service_discovery()
+        self.validation = get_validation_utils()
+
         # Quadlets directory path (standard systemd location only)
         self.quadlets_dir = Path.home() / ".config" / "containers" / "systemd"
 
-        # Services managed as quadlets (will be auto-discovered)
-        self.quadlet_services = {}
-        self.stack_services = {}  # Maps stack names to their services
-
         # Stack target for managing all services together
         self.stack_target = "vllm-stack.target"
-
-        # Auto-discover all quadlet services and stacks
-        self._discover_quadlet_services()
 
         # Store last fuzzy match results for numeric selection
         self.last_fuzzy_matches = []
         self.cache_file = Path.home() / ".pm_fuzzy_cache"
 
         logger.debug("Initializing QuadletManager for quadlet services")
-        self._validate_prerequisites()
+        self.validation.validate_prerequisites()
         self._load_fuzzy_cache()
+
+    @property
+    def quadlet_services(self) -> Dict[str, str]:
+        """Access to discovered quadlet services."""
+        return self.discovery.quadlet_services
+
+    @property
+    def stack_services(self) -> Dict[str, List[str]]:
+        """Access to discovered stack services."""
+        return self.discovery.stack_services
+
+    @property
+    def service_status(self) -> Dict[str, Dict[str, bool]]:
+        """Access to service status information."""
+        return self.discovery.service_status
 
     def _validate_prerequisites(self) -> bool:
         """Validate that required tools exist"""
@@ -69,8 +83,7 @@ class QuadletManager:
         # Primary source directory
         self.quadlets_source_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
 
-        # Track installation status for each service
-        self.service_status = {}  # service_name -> {'installed': bool, 'source': bool}
+        # Track installation status for each service (moved to ServiceDiscovery)
 
         # First scan primary source directory
         if self.quadlets_source_dir.exists():
@@ -627,8 +640,25 @@ class QuadletManager:
             logger.info("Executing systemctl command: {}", " ".join(cmd))
 
             start_time = time.time()
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            execution_time = time.time() - start_time
+            # Add timeout for systemctl commands, especially for vLLM model services
+            timeout = 120  # 2 minutes timeout for systemctl commands
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=timeout
+                )
+                execution_time = time.time() - start_time
+            except subprocess.TimeoutExpired:
+                execution_time = time.time() - start_time
+                logger.warning(
+                    "Command timed out after {:.2f}s: {}", execution_time, " ".join(cmd)
+                )
+                # Create a mock result for timeout
+                result = subprocess.CompletedProcess(
+                    cmd,
+                    returncode=124,
+                    stdout="",
+                    stderr=f"Command timed out after {timeout}s",
+                )
 
             # Log the result with context
             if result.returncode == 0:
@@ -770,51 +800,16 @@ class QuadletManager:
                 f"[dim]Resolved alias '{original_target}' -> '{target}'[/dim]"
             )
 
-        # PRIORITY: Check for stack names first (before individual services)
-        # Check if it's any discovered stack name (exact match)
-        if target in self.stack_services:
-            return f"STACK:{target}"
-
-        # Check if target ends with -stack and exists in our discovered stacks
-        if target.endswith("-stack") and target in self.stack_services:
-            return f"STACK:{target}"
-
-        # Handle stack name mapping (shortened names) - ENHANCED
-        if not target.endswith("-stack"):
-            stack_variant = f"{target}-stack"
-            if stack_variant in self.stack_services:
-                return f"STACK:{stack_variant}"
-
-            # Also check if any stack starts with the target name
-            for stack_name in self.stack_services.keys():
-                if stack_name.startswith(f"{target}-"):
-                    return f"STACK:{stack_name}"
-
-        # Check if it's a short name in quadlet services
-        if target in self.quadlet_services:
-            return self.quadlet_services[target]
-
-        # Check if it's already a full service name in quadlet services
-        if target in self.quadlet_services.values():
-            return target
-
-        # Check if it's any stack target
-        if target == "stack" or target == "vllm-stack" or target == self.stack_target:
-            return self.stack_target
-
-        # For any other service, try as-is first
-        if target.endswith(".service") or target.endswith(".target"):
-            return target
-
-        # Try fuzzy matching for partial names using unified matcher
+        # Use the unified fuzzy matcher for all matching logic
         fuzzy_matcher = FuzzyMatcher(quadlet_manager=self)
         fuzzy_result = fuzzy_matcher.fuzzy_match_service_or_stack(target, command)
+
         if fuzzy_result == "CANCELLED":
             return None
         elif fuzzy_result:
             return fuzzy_result
 
-        # Try adding .service extension for generic services
+        # Try adding .service extension for generic services as fallback
         potential_service = f"{target}.service"
 
         # Check if the service exists by trying to get its status
@@ -889,139 +884,6 @@ class QuadletManager:
             return self.stack_target
         else:
             return f"{selected_service}.service"
-
-    def _fuzzy_match_service(self, partial_name: str) -> Optional[str]:
-        """Find service using fuzzy matching for partial names"""
-
-        # Get all available service names (short names)
-        all_services = list(self.quadlet_services.keys())
-
-        # Add stack aliases
-        all_services.extend(["stack", "vllm-stack"])
-
-        # Also search the systemd directory for .container files that match
-        systemd_matches = self._search_systemd_directory(partial_name)
-        all_services.extend(systemd_matches)
-
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_services = []
-        for svc in all_services:
-            if svc not in seen:
-                seen.add(svc)
-                unique_services.append(svc)
-        all_services = unique_services
-
-        # Find exact matches first
-        exact_matches = [svc for svc in all_services if svc == partial_name]
-        if len(exact_matches) == 1:
-            if exact_matches[0] in self.quadlet_services:
-                return self.quadlet_services[exact_matches[0]]
-            elif exact_matches[0] in ["stack", "vllm-stack"]:
-                return self.stack_target
-
-        # Find partial matches (case-insensitive)
-        partial_matches = [
-            svc for svc in all_services if partial_name.lower() in svc.lower()
-        ]
-
-        # If no partial matches, try prefix matching
-        if not partial_matches:
-            partial_matches = [
-                svc
-                for svc in all_services
-                if svc.lower().startswith(partial_name.lower())
-            ]
-
-        # If still no matches, try fuzzy matching with edit distance
-        if not partial_matches:
-
-            def levenshtein_distance(s1: str, s2: str) -> int:
-                """Calculate Levenshtein distance between two strings"""
-                if len(s1) < len(s2):
-                    return levenshtein_distance(s2, s1)
-                if len(s2) == 0:
-                    return len(s1)
-
-                previous_row = list(range(len(s2) + 1))
-                for i, c1 in enumerate(s1):
-                    current_row = [i + 1]
-                    for j, c2 in enumerate(s2):
-                        insertions = previous_row[j + 1] + 1
-                        deletions = current_row[j] + 1
-                        substitutions = previous_row[j] + (c1 != c2)
-                        current_row.append(min(insertions, deletions, substitutions))
-                    previous_row = current_row
-                return previous_row[-1]
-
-            # Find services with small edit distance (max 2 for reasonable matches)
-            fuzzy_matches = []
-            for svc in all_services:
-                distance = levenshtein_distance(partial_name.lower(), svc.lower())
-                if (
-                    distance <= 2 and len(partial_name) >= 3
-                ):  # Only for reasonable length inputs
-                    fuzzy_matches.append((svc, distance))
-
-            # Sort by distance and take best matches
-            fuzzy_matches.sort(key=lambda x: x[1])
-            partial_matches = [match[0] for match in fuzzy_matches[:5]]  # Top 5 matches
-
-        if len(partial_matches) == 1:
-            # Single match found
-            matched_service = partial_matches[0]
-            if matched_service in self.quadlet_services:
-                console.print(
-                    f"[dim]Matched '{partial_name}' to '{matched_service}'[/dim]"
-                )
-                return self.quadlet_services[matched_service]
-            elif matched_service in ["stack", "vllm-stack"]:
-                console.print(
-                    f"[dim]Matched '{partial_name}' to '{matched_service}'[/dim]"
-                )
-                return self.stack_target
-        elif len(partial_matches) > 1:
-            # Multiple matches - store them and show clean selection menu
-            self.last_fuzzy_matches = partial_matches
-            self._save_fuzzy_cache()
-
-            # Show clean numbered list starting from 1
-            console.print(f"[yellow]Multiple services match '{partial_name}':[/yellow]")
-
-            for i, service in enumerate(partial_matches, 1):
-                # Show additional info about the service
-                service_info = self._get_service_display_info(service)
-                console.print(f"[cyan]{i}.[/cyan] {service}{service_info}")
-
-            # Interactive selection
-            try:
-                choice = input(
-                    "\nSelect service (1-{}) or press Enter to cancel: ".format(
-                        len(partial_matches)
-                    )
-                ).strip()
-
-                if not choice:
-                    return None
-
-                choice_num = int(choice)
-
-                if 1 <= choice_num <= len(partial_matches):
-                    selected_service = partial_matches[choice_num - 1]
-
-                    # Return the full service name
-                    if selected_service in self.quadlet_services:
-                        return self.quadlet_services[selected_service]
-                    elif selected_service in ["stack", "vllm-stack"]:
-                        return self.stack_target
-                    else:
-                        return f"{selected_service}.service"
-                else:
-                    return None
-            except (ValueError, KeyboardInterrupt):
-                return None
-
-        return None  # No matches found
 
     def start_service(self, target: str) -> bool:
         """Start a service or the stack target"""

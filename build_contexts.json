@@ -16,7 +16,7 @@
       "build_dir": "/home/pwp/srv/sys-services/vllm-proxy",
       "dockerfile": "Dockerfile.sys-services-vllm-proxy",
       "context": "/home/pwp/srv/sys-services/vllm-proxy",
-      "image_name": "localhost/vllm-proxy:latest"
+      "image_name": "localhost/sys-services-vllm-proxy:latest"
     }
   },
   "podman_build_services": [
