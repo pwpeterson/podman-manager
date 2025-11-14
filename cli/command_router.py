@@ -173,12 +173,9 @@ class CommandRouter:
             from core.simple_fuzzy_matcher import find_container
 
             # Check if this is a stack target to avoid fuzzy matching
-            is_stack_target = target.endswith("-stack") or target in [
-                "local-ai",
-                "supabase",
-                "vllm",
-                "stack",
-            ]
+            is_stack_target = target.endswith(
+                "-stack"
+            ) or self._has_corresponding_stack_directory(target)
 
             if not is_stack_target:
                 container = find_container(target)
@@ -190,6 +187,21 @@ class CommandRouter:
         except Exception:
             # If fuzzy matching fails, return original target
             return target
+
+    def _has_corresponding_stack_directory(self, target: str) -> bool:
+        """Check if a target has a corresponding -stack directory in the quadlets source."""
+        try:
+            from pathlib import Path
+
+            quadlets_source_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
+            if not quadlets_source_dir.exists():
+                return False
+
+            # Check if target-stack directory exists
+            stack_dir = quadlets_source_dir / f"{target}-stack"
+            return stack_dir.exists() and stack_dir.is_dir()
+        except Exception:
+            return False
 
     def _show_common_actions_for_command(
         self,

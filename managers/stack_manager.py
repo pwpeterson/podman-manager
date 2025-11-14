@@ -497,8 +497,11 @@ class StackManager:
             # For individual services, pass the original service name to avoid installing the whole stack
             success = installer.install_stack(stack)
         else:
-            # For stacks, use the resolved stack name
-            success = installer.install_stack(resolved_stack)
+            # For stacks, use the resolved stack name but remove STACK: prefix if present
+            stack_name = resolved_stack
+            if stack_name.startswith("STACK:"):
+                stack_name = stack_name[6:]  # Remove "STACK:" prefix
+            success = installer.install_stack(stack_name)
 
         if success:
             # Final success message - use appropriate term based on what was installed

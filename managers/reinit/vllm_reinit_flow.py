@@ -308,9 +308,6 @@ class VLLMReinitFlow:
         console.print(
             f"[green]{stop_timestamp} | Stopping sys-services-vllm-proxy...[/green]"
         )
-        verbose_print(
-            "[cyan]exec: systemctl --user stop sys-services-vllm-proxy.service[/cyan]"
-        )
         stop_result = self.service_manager.stop_service(
             "sys-services-vllm-proxy.service", "sys-services-vllm-proxy", quiet=False
         )
@@ -330,7 +327,11 @@ class VLLMReinitFlow:
         console.print(f"[cyan]Updating VLLM_URL to: {vllm_url}[/cyan]")
         console.print()
 
-        # Service file removal is handled by the main reinit flow, no need to duplicate here
+        # Remove service file to allow regeneration with updated VLLM_URL
+        self.service_manager.remove_service_file(
+            "sys-services-vllm-proxy.service", dry_run=False
+        )
+        console.print()
 
         # Reload systemd daemon
         if not self.service_manager.reload_daemon():
@@ -354,6 +355,36 @@ class VLLMReinitFlow:
             console.print(
                 f"[red]{started_timestamp} |   Failed to restart sys-services-vllm-proxy[/red]"
             )
+            return False
+        console.print()
+
+        # Stop mcp-vllm-delegator using systemctl
+        stop_timestamp2 = datetime.now().strftime("%H:%M:%S")
+        console.print(
+            f"[green]{stop_timestamp2} | Stopping mcp-vllm-delegator...[/green]"
+        )
+        stop_result2 = self.service_manager.stop_service(
+            "mcp-vllm-delegator.service", "mcp-vllm-delegator", quiet=False
+        )
+        stopped_timestamp2 = datetime.now().strftime("%H:%M:%S")
+        if stop_result2.returncode == 0:
+            console.print(
+                f"[green]{stopped_timestamp2} |   Stopped mcp-vllm-delegator[/green]"
+            )
+        else:
+            console.print(
+                f"[yellow]{stopped_timestamp2} |   mcp-vllm-delegator was not running or failed to stop[/yellow]"
+            )
+        console.print()
+
+        # Remove mcp-vllm-delegator service file to allow regeneration
+        self.service_manager.remove_service_file(
+            "mcp-vllm-delegator.service", dry_run=False
+        )
+        console.print()
+
+        # Reload systemd daemon again after removing mcp-vllm-delegator service file
+        if not self.service_manager.reload_daemon():
             return False
         console.print()
 

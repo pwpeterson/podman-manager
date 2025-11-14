@@ -269,9 +269,8 @@ class ServiceDiscovery:
             # Check if partial_name matches stack prefix
             for stack_dir in stack_dirs:
                 stack_name = stack_dir.name
-                if (
-                    stack_name.startswith(f"{partial_name}-")
-                    or partial_name in stack_name.split("-")[0]
+                if stack_name.startswith(f"{partial_name}-") or stack_name.startswith(
+                    partial_name
                 ):
                     return f"STACK:{stack_name}"
 

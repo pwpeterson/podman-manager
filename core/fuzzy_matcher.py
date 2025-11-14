@@ -145,7 +145,19 @@ class FuzzyMatcher:
             matched_item = partial_matches[0]
             return self._resolve_match(matched_item)
         elif len(partial_matches) > 1:
-            # Multiple matches - show interactive selection menu
+            # PRIORITIZE STACKS: If we have both stacks and services, prefer stacks
+            stack_matches = [
+                item for item in partial_matches if item["type"] == "stack"
+            ]
+            if len(stack_matches) == 1:
+                # Single stack match found among multiple matches - prioritize it
+                return self._resolve_match(stack_matches[0])
+            elif len(stack_matches) > 1:
+                # Multiple stack matches - show selection for stacks only
+                return self._show_interactive_selection(
+                    partial_name, stack_matches, command
+                )
+            # No stack matches or multiple service matches - show interactive selection menu
             return self._show_interactive_selection(
                 partial_name, partial_matches, command
             )

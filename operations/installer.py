@@ -1356,7 +1356,45 @@ class QuadletInstaller:
 
     def validate_stack_or_service(self, name: str) -> Tuple[bool, str, Optional[str]]:
         """Validate that a stack or service exists with fuzzy matching support."""
-        # Try exact match as a service within stacks FIRST (prioritize individual services)
+        verbose_print(
+            f"  [cyan]exec: Validating '{name}', quadlet_base_dir={self.quadlet_base_dir}[/cyan]"
+        )
+        # For install command, prioritize stack matches over individual services
+        # Try exact match as a stack FIRST
+        stack_dir = self.quadlet_base_dir / name
+        verbose_print(
+            f"  [cyan]exec: Checking exact match: {stack_dir}, exists={stack_dir.exists()}[/cyan]"
+        )
+        if stack_dir.exists():
+            files = self.get_stack_files(name)
+            verbose_print(
+                f"  [cyan]exec: get_stack_files('{name}') returned: {files}[/cyan]"
+            )
+            if files:
+                verbose_print(
+                    f"  [cyan]exec: Found exact stack match for '{name}'[/cyan]"
+                )
+                return (True, name, None)
+
+        # Try stack with -stack suffix
+        if not name.endswith("-stack"):
+            stack_variant = f"{name}-stack"
+            stack_dir = self.quadlet_base_dir / stack_variant
+            verbose_print(
+                f"  [cyan]exec: Checking stack variant: {stack_dir}, exists={stack_dir.exists()}[/cyan]"
+            )
+            if stack_dir.exists():
+                files = self.get_stack_files(stack_variant)
+                verbose_print(
+                    f"  [cyan]exec: get_stack_files('{stack_variant}') returned: {files}[/cyan]"
+                )
+                if files:
+                    verbose_print(
+                        f"  [cyan]exec: Found stack match for '{name}' -> '{stack_variant}'[/cyan]"
+                    )
+                    return (True, stack_variant, None)
+
+        # Only if no stack found, try individual services
         service_result = self.find_service_in_stacks(name)
         verbose_print(
             f"  [cyan]exec: find_service_in_stacks('{name}') returned: {service_result}[/cyan]"
@@ -1368,19 +1406,16 @@ class QuadletInstaller:
             )
             return (True, stack_name, container_file)
 
-        # Try exact match as a stack only if no service found
-        stack_dir = self.quadlet_base_dir / name
-        if stack_dir.exists():
-            files = self.get_stack_files(name)
-            if files:
-                return (True, name, None)
-
         # Use fuzzy matcher
         fuzzy_matcher = FuzzyMatcher(quadlet_installer=self)
         fuzzy_result = fuzzy_matcher.fuzzy_match_service_or_stack(name)
 
         if fuzzy_result:
-            if fuzzy_result.endswith(".service"):
+            # PRIORITIZE STACK RESULTS: Check if fuzzy result is a stack first
+            if fuzzy_result.startswith("STACK:"):
+                stack_name = fuzzy_result[6:]  # Remove "STACK:" prefix
+                return (True, stack_name, None)
+            elif fuzzy_result.endswith(".service"):
                 service_name = fuzzy_result.replace(".service", "")
                 service_result = self.find_service_in_stacks(service_name)
                 if service_result:
