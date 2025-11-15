@@ -155,7 +155,7 @@ class EnvironmentManager:
 
             if created_count > 0 or skipped_count > 0:
                 console.print(
-                    f"   Network setup complete! Created: {created_count}, Skipped: {skipped_count}.",
+                    f"    Network setup complete! Created: {created_count}, Skipped: {skipped_count}.",
                     style="cyan",
                 )
 
