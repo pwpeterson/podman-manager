@@ -5,6 +5,7 @@ from typing import Optional
 
 from core.config import console, verbose_print
 from core.simple_fuzzy_matcher import find_container
+from utils.secure_subprocess import systemctl_user
 
 
 class ServiceLifecycle:
@@ -299,7 +300,7 @@ class ServiceLifecycle:
         verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = systemctl_user(["reset-failed", service_name])
             if result.returncode == 0:
                 console.print(
                     f"[green]Successfully reset failed state for {target}[/green]"
@@ -342,7 +343,7 @@ class ServiceLifecycle:
         verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = systemctl_user(["cat", service_name])
             if result.returncode == 0:
                 console.print(f"\n[bold cyan]=== {service_name} ===[/bold cyan]")
                 console.print(result.stdout)
@@ -395,7 +396,7 @@ class ServiceLifecycle:
         console.print("\n[green]Service Status:[/green]")
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = systemctl_user(["status", service_name])
             if result.stdout:
                 console.print(result.stdout)
             if result.stderr:
@@ -628,7 +629,9 @@ class ServiceLifecycle:
                 console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
                 try:
-                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    result = systemctl_user(
+                        ["status", service_name, "--no-pager", "-l"]
+                    )
                     if result.stdout:
                         console.print(result.stdout)
                     if result.stderr:
@@ -774,9 +777,7 @@ class ServiceLifecycle:
             # Stop the service using systemctl --user
             stop_cmd = ["systemctl", "--user", "stop", service_name]
             verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
-            result = subprocess.run(
-                stop_cmd, capture_output=True, text=True, timeout=30
-            )
+            result = systemctl_user(["stop", service_name], timeout=30)
 
             if not quiet:
                 console.print(f"[green]Removing {target}...[/green]")

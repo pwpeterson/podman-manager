@@ -4,10 +4,10 @@ Supabase environment variable fix utility
 """
 
 import re
-import subprocess
 from pathlib import Path
 
 from core.config import console
+from utils.secure_subprocess import systemctl_user
 
 
 def fix_supabase_environment_variables():
@@ -130,20 +130,14 @@ def fix_supabase_environment_variables():
         # Reload systemd daemon
         console.print("[yellow]Reloading systemd daemon...[/yellow]")
         try:
-            result = subprocess.run(
-                ["systemctl", "--user", "daemon-reload"], capture_output=True, text=True
-            )
+            result = systemctl_user(["daemon-reload"])
 
             if result.returncode == 0:
                 console.print("[green]✓ Systemd daemon reloaded[/green]")
 
                 # Reset failed services
                 console.print("[yellow]Resetting failed services...[/yellow]")
-                subprocess.run(
-                    ["systemctl", "--user", "reset-failed", "supabase*"],
-                    capture_output=True,
-                    text=True,
-                )
+                systemctl_user(["reset-failed", "supabase*"])
                 console.print("[green]✓ Failed services reset[/green]")
 
                 console.print("\n[bold green]Fix completed successfully![/bold green]")

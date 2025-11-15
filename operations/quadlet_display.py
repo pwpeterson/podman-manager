@@ -8,6 +8,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from core.config import console
+from utils.secure_subprocess import podman_cmd, secure_run
 
 
 class QuadletDisplayManager:
@@ -330,10 +331,13 @@ class QuadletDisplayManager:
             "{{.Names}};{{.Image}};{{.Status}};{{.Ports}}",
         ]
         console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
+        result = podman_cmd(
+            [
+                "ps",
+                "-a",
+                "--format",
+                "{{.Names}};{{.Image}};{{.Status}};{{.Ports}}",
+            ]
         )
 
         if result.returncode != 0:
@@ -384,7 +388,7 @@ class QuadletDisplayManager:
         if show_all:
             cmd.append("-a")
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = podman_cmd(["images"] + (["-a"] if show_all else []))
         if result.returncode != 0:
             error_msg = (
                 result.stderr.strip() if result.stderr.strip() else "Unknown error"
@@ -433,11 +437,11 @@ class QuadletDisplayManager:
         if follow:
             console.print("[dim]Press Ctrl+C to stop following stats[/dim]")
             try:
-                subprocess.run(cmd)
+                secure_run(cmd)
             except KeyboardInterrupt:
                 console.print("\n[yellow]Stats monitoring stopped[/yellow]")
         else:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = secure_run(cmd)
             if result.returncode == 0:
                 console.print(result.stdout)
             else:
@@ -450,12 +454,7 @@ class QuadletDisplayManager:
 
     def show_volumes(self):
         """List volumes with disk usage"""
-        cmd = ["podman", "volume", "ls", "--format", "table"]
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-        )
+        result = podman_cmd(["volume", "ls", "--format", "table"])
         if result.returncode == 0:
             console.print(result.stdout)
         else:
@@ -468,8 +467,7 @@ class QuadletDisplayManager:
 
     def show_networks(self):
         """List networks"""
-        cmd = ["podman", "network", "ls"]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = podman_cmd(["network", "ls"])
         if result.returncode == 0:
             console.print(result.stdout)
         else:
@@ -485,7 +483,7 @@ class QuadletDisplayManager:
         df_cmd = ["podman", "system", "df"]
         console.print(f"  [cyan]exec: {' '.join(df_cmd)}[/cyan]")
 
-        result = subprocess.run(df_cmd, capture_output=True, text=True)
+        result = podman_cmd(["system", "df"])
 
         if result.returncode == 0:
             console.print(result.stdout)
@@ -507,7 +505,7 @@ class QuadletDisplayManager:
         console.print("[dim]Press Ctrl+C to stop streaming events[/dim]")
 
         try:
-            result = subprocess.run(events_cmd, text=True)
+            result = secure_run(events_cmd)
             return result.returncode == 0
         except KeyboardInterrupt:
             console.print("\n[yellow]Event streaming stopped[/yellow]")
@@ -529,7 +527,7 @@ class QuadletDisplayManager:
         cmd = ["systemctl", "--user", "status", service_name, "--no-pager"]
         console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = secure_run(cmd)
         if result.stdout:
             console.print(result.stdout)
         if result.stderr:
@@ -582,20 +580,19 @@ class QuadletDisplayManager:
     def _get_container_status(self, container_name: str) -> str | None:
         """Get container status using podman ps"""
         try:
-            import subprocess
 
             # Check if container exists and get its status
-            cmd = [
-                "podman",
-                "ps",
-                "-a",
-                "--filter",
-                f"name=^{container_name}$",
-                "--format",
-                "{{.Status}}",
-            ]
-
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            result = podman_cmd(
+                [
+                    "ps",
+                    "-a",
+                    "--filter",
+                    f"name=^{container_name}$",
+                    "--format",
+                    "{{.Status}}",
+                ],
+                timeout=5,
+            )
 
             if result.returncode == 0 and result.stdout.strip():
                 status = result.stdout.strip()
@@ -623,18 +620,16 @@ class QuadletDisplayManager:
                     return f"[dim]{status}[/dim]"
 
             # Try partial name match if exact match fails
-            cmd_partial = [
-                "podman",
-                "ps",
-                "-a",
-                "--filter",
-                f"name={container_name}",
-                "--format",
-                "{{.Names}} {{.Status}}",
-            ]
-
-            result = subprocess.run(
-                cmd_partial, capture_output=True, text=True, timeout=5
+            result = podman_cmd(
+                [
+                    "ps",
+                    "-a",
+                    "--filter",
+                    f"name={container_name}",
+                    "--format",
+                    "{{.Names}} {{.Status}}",
+                ],
+                timeout=5,
             )
 
             if result.returncode == 0 and result.stdout.strip():
@@ -677,7 +672,9 @@ class QuadletDisplayManager:
                 console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
             # Use shorter timeout to prevent hanging
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            result = podman_cmd(
+                ["ps", "-a", "--format", "{{.Names}};{{.Status}}"], timeout=5
+            )
 
             if result.returncode == 0 and result.stdout.strip():
                 container_statuses = {}
@@ -805,16 +802,16 @@ class QuadletDisplayManager:
             # Fallback: check systemd service status when podman is unresponsive
             try:
                 # Use systemctl status to get human-readable status information
-                cmd_status = [
-                    "systemctl",
-                    "--user",
-                    "status",
-                    f"{service_name}.service",
-                    "--no-pager",
-                    "--lines=0",  # Don't show log lines, just status
-                ]
-                status_result = subprocess.run(
-                    cmd_status, capture_output=True, text=True, timeout=3
+                status_result = secure_run(
+                    [
+                        "systemctl",
+                        "--user",
+                        "status",
+                        f"{service_name}.service",
+                        "--no-pager",
+                        "--lines=0",
+                    ],
+                    timeout=3,
                 )
 
                 # Parse the status output
@@ -902,17 +899,17 @@ class QuadletDisplayManager:
 
             # Get container ID and image info
             try:
-                cmd = [
-                    "podman",
-                    "ps",
-                    "-a",
-                    "--filter",
-                    f"name=^{container_name}$",
-                    "--format",
-                    "{{.ID}} {{.Image}}",
-                ]
-
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                result = podman_cmd(
+                    [
+                        "ps",
+                        "-a",
+                        "--filter",
+                        f"name=^{container_name}$",
+                        "--format",
+                        "{{.ID}} {{.Image}}",
+                    ],
+                    timeout=5,
+                )
 
                 if result.returncode == 0 and result.stdout.strip():
                     parts = result.stdout.strip().split()

@@ -1,12 +1,12 @@
 """System monitoring and health check operations."""
 
-import subprocess
 from typing import List
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from core.config import console
+from utils.secure_subprocess import podman_cmd, secure_run, systemctl_user
 
 
 class SystemMonitor:
@@ -23,19 +23,13 @@ class SystemMonitor:
         timer_cmd = ["systemctl", "--user", "is-enabled", "podman-auto-update.timer"]
         console.print(f"[cyan]exec: {' '.join(timer_cmd)}[/cyan]")
 
-        result = subprocess.run(timer_cmd, capture_output=True, text=True)
+        result = systemctl_user(["is-enabled", "podman-auto-update.timer"])
 
         if result.returncode == 0 and "enabled" in result.stdout:
             console.print("[green]Podman auto-update timer is enabled[/green]")
 
             # Show next run time
-            next_cmd = [
-                "systemctl",
-                "--user",
-                "list-timers",
-                "podman-auto-update.timer",
-            ]
-            next_result = subprocess.run(next_cmd, capture_output=True, text=True)
+            next_result = systemctl_user(["list-timers", "podman-auto-update.timer"])
             if next_result.returncode == 0:
                 console.print(next_result.stdout)
         else:
@@ -51,7 +45,7 @@ class SystemMonitor:
         cmd = ["systemctl", "--user", "enable", "--now", "podman-auto-update.timer"]
         console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = systemctl_user(["enable", "--now", "podman-auto-update.timer"])
 
         if result.returncode == 0:
             console.print("[green]Podman auto-update timer enabled[/green]")
@@ -69,7 +63,7 @@ class SystemMonitor:
         cmd = ["systemctl", "--user", "start", "podman-auto-update.service"]
         console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = systemctl_user(["start", "podman-auto-update.service"])
 
         if result.returncode == 0:
             console.print("[green]Auto-update triggered successfully[/green]")
@@ -96,7 +90,16 @@ class SystemMonitor:
         ]
 
         console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = podman_cmd(
+            [
+                "ps",
+                "-a",
+                "--format",
+                "{{.Names}};{{.Image}};{{.Status}};{{.Ports}}",
+                "--filter",
+                "label=io.containers.autoupdate=registry",
+            ]
+        )
 
         if result.returncode == 0 and result.stdout.strip():
             table = Table(show_header=True, header_style="bold magenta")
@@ -146,7 +149,7 @@ class SystemMonitor:
         console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
         try:
-            subprocess.run(cmd)
+            secure_run(cmd)
         except Exception as e:
             console.print(f"[red]Error executing command: {e}[/red]")
             console.print(
@@ -192,11 +195,7 @@ class SystemMonitor:
             ) as progress:
                 # Step 1: Prune containers
                 task1 = progress.add_task("Pruning unused containers...", total=None)
-                result1 = subprocess.run(
-                    ["podman", "container", "prune", "-f"],
-                    capture_output=True,
-                    text=True,
-                )
+                result1 = podman_cmd(["container", "prune", "-f"])
                 progress.remove_task(task1)
 
                 if result1.returncode != 0:
@@ -206,9 +205,7 @@ class SystemMonitor:
 
                 # Step 2: Prune images
                 task2 = progress.add_task("Pruning unused images...", total=None)
-                result2 = subprocess.run(
-                    ["podman", "image", "prune", "-f"], capture_output=True, text=True
-                )
+                result2 = podman_cmd(["image", "prune", "-f"])
                 progress.remove_task(task2)
 
                 if result2.returncode != 0:
@@ -236,7 +233,7 @@ class SystemMonitor:
         df_cmd = ["podman", "system", "df"]
         console.print(f"[cyan]exec: {' '.join(df_cmd)}[/cyan]")
 
-        result = subprocess.run(df_cmd, capture_output=True, text=True, timeout=30)
+        result = podman_cmd(["system", "df"], timeout=30)
 
         if result.returncode == 0:
             console.print(result.stdout)
@@ -257,9 +254,8 @@ class SystemMonitor:
             console.print("\n[dim]Attempting alternative disk usage analysis...[/dim]")
 
             # Get container count and basic info
-            containers_cmd = ["podman", "ps", "-a", "--format", "{{.Names}}"]
-            containers_result = subprocess.run(
-                containers_cmd, capture_output=True, text=True, timeout=10
+            containers_result = podman_cmd(
+                ["ps", "-a", "--format", "{{.Names}}"], timeout=10
             )
 
             if containers_result.returncode == 0:
@@ -272,14 +268,13 @@ class SystemMonitor:
                 console.print(f"Containers: {container_count}")
 
             # Get image count and basic info
-            images_cmd = [
-                "podman",
-                "images",
-                "--format",
-                "{{.Repository}}:{{.Tag}} {{.Size}}",
-            ]
-            images_result = subprocess.run(
-                images_cmd, capture_output=True, text=True, timeout=10
+            images_result = podman_cmd(
+                [
+                    "images",
+                    "--format",
+                    "{{.Repository}}:{{.Tag}} {{.Size}}",
+                ],
+                timeout=10,
             )
 
             if images_result.returncode == 0:
@@ -305,9 +300,8 @@ class SystemMonitor:
 
             # Try to get volume info (this might also fail, but worth trying)
             try:
-                volumes_cmd = ["podman", "volume", "ls", "--format", "{{.Name}}"]
-                volumes_result = subprocess.run(
-                    volumes_cmd, capture_output=True, text=True, timeout=10
+                volumes_result = podman_cmd(
+                    ["volume", "ls", "--format", "{{.Name}}"], timeout=10
                 )
 
                 if volumes_result.returncode == 0:
@@ -389,8 +383,7 @@ class SystemMonitor:
             return
 
         # Get service status
-        status_cmd = ["systemctl", "--user", "is-active", service_name]
-        status_result = subprocess.run(status_cmd, capture_output=True, text=True)
+        status_result = systemctl_user(["is-active", service_name])
 
         if status_result.returncode == 0:
             console.print(f"[green]✓ {target} is active[/green]")
@@ -398,19 +391,19 @@ class SystemMonitor:
             console.print(f"[red]✗ {target} is not active[/red]")
 
         # Check recent logs for errors
-        logs_cmd = [
-            "journalctl",
-            "--user",
-            "-u",
-            service_name,
-            "--since",
-            "5 minutes ago",
-            "-n",
-            "10",
-            "--no-pager",
-        ]
-
-        logs_result = subprocess.run(logs_cmd, capture_output=True, text=True)
+        logs_result = secure_run(
+            [
+                "journalctl",
+                "--user",
+                "-u",
+                service_name,
+                "--since",
+                "5 minutes ago",
+                "-n",
+                "10",
+                "--no-pager",
+            ]
+        )
         if logs_result.returncode == 0 and logs_result.stdout:
             log_content = logs_result.stdout.lower()
             error_count = log_content.count("error") + log_content.count("failed")
@@ -434,8 +427,7 @@ class SystemMonitor:
 
         # Check systemd user session
         console.print("\n[cyan]Systemd User Session:[/cyan]")
-        systemd_cmd = ["systemctl", "--user", "is-system-running"]
-        systemd_result = subprocess.run(systemd_cmd, capture_output=True, text=True)
+        systemd_result = systemctl_user(["is-system-running"])
 
         if systemd_result.returncode == 0:
             console.print("[green]✓ Systemd user session is running[/green]")
@@ -446,8 +438,7 @@ class SystemMonitor:
 
         # Check podman
         console.print("\n[cyan]Podman Status:[/cyan]")
-        podman_cmd = ["podman", "version", "--format", "{{.Client.Version}}"]
-        podman_result = subprocess.run(podman_cmd, capture_output=True, text=True)
+        podman_result = podman_cmd(["version", "--format", "{{.Client.Version}}"])
 
         if podman_result.returncode == 0:
             console.print(
@@ -529,10 +520,7 @@ class SystemMonitor:
                 for service in services:
                     service_name = self.manager._find_service_name(service)
                     if service_name:
-                        status_cmd = ["systemctl", "--user", "is-active", service_name]
-                        status_result = subprocess.run(
-                            status_cmd, capture_output=True, text=True
-                        )
+                        status_result = systemctl_user(["is-active", service_name])
 
                         if status_result.returncode == 0:
                             status = "[green]ACTIVE[/green]"
@@ -571,8 +559,7 @@ class SystemMonitor:
             console.print("OS: Unknown")
 
         # Podman version
-        podman_cmd = ["podman", "version", "--format", "{{.Client.Version}}"]
-        podman_result = subprocess.run(podman_cmd, capture_output=True, text=True)
+        podman_result = podman_cmd(["version", "--format", "{{.Client.Version}}"])
         if podman_result.returncode == 0:
             console.print(f"Podman: {podman_result.stdout.strip()}")
 
@@ -582,13 +569,11 @@ class SystemMonitor:
         console.print(f"Python: {sys.version.split()[0]}")
 
         # Systemd user session
-        systemd_cmd = ["systemctl", "--user", "is-system-running"]
-        systemd_result = subprocess.run(systemd_cmd, capture_output=True, text=True)
+        systemd_result = systemctl_user(["is-system-running"])
         console.print(f"Systemd: {systemd_result.stdout.strip()}")
 
         # Container count
-        container_cmd = ["podman", "ps", "-a", "--format", "{{.Names}}"]
-        container_result = subprocess.run(container_cmd, capture_output=True, text=True)
+        container_result = podman_cmd(["ps", "-a", "--format", "{{.Names}}"])
         if container_result.returncode == 0:
             container_count = len(
                 [line for line in container_result.stdout.split("\n") if line.strip()]
@@ -596,8 +581,7 @@ class SystemMonitor:
             console.print(f"Containers: {container_count}")
 
         # Image count
-        image_cmd = ["podman", "images", "--format", "{{.Repository}}"]
-        image_result = subprocess.run(image_cmd, capture_output=True, text=True)
+        image_result = podman_cmd(["images", "--format", "{{.Repository}}"])
         if image_result.returncode == 0:
             image_count = len(
                 [line for line in image_result.stdout.split("\n") if line.strip()]

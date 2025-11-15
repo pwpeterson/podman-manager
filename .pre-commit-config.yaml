@@ -1,54 +1,51 @@
 exclude: |
   ^context_portal/alembic/versions/|  # Skip database migration files
   ^node_modules/|                     # Skip JavaScript dependencies
-  ^.venv/                            # Skip Python virtual environment
+  ^.venv/                             # Skip Python virtual environment
 
 repos:
   # Basic file hygiene and validation
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
-      - id: trailing-whitespace      # Remove trailing spaces at end of lines
-      - id: end-of-file-fixer       # Ensure files end with newline
-      - id: check-yaml              # Validate YAML syntax
-      - id: check-json              # Validate JSON syntax
-      - id: check-toml              # Validate TOML syntax (pyproject.toml, etc.)
-      - id: check-added-large-files # Prevent accidentally committing large files
-      - id: check-merge-conflict    # Detect Git merge conflict markers
-      - id: debug-statements        # Catch forgotten print(), pdb, etc.
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: debug-statements
 
   # Import organization - sorts and groups imports consistently
   - repo: https://github.com/pycqa/isort
     rev: 7.0.0
     hooks:
       - id: isort
-        args: ["--profile", "black"]  # Make isort compatible with Black formatting
+        args: ["--profile", "black"]
 
-  # Code formatting - enforces consistent style (line length, quotes, etc.)
+  # Code formatting - enforces consistent style
   - repo: https://github.com/psf/black
-    rev: 25.9.0
+    rev: 25.11.0
     hooks:
       - id: black
 
-  # Fast linting - checks code quality, style violations, potential bugs
-  # Replaces flake8, pylint, and many other tools with better performance
+  # Fast linting
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.0
+    rev: v0.14.5
     hooks:
       - id: ruff
         args:
-          - "--fix"                              # Auto-fix issues when possible
-          - "--line-length=88"                   # Match Black's line length
-          - "--extend-ignore=E203,E501,E221,E231"  # Ignore specific rules that conflict with Black
+          - "--fix"
+          - "--line-length=88"
+          - "--extend-ignore=E203,E501,E221,E231"
 
-# Static type checking - catches type-related errors before runtime
-  # Helps find attribute errors, wrong argument types, etc.
+  # Static type checking
   - repo: https://github.com/RobertCraigie/pyright-python
-    rev: v1.1.406
+    rev: v1.1.407    # or whatever tag you want, but don't also pin pyright below
     hooks:
       - id: pyright
         additional_dependencies:
-          - pyright==1.1.406
           - loguru
           - mcp>=1.16.0
           - httpx>=0.28.1
@@ -56,3 +53,38 @@ repos:
           - rich
           - sqlalchemy
           - alembic
+
+  # Vulture: dead code finder (manual)
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: v2.14
+    hooks:
+      - id: vulture
+        args:
+        - "."
+        - "--exclude"
+        - ".venv,node_modules,context_portal/alembic/versions"
+        # optional, if you only want “certain” dead code:
+        - "--min-confidence"
+        - "90"
+        additional_dependencies:
+          - vulture
+
+  # Refurb: modernize code (manual)
+  - repo: https://github.com/dosisod/refurb
+    rev: v2.2.0
+    hooks:
+      - id: refurb
+        # Check:
+        #   - root-level .py files (e.g. psync.py)
+        #   - all .py files under modules/
+        files: ^([^/]+\.py|modules/.*\.py)$
+        # Explicitly skip context_portal and other noisy dirs if needed
+        exclude: ^(context_portal/|\.venv/|node_modules/)
+
+  # Bandit: security scanner (manual)
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.6
+    hooks:
+      - id: bandit
+        args: ["-r", "src"]
+        stages: [manual]

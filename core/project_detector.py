@@ -1,10 +1,11 @@
 """Intelligent target type detection for pm facade - Quadlet-only version."""
 
-import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
 
 from loguru import logger
+
+from utils.secure_subprocess import systemctl_user
 
 
 class ProjectTypeDetector:
@@ -12,6 +13,7 @@ class ProjectTypeDetector:
 
     def __init__(self, compose_dir: Optional[Path] = None):
         # Keep compose_dir parameter for backward compatibility but ignore it
+        _ = compose_dir  # Explicitly mark as unused for vulture
 
         # Known quadlet services
         self.quadlet_services = {
@@ -92,14 +94,15 @@ class ProjectTypeDetector:
     def _systemd_unit_exists(self, unit_name: str) -> bool:
         """Check if a systemd user unit exists and is loaded"""
         try:
-            cmd = ["systemctl", "--user", "show", unit_name, "--property=LoadState"]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            result = systemctl_user(
+                ["show", unit_name, "--property=LoadState"], timeout=5
+            )
 
             if result.returncode == 0:
                 # Check if unit is loaded (exists)
                 return "LoadState=loaded" in result.stdout
             return False
-        except (subprocess.TimeoutExpired, Exception) as e:
+        except Exception as e:
             logger.debug("Error checking systemd unit {}: {}", unit_name, e)
             return False
 
@@ -140,6 +143,7 @@ class ProjectTypeDetector:
 
         Since we only support quadlet mode, this always returns None.
         """
+        _ = target, current_mode  # Explicitly mark as unused for vulture
         return None
 
     def list_available_targets(self) -> dict:
@@ -156,16 +160,16 @@ class ProjectTypeDetector:
 
         # Scan for additional systemd services
         try:
-            cmd = [
-                "systemctl",
-                "--user",
-                "list-units",
-                "--type=service",
-                "--state=loaded",
-                "--no-legend",
-                "--plain",
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            result = systemctl_user(
+                [
+                    "list-units",
+                    "--type=service",
+                    "--state=loaded",
+                    "--no-legend",
+                    "--plain",
+                ],
+                timeout=10,
+            )
 
             if result.returncode == 0:
                 for line in result.stdout.strip().split("\n"):

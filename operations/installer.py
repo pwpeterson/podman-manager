@@ -25,6 +25,11 @@ from core.config import console, is_verbose, verbose_print
 from core.fuzzy_matcher import FuzzyMatcher
 from core.service_discovery import get_service_discovery
 from core.validation_utils import get_validation_utils
+from utils.secure_subprocess import (
+    SecureSubprocessError,
+    secure_run,
+    systemctl_user,
+)
 
 # Network setup functionality integrated directly
 
@@ -192,14 +197,10 @@ class EnvironmentManager:
     def _validate_podman(self) -> None:
         """Check if Podman is available."""
         try:
-            subprocess.run(
-                ["podman", "--version"], capture_output=True, check=True, timeout=10
-            )
-        except (
-            subprocess.CalledProcessError,
-            FileNotFoundError,
-            subprocess.TimeoutExpired,
-        ):
+            result = secure_run(["podman", "--version"], timeout=10)
+            if result.returncode != 0:
+                raise Exception("Podman is required but not found in PATH")
+        except (SecureSubprocessError, FileNotFoundError):
             raise Exception("Podman is required but not found in PATH")
 
     def _ensure_network_config_file(self) -> None:
@@ -246,11 +247,9 @@ class EnvironmentManager:
     def _network_exists(self, name: str) -> bool:
         """Check if a Podman network already exists."""
         try:
-            result = subprocess.run(
-                ["podman", "network", "exists", name], capture_output=True, timeout=10
-            )
+            result = secure_run(["podman", "network", "exists", name], timeout=10)
             return result.returncode == 0
-        except (subprocess.TimeoutExpired, Exception):
+        except (SecureSubprocessError, Exception):
             return False
 
     def _create_network(self, network_config: Dict) -> bool:
@@ -263,7 +262,7 @@ class EnvironmentManager:
         cmd = self._build_create_command(network_config)
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = secure_run(cmd, timeout=30)
 
             if result.returncode != 0:
                 raise Exception(
@@ -272,9 +271,7 @@ class EnvironmentManager:
 
             return True
 
-        except subprocess.TimeoutExpired:
-            raise Exception(f"Timeout creating network '{name}'")
-        except Exception as e:
+        except SecureSubprocessError as e:
             raise Exception(f"Error creating network '{name}': {e}")
 
     def _build_create_command(self, network_config: Dict) -> List[str]:
@@ -359,7 +356,7 @@ class SystemdManager:
             # Check if systemd user session is running
             cmd = ["systemctl", "--user", "status"]
             verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            result = systemctl_user(["status"], timeout=10)
 
             if result.returncode != 0:
                 console.print(
@@ -380,7 +377,7 @@ class SystemdManager:
                 "--state=loaded",
             ]
             verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            result = secure_run(cmd, timeout=10)
 
             if result.returncode != 0:
                 console.print(
@@ -396,7 +393,7 @@ class SystemdManager:
             verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
             return True
 
-        except subprocess.TimeoutExpired:
+        except SecureSubprocessError:
             console.print("[yellow]Systemd health check timed out[/yellow]")
             return False
         except Exception as e:
@@ -418,48 +415,65 @@ class SystemdManager:
         """Reload system daemon with sudo."""
         cmd = ["sudo", "systemctl", "daemon-reload"]
         verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            console.print(
-                "[red]Failed to reload system daemon. You may need to manually run: sudo systemctl daemon-reload[/red]"
-            )
+        try:
+            result = secure_run(cmd, timeout=30)
+            if result.returncode != 0:
+                console.print(
+                    "[red]Failed to reload system daemon. You may need to manually run: sudo systemctl daemon-reload[/red]"
+                )
+                return False
+            return True
+        except SecureSubprocessError as e:
+            console.print(f"[red]Failed to reload system daemon: {e}[/red]")
             return False
-        return True
 
     def _reload_user_daemon(self) -> bool:
         """Reload user daemon with retry logic."""
         cmd = ["systemctl", "--user", "daemon-reload"]
         verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            console.print(
-                "[yellow]Failed to reload user daemon (systemd connection issue)[/yellow]"
-            )
-            console.print("[blue]Attempting to restart user systemd session...[/blue]")
+        try:
+            result = systemctl_user(["daemon-reload"], timeout=30)
+            if result.returncode != 0:
+                console.print(
+                    "[yellow]Failed to reload user daemon (systemd connection issue)[/yellow]"
+                )
+                console.print(
+                    "[blue]Attempting to restart user systemd session...[/blue]"
+                )
+                return self._retry_user_daemon_reload()
+            return True
+        except SecureSubprocessError as e:
+            console.print(f"[yellow]Failed to reload user daemon: {e}[/yellow]")
             return self._retry_user_daemon_reload()
-        return True
 
     def _retry_user_daemon_reload(self) -> bool:
         """Retry user daemon reload after resetting failed units."""
         reset_cmd = ["systemctl", "--user", "reset-failed"]
         verbose_print(f"  [cyan]exec: {' '.join(reset_cmd)}[/cyan]")
-        reset_result = subprocess.run(reset_cmd, capture_output=True, text=True)
+        try:
+            reset_result = systemctl_user(["reset-failed"], timeout=30)
 
-        if reset_result.returncode == 0:
-            console.print("[blue]Reset failed units, retrying daemon-reload...[/blue]")
-            retry_cmd = ["systemctl", "--user", "daemon-reload"]
-            verbose_print(f"  [cyan]exec: {' '.join(retry_cmd)}[/cyan]")
-            retry_result = subprocess.run(retry_cmd, capture_output=True, text=True)
+            if reset_result.returncode == 0:
+                console.print(
+                    "[blue]Reset failed units, retrying daemon-reload...[/blue]"
+                )
+                retry_cmd = ["systemctl", "--user", "daemon-reload"]
+                verbose_print(f"  [cyan]exec: {' '.join(retry_cmd)}[/cyan]")
+                retry_result = systemctl_user(["daemon-reload"], timeout=30)
 
-            if retry_result.returncode == 0:
-                console.print("[green]Successfully reloaded daemon after reset[/green]")
-                return True
+                if retry_result.returncode == 0:
+                    console.print(
+                        "[green]Successfully reloaded daemon after reset[/green]"
+                    )
+                    return True
+                else:
+                    self._show_manual_reload_instructions()
+                    return False
             else:
+                console.print("[yellow]Could not reset systemd user session[/yellow]")
                 self._show_manual_reload_instructions()
                 return False
-        else:
+        except SecureSubprocessError:
             console.print("[yellow]Could not reset systemd user session[/yellow]")
             self._show_manual_reload_instructions()
             return False
@@ -1247,7 +1261,12 @@ class FileManager:
         """Create target directory with appropriate permissions."""
         if use_sudo:
             cmd = ["sudo", "mkdir", "-p", str(target_dir)]
-            subprocess.run(cmd, check=True)
+            try:
+                result = secure_run(cmd, timeout=30)
+                if result.returncode != 0:
+                    raise subprocess.CalledProcessError(result.returncode, cmd)
+            except SecureSubprocessError as e:
+                raise subprocess.CalledProcessError(1, cmd) from e
         else:
             target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1980,10 +1999,22 @@ class QuadletInstaller:
                 disable_cmd = ["systemctl", "--user", "disable", f"{service}.service"]
 
             verbose_print(f"  [cyan]exec: {' '.join(stop_cmd)}[/cyan]")
-            subprocess.run(stop_cmd, capture_output=True)
+            try:
+                if use_sudo:
+                    secure_run(stop_cmd, timeout=30)
+                else:
+                    systemctl_user(["stop", f"{service}.service"], timeout=30)
+            except SecureSubprocessError:
+                pass  # Ignore errors when stopping services
 
             verbose_print(f"  [cyan]exec: {' '.join(disable_cmd)}[/cyan]")
-            subprocess.run(disable_cmd, capture_output=True)
+            try:
+                if use_sudo:
+                    secure_run(disable_cmd, timeout=30)
+                else:
+                    systemctl_user(["disable", f"{service}.service"], timeout=30)
+            except SecureSubprocessError:
+                pass  # Ignore errors when disabling services
 
     def _remove_quadlet_files(self, files: List[str], target_dir: Path, use_sudo: bool):
         """Remove quadlet files from target directory."""
@@ -1995,7 +2026,14 @@ class QuadletInstaller:
                 if use_sudo:
                     rm_cmd = ["sudo", "rm", str(file_path)]
                     verbose_print(f"  [cyan]exec: {' '.join(rm_cmd)}[/cyan]")
-                    subprocess.run(rm_cmd, check=True)
+                    try:
+                        result = secure_run(rm_cmd, timeout=30)
+                        if result.returncode != 0:
+                            raise subprocess.CalledProcessError(
+                                result.returncode, rm_cmd
+                            )
+                    except SecureSubprocessError as e:
+                        raise subprocess.CalledProcessError(1, rm_cmd) from e
                 else:
                     verbose_print(f"  [cyan]exec: rm .../systemd/{file}[/cyan]")
                     file_path.unlink()

@@ -1,6 +1,5 @@
 """Intelligent retry manager with AI-guided fixes for reinit failures."""
 
-import subprocess
 import time
 from typing import Callable, Dict, List, Optional
 
@@ -8,6 +7,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
 
 from core.config import console, verbose_print
+from utils.secure_subprocess import SecureSubprocessError, secure_run
 
 
 class IntelligentRetryManager:
@@ -344,11 +344,20 @@ class IntelligentRetryManager:
             try:
                 verbose_print(f"  [cyan]exec: {cmd}[/cyan]")
 
-                result = subprocess.run(
-                    cmd, shell=True, capture_output=True, text=True, timeout=30
-                )
+                # Convert string command to list for secure execution
+                # Handle special cases like "|| true" by splitting appropriately
+                if "|| true" in cmd:
+                    # For commands with "|| true", we'll ignore failures
+                    base_cmd = cmd.replace(" || true", "").strip()
+                    ignore_failure = True
+                else:
+                    base_cmd = cmd
+                    ignore_failure = False
 
-                if result.returncode != 0 and "|| true" not in cmd:
+                # Use secure_run instead of shell=True
+                result = secure_run(base_cmd, timeout=30)
+
+                if result.returncode != 0 and not ignore_failure:
                     verbose_print(
                         f"  [cyan]exec: Command failed: {result.stderr}[/cyan]"
                     )
@@ -356,8 +365,8 @@ class IntelligentRetryManager:
                 else:
                     verbose_print("  [cyan]exec: Command succeeded[/cyan]")
 
-            except subprocess.TimeoutExpired:
-                verbose_print(f"  [cyan]exec: Command timed out: {cmd}[/cyan]")
+            except SecureSubprocessError as e:
+                verbose_print(f"  [cyan]exec: Security error: {e}[/cyan]")
                 success = False
             except Exception as e:
                 verbose_print(f"  [cyan]exec: Command error: {e}[/cyan]")

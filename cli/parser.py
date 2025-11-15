@@ -77,6 +77,7 @@ class CustomArgumentParser(argparse.ArgumentParser):
 
     def _show_service_hierarchy(self, dim_stacks: bool = False) -> None:
         """Show full service hierarchy with status indicators, optionally dimming stacks"""
+        _ = dim_stacks  # Explicitly mark as unused for vulture
         # Try to get the full hierarchy from display managers with status
         try:
             # Try quadlet display first - use the enhanced show_status method
@@ -87,6 +88,7 @@ class CustomArgumentParser(argparse.ArgumentParser):
             display = QuadletDisplayManager(quadlet_manager)
 
             # Use the enhanced show_status method which includes running status
+            # Note: dim_stacks parameter is currently not used in the display implementation
             display.show_status()
             return
         except Exception:

@@ -1,11 +1,16 @@
 """Log analysis and diagnostic operations for quadlet containers."""
 
 import re
-import subprocess
 from collections import Counter
 from typing import List
 
 from core.config import console, verbose_print
+from utils.secure_subprocess import (
+    journalctl_user,
+    podman_cmd,
+    secure_run,
+    systemctl_user,
+)
 
 
 class LogAnalyzer:
@@ -99,18 +104,11 @@ class LogAnalyzer:
         console.print(f"Analyzing logs for {service_name} (last {lines} lines)...")
 
         # Get logs using journalctl
-        cmd = [
-            "journalctl",
-            "--user",
-            "-u",
-            service_name,
-            "-n",
-            str(lines),
-            "--no-pager",
-        ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = journalctl_user(
+                ["-u", service_name, "-n", str(lines), "--no-pager"], timeout=30
+            )
             if result.returncode != 0:
                 console.print(
                     f"[red]Failed to get logs: {result.stderr.strip() if result.stderr else 'Unknown error'}[/red]"
@@ -295,10 +293,11 @@ class LogAnalyzer:
             # Follow-up commands with interactive menu
             self._show_interactive_menu(target, service_name, errors)
 
-        except subprocess.TimeoutExpired:
-            console.print("[red]Timeout while fetching logs[/red]")
         except Exception as e:
-            console.print(f"[red]Error analyzing logs: {e}[/red]")
+            if "timeout" in str(e).lower():
+                console.print("[red]Timeout while fetching logs[/red]")
+            else:
+                console.print(f"[red]Error analyzing logs: {e}[/red]")
 
     def _show_interactive_menu(
         self, target: str, service_name: str, errors: int
@@ -388,7 +387,7 @@ class LogAnalyzer:
 
                     if cmd:  # Only execute if cmd was set
                         console.print(f"\n[cyan]Executing: {' '.join(cmd)}[/cyan]")
-                        subprocess.run(cmd)
+                        secure_run(cmd)
                 else:
                     console.print(
                         f"[yellow]Invalid choice. Please select 1-{max_option}[/yellow]"
@@ -420,7 +419,7 @@ class LogAnalyzer:
         if _verbose_enabled:
             console.print(f"[cyan]exec: {' '.join(status_cmd)}[/cyan]")
         console.print("\n[green]Service Status:[/green]")
-        status_result = subprocess.run(status_cmd, capture_output=True, text=True)
+        status_result = systemctl_user(["status", service_name, "--no-pager", "-l"])
         if status_result.stdout:
             console.print(status_result.stdout)
 
@@ -490,9 +489,7 @@ class LogAnalyzer:
 
         try:
             # Run with timeout to prevent hanging
-            test_result = subprocess.run(
-                test_cmd, capture_output=True, text=True, timeout=30
-            )
+            test_result = podman_cmd(test_cmd[1:], timeout=30)
 
             if test_result.returncode == 0:
                 console.print("[green]✅ Container ran successfully![/green]")
@@ -510,21 +507,18 @@ class LogAnalyzer:
                     console.print("[yellow]Standard output:[/yellow]")
                     console.print(test_result.stdout)
 
-        except subprocess.TimeoutExpired:
-            console.print(
-                "[yellow]⏰ Container test timed out (30s) - may be running but not responding[/yellow]"
-            )
-            # Try to stop the test container
-            service_name = f"{container_name}.service"
-            subprocess.run(
-                ["systemctl", "--user", "stop", service_name], capture_output=True
-            )
+        except Exception as e:
+            if "timeout" in str(e).lower():
+                console.print(
+                    "[yellow]⏰ Container test timed out (30s) - may be running but not responding[/yellow]"
+                )
+                # Try to stop the test container
+                systemctl_user(["stop", f"{container_name}.service"])
+            else:
+                console.print(f"[red]Error running container test: {e}[/red]")
         except KeyboardInterrupt:
             console.print("\n[yellow]Test interrupted by user[/yellow]")
-            service_name = f"{container_name}.service"
-            subprocess.run(
-                ["systemctl", "--user", "stop", service_name], capture_output=True
-            )
+            systemctl_user(["stop", f"{container_name}.service"])
 
         self._show_troubleshooting_tips(target, service_name)
 
@@ -613,8 +607,8 @@ class LogAnalyzer:
         verbose_print(f"[cyan]exec: {' '.join(extended_logs_cmd)}[/cyan]")
         if _verbose_enabled:
             print()  # Add newline after the exec command in verbose mode
-        extended_result = subprocess.run(
-            extended_logs_cmd, capture_output=True, text=True
+        extended_result = journalctl_user(
+            ["-xeu", service_name, "--output=short-precise", "--no-pager"]
         )
 
         if extended_result.returncode == 0 and extended_result.stdout:
@@ -827,9 +821,7 @@ class LogAnalyzer:
 
         try:
             # Run with timeout to prevent hanging
-            test_result = subprocess.run(
-                test_cmd, capture_output=True, text=True, timeout=30
-            )
+            test_result = podman_cmd(test_cmd[1:], timeout=30)
 
             if test_result.returncode == 0:
                 console.print("[green]✅ Container ran successfully![/green]")
@@ -847,23 +839,18 @@ class LogAnalyzer:
                     console.print("[yellow]Standard output:[/yellow]")
                     console.print(test_result.stdout)
 
-        except subprocess.TimeoutExpired:
-            console.print(
-                "[yellow]⏰ Container test timed out (30s) - may be running but not responding[/yellow]"
-            )
-            # Try to stop the test container
-            service_name = f"{container_name}.service"
-            subprocess.run(
-                ["systemctl", "--user", "stop", service_name], capture_output=True
-            )
+        except Exception as e:
+            if "timeout" in str(e).lower():
+                console.print(
+                    "[yellow]⏰ Container test timed out (30s) - may be running but not responding[/yellow]"
+                )
+                # Try to stop the test container
+                systemctl_user(["stop", f"{container_name}.service"])
+            else:
+                console.print(f"[red]Error running container test: {e}[/red]")
         except KeyboardInterrupt:
             console.print("\n[yellow]Test interrupted by user[/yellow]")
-            service_name = f"{container_name}.service"
-            subprocess.run(
-                ["systemctl", "--user", "stop", service_name], capture_output=True
-            )
-        except Exception as e:
-            console.print(f"[red]Error running container test: {e}[/red]")
+            systemctl_user(["stop", f"{container_name}.service"])
 
     def _show_specialized_diagnostics(self, target: str) -> None:
         """Show specialized diagnostics for specific services"""

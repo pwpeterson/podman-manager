@@ -9,6 +9,12 @@ from typing import List
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from core.config import console, verbose_print
+from utils.secure_subprocess import (
+    journalctl_user,
+    podman_cmd,
+    secure_run,
+    systemctl_user,
+)
 
 
 class StackManager:
@@ -287,13 +293,10 @@ class StackManager:
         console.print(
             f"\n[bold green]=== Podman Container Logs for {service} ===[/bold green]"
         )
-        podman_cmd = ["podman", "logs", service]
-        verbose_print(f"[cyan]exec: {' '.join(podman_cmd)}[/cyan]")
+        verbose_print(f"[cyan]exec: podman logs {service}[/cyan]")
 
         try:
-            podman_result = subprocess.run(
-                podman_cmd, capture_output=True, text=True, timeout=30
-            )
+            podman_result = podman_cmd(["logs", service], timeout=30)
             if podman_result.returncode == 0:
                 if podman_result.stdout.strip():
                     console.print(podman_result.stdout)
@@ -325,9 +328,9 @@ class StackManager:
             try:
                 if follow:
                     console.print("[dim]Press Ctrl+C to stop following logs[/dim]")
-                    subprocess.run(cmd)
+                    secure_run(cmd)
                 else:
-                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    result = secure_run(cmd)
                     if result.returncode == 0:
                         console.print(result.stdout)
                     else:
@@ -367,7 +370,7 @@ class StackManager:
                 console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
                 try:
-                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    result = journalctl_user(["-u", service_name])
                     if result.stdout:
                         console.print(result.stdout)
                     if result.stderr:
@@ -397,7 +400,7 @@ class StackManager:
             transient=True,
         ) as progress:
             task = progress.add_task(f"Updating {project} stack images", total=None)
-            result = subprocess.run(update_cmd, capture_output=True, text=True)
+            result = podman_cmd(["auto-update"])
             progress.remove_task(task)
 
         if result.returncode == 0:
@@ -695,9 +698,7 @@ class StackManager:
                     # Non-verbose mode: simple starting message without spinner
                     console.print(f"[green]Starting {service}...[/green]")
                     restart_cmd = ["systemctl", "--user", "restart", service_name]
-                    restart_result = subprocess.run(
-                        restart_cmd, capture_output=True, text=True
-                    )
+                    restart_result = systemctl_user(["restart", service_name])
 
                     if restart_result.returncode == 0:
                         # Monitor service startup
@@ -747,8 +748,7 @@ class StackManager:
         time.sleep(2)
 
         # Check service status first
-        status_cmd = ["systemctl", "--user", "is-active", service_name]
-        status_result = subprocess.run(status_cmd, capture_output=True, text=True)
+        status_result = systemctl_user(["is-active", service_name])
 
         if status_result.returncode != 0:
             verbose_print(f"[red]Service {target} is not active[/red]")
@@ -775,15 +775,13 @@ class StackManager:
             f"    [cyan]Monitoring {target} stability (no healthcheck available)...[/cyan]"
         )
 
-        status_cmd = ["systemctl", "--user", "is-active", service_name]
-
         # Check stability over multiple intervals
         check_intervals = [3, 6, 10]  # Check at 3s, 6s, and 10s
 
         for i, interval in enumerate(check_intervals):
             time.sleep(interval - (check_intervals[i - 1] if i > 0 else 0))
 
-            status_result = subprocess.run(status_cmd, capture_output=True, text=True)
+            status_result = systemctl_user(["is-active", service_name])
 
             if status_result.returncode != 0:
                 verbose_print(
@@ -794,30 +792,28 @@ class StackManager:
             verbose_print(f"    [cyan]Service {target} stable at {interval}s[/cyan]")
 
         # If service has been stable for 10 seconds, check logs for any critical errors
-        log_result = self._check_startup_logs(target, service_name)
+        self._check_startup_logs(target, service_name)
 
         # Even if logs are unclear, if service is stable for 10+ seconds, assume success
-        if log_result or True:  # Always return True if stable
-            verbose_print(
-                f"    [green]Service {target} is stable and appears healthy[/green]"
-            )
-            return True
-
-        return log_result
+        # Always return True if stable
+        verbose_print(
+            f"    [green]Service {target} is stable and appears healthy[/green]"
+        )
+        return True
 
     def _check_container_health(self, target: str) -> bool | None:
         """Check container healthcheck status. Returns None if no healthcheck configured."""
         try:
             # First, let's find what containers are actually running
-            list_cmd = [
-                "podman",
-                "ps",
-                "--format",
-                "{{.Names}}",
-                "--filter",
-                "status=running",
-            ]
-            list_result = subprocess.run(list_cmd, capture_output=True, text=True)
+            list_result = podman_cmd(
+                [
+                    "ps",
+                    "--format",
+                    "{{.Names}}",
+                    "--filter",
+                    "status=running",
+                ]
+            )
 
             if list_result.returncode != 0:
                 verbose_print(
@@ -876,14 +872,14 @@ class StackManager:
                 return None
 
             # Check if container exists and get its health status
-            inspect_cmd = [
-                "podman",
-                "inspect",
-                "--format",
-                "{{.State.Health.Status}}",
-                matching_container,
-            ]
-            result = subprocess.run(inspect_cmd, capture_output=True, text=True)
+            result = podman_cmd(
+                [
+                    "inspect",
+                    "--format",
+                    "{{.State.Health.Status}}",
+                    matching_container,
+                ]
+            )
 
             if result.returncode == 0 and result.stdout.strip():
                 health_status = result.stdout.strip()
@@ -902,8 +898,13 @@ class StackManager:
                     # Check multiple times over 15 seconds
                     for wait_time in [3, 6, 10, 15]:
                         time.sleep(3)  # Wait 3 seconds between each check
-                        result = subprocess.run(
-                            inspect_cmd, capture_output=True, text=True
+                        result = podman_cmd(
+                            [
+                                "inspect",
+                                "--format",
+                                "{{.State.Health.Status}}",
+                                matching_container,
+                            ]
                         )
                         if result.returncode == 0:
                             health_status = result.stdout.strip()
@@ -953,19 +954,17 @@ class StackManager:
         verbose_print(f"    [cyan]Checking startup logs for {target}...[/cyan]")
 
         # Get recent logs to check for critical errors
-        logs_cmd = [
-            "journalctl",
-            "--user",
-            "-u",
-            service_name,
-            "--since",
-            "20 seconds ago",
-            "-n",
-            "50",
-            "--no-pager",
-        ]
-
-        logs_result = subprocess.run(logs_cmd, capture_output=True, text=True)
+        logs_result = journalctl_user(
+            [
+                "-u",
+                service_name,
+                "--since",
+                "20 seconds ago",
+                "-n",
+                "50",
+                "--no-pager",
+            ]
+        )
 
         if logs_result.returncode == 0 and logs_result.stdout:
             log_content = logs_result.stdout.lower()

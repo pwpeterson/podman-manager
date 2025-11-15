@@ -1,12 +1,12 @@
 """Unified validation utilities for quadlet services and system prerequisites."""
 
-import subprocess
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from loguru import logger
 
 from core.config import console, verbose_print
+from utils.secure_subprocess import SecureSubprocessError, secure_run, systemctl_user
 
 
 class ValidationUtils:
@@ -26,9 +26,7 @@ class ValidationUtils:
             return False
 
         # Check if we can run systemctl --user
-        result = subprocess.run(
-            ["systemctl", "--user", "--help"], capture_output=True, text=True
-        )
+        result = systemctl_user(["--help"])
         if result.returncode != 0:
             logger.error("'systemctl --user' is not available!")
             console.print("[dim]Make sure systemd user services are enabled[/dim]")
@@ -134,31 +132,22 @@ class ValidationUtils:
         verbose_print(f"  [cyan]exec: {full_cmd}[/cyan]")
 
         try:
-            # Run podman-quadlet and pipe to grep
-            quadlet_process = subprocess.Popen(
-                quadlet_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
+            # Run podman-quadlet and pipe to grep using secure subprocess
+            try:
+                quadlet_result = secure_run(quadlet_cmd, timeout=30)
+                if quadlet_result.returncode == 0 and quadlet_result.stdout:
+                    # Filter output for the specific container file
+                    lines = quadlet_result.stdout.split("\n")
+                    filtered_lines = [line for line in lines if container_file in line]
+                    if filtered_lines:
+                        return self._format_quadlet_errors(
+                            "\n".join(filtered_lines), container_file
+                        )
+            except SecureSubprocessError as e:
+                logger.debug("Error validating {}: {}", container_file, e)
+                return []
 
-            grep_process = subprocess.Popen(
-                grep_cmd,
-                stdin=quadlet_process.stdout,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-
-            if quadlet_process.stdout:
-                quadlet_process.stdout.close()
-            grep_output, _ = grep_process.communicate(timeout=30)
-            quadlet_process.wait()
-
-            if grep_output.strip():
-                return self._format_quadlet_errors(grep_output.strip(), container_file)
-
-        except (subprocess.TimeoutExpired, Exception) as e:
+        except Exception as e:
             logger.debug("Error validating {}: {}", container_file, e)
 
         return []
@@ -240,9 +229,8 @@ class ValidationUtils:
 
         try:
             # Check if systemd user session is running
-            cmd = ["systemctl", "--user", "status"]
-            verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            verbose_print("  [cyan]exec: systemctl --user status[/cyan]")
+            result = systemctl_user(["status"], timeout=10)
 
             if result.returncode != 0:
                 console.print(
@@ -255,15 +243,12 @@ class ValidationUtils:
                 return False
 
             # Check if we can communicate with systemd
-            cmd = [
-                "systemctl",
-                "--user",
-                "list-units",
-                "--type=service",
-                "--state=loaded",
-            ]
-            verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            verbose_print(
+                "  [cyan]exec: systemctl --user list-units --type=service --state=loaded[/cyan]"
+            )
+            result = systemctl_user(
+                ["list-units", "--type=service", "--state=loaded"], timeout=10
+            )
 
             if result.returncode != 0:
                 console.print(
@@ -276,11 +261,11 @@ class ValidationUtils:
             console.print("[green]Systemd user session is healthy[/green]")
             return True
 
-        except subprocess.TimeoutExpired:
-            console.print("[yellow]Systemd health check timed out[/yellow]")
-            return False
         except Exception as e:
-            console.print(f"[yellow]Systemd health check failed: {e}[/yellow]")
+            if "timeout" in str(e).lower():
+                console.print("[yellow]Systemd health check timed out[/yellow]")
+            else:
+                console.print(f"[yellow]Systemd health check failed: {e}[/yellow]")
             return False
 
     def show_install_suggestion(self, target: str) -> None:
@@ -291,10 +276,14 @@ class ValidationUtils:
 
     def _command_exists(self, command: str) -> bool:
         """Check if a command exists in PATH."""
-        result = subprocess.run(["which", command], capture_output=True)
-        exists = result.returncode == 0
-        logger.debug("Command '{}' exists: {}", command, exists)
-        return exists
+        try:
+            result = secure_run(["which", command])
+            exists = result.returncode == 0
+            logger.debug("Command '{}' exists: {}", command, exists)
+            return exists
+        except Exception as e:
+            logger.debug("Error checking command '{}': {}", command, e)
+            return False
 
 
 # Global instance for shared use

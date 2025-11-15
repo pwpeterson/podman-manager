@@ -1,11 +1,16 @@
 """Data collection classes for AI analysis system"""
 
-import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.config import verbose_print
+from utils.secure_subprocess import (
+    journalctl_user,
+    podman_cmd,
+    secure_run,
+    systemctl_user,
+)
 
 
 class DataCollector(ABC):
@@ -25,21 +30,21 @@ class DataCollector(ABC):
             verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
         try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=timeout
-            )
+            # Use appropriate secure wrapper based on command type
+            if cmd[0] == "systemctl" and "--user" in cmd:
+                result = systemctl_user(cmd[2:], timeout=timeout)
+            elif cmd[0] == "podman":
+                result = podman_cmd(cmd[1:], timeout=timeout)
+            elif cmd[0] == "journalctl" and "--user" in cmd:
+                result = journalctl_user(cmd[2:], timeout=timeout)
+            else:
+                result = secure_run(cmd, timeout=timeout)
+
             return {
                 "stdout": result.stdout,
                 "stderr": result.stderr,
                 "returncode": result.returncode,
                 "success": result.returncode == 0,
-            }
-        except subprocess.TimeoutExpired:
-            return {
-                "stdout": "",
-                "stderr": f"Command timed out after {timeout}s",
-                "returncode": -1,
-                "success": False,
             }
         except Exception as e:
             return {"stdout": "", "stderr": str(e), "returncode": -1, "success": False}

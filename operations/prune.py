@@ -1,6 +1,5 @@
 """Enhanced prune functionality with intelligent image cleanup."""
 
-import subprocess
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -8,6 +7,8 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
 from rich.table import Table
+
+from utils.secure_subprocess import podman_cmd
 
 
 @dataclass
@@ -100,7 +101,15 @@ class EnhancedPruner:
             ]
             self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = podman_cmd(
+                [
+                    "ps",
+                    "-a",
+                    "--format",
+                    "{{.ID}};{{.Names}};{{.Image}};{{.ImageID}};{{.Status}}",
+                ],
+                timeout=30,
+            )
             if result.returncode != 0:
                 self.console.print(
                     f"[red]Failed to get container info: {result.stderr}[/red]"
@@ -140,7 +149,15 @@ class EnhancedPruner:
             ]
             self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = podman_cmd(
+                [
+                    "images",
+                    "--format",
+                    "{{.ID}};{{.Repository}};{{.Tag}};{{.Size}};{{.Created}}",
+                    "--all",
+                ],
+                timeout=30,
+            )
             if result.returncode != 0:
                 self.console.print(
                     f"[red]Failed to get image info: {result.stderr}[/red]"
@@ -428,7 +445,7 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
             # Use podman rmi with force to remove images
             cmd = ["podman", "rmi", "-f"] + image_ids
             self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            result = podman_cmd(["rmi", "-f"] + image_ids, timeout=120)
 
             if result.returncode == 0:
                 return True
@@ -452,7 +469,7 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
         try:
             cmd = ["podman", "system", "df"]
             self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = podman_cmd(["system", "df"], timeout=30)
 
             if result.returncode == 0:
                 self.console.print(result.stdout)
@@ -485,9 +502,8 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
             )
 
             # Get container count and basic info
-            containers_cmd = ["podman", "ps", "-a", "--format", "{{.Names}}"]
-            containers_result = subprocess.run(
-                containers_cmd, capture_output=True, text=True, timeout=10
+            containers_result = podman_cmd(
+                ["ps", "-a", "--format", "{{.Names}}"], timeout=10
             )
 
             if containers_result.returncode == 0:
@@ -500,14 +516,13 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
                 self.console.print(f"Containers: {container_count}")
 
             # Get image count and basic info
-            images_cmd = [
-                "podman",
-                "images",
-                "--format",
-                "{{.Repository}}:{{.Tag}} {{.Size}}",
-            ]
-            images_result = subprocess.run(
-                images_cmd, capture_output=True, text=True, timeout=10
+            images_result = podman_cmd(
+                [
+                    "images",
+                    "--format",
+                    "{{.Repository}}:{{.Tag}} {{.Size}}",
+                ],
+                timeout=10,
             )
 
             if images_result.returncode == 0:
@@ -533,9 +548,8 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
 
             # Try to get volume info (this might also fail, but worth trying)
             try:
-                volumes_cmd = ["podman", "volume", "ls", "--format", "{{.Name}}"]
-                volumes_result = subprocess.run(
-                    volumes_cmd, capture_output=True, text=True, timeout=10
+                volumes_result = podman_cmd(
+                    ["volume", "ls", "--format", "{{.Name}}"], timeout=10
                 )
 
                 if volumes_result.returncode == 0:
@@ -610,12 +624,7 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
             try:
                 cmd = ["podman", "container", "prune", "-f"]
                 self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
+                result = podman_cmd(["container", "prune", "-f"], timeout=60)
                 if result.returncode != 0:
                     self.console.print(
                         f"[yellow]Container prune warning: {result.stderr.strip()}[/yellow]"
@@ -630,12 +639,7 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
             try:
                 cmd = ["podman", "image", "prune", "-f"]
                 self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
+                result = podman_cmd(["image", "prune", "-f"], timeout=60)
                 if result.returncode != 0:
                     self.console.print(
                         f"[yellow]Image prune warning: {result.stderr.strip()}[/yellow]"

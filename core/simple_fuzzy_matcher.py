@@ -1,10 +1,10 @@
 """Simplified fuzzy matching utility that returns container objects."""
 
-import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from core.config import console
+from utils.secure_subprocess import podman_cmd
 
 
 class SimpleFuzzyMatcher:
@@ -178,9 +178,8 @@ class SimpleFuzzyMatcher:
         """Get container status using podman ps."""
         try:
             # Try to get status from podman ps -a
-            result = subprocess.run(
+            result = podman_cmd(
                 [
-                    "podman",
                     "ps",
                     "-a",
                     "--format",
@@ -188,8 +187,6 @@ class SimpleFuzzyMatcher:
                     "--filter",
                     f"name={container_name}",
                 ],
-                capture_output=True,
-                text=True,
                 timeout=5,
             )
 

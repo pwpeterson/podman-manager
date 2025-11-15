@@ -14,6 +14,7 @@ except ImportError:
     requests = None
 
 from core.config import console, verbose_print
+from utils.secure_subprocess import SecureSubprocessError, secure_run
 
 
 class VLLMModelManager:
@@ -552,14 +553,13 @@ class VLLMModelManager:
     def _run_command(self, cmd: list, suppress_errors: bool = False) -> bool:
         """Run a shell command and return success status"""
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            result = secure_run(cmd, timeout=30)
             if result.stdout.strip():
                 verbose_print(f"[cyan]Command output: {result.stdout.strip()}[/cyan]")
-            return True
-        except subprocess.CalledProcessError as e:
+            return result.returncode == 0
+        except SecureSubprocessError as e:
             if not suppress_errors:
-                error_msg = e.stderr.strip() if e.stderr else "Unknown error"
-                verbose_print(f"[cyan]Command failed: {error_msg}[/cyan]")
+                verbose_print(f"[cyan]Command failed: {e}[/cyan]")
             return False
 
     def get_available_vllm_models(self) -> list:
@@ -575,7 +575,10 @@ class VLLMModelManager:
                 "--filter",
                 "name=vllm",
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            result = secure_run(cmd, timeout=15)
+
+            if result.returncode != 0:
+                return []
 
             containers = []
             for line in result.stdout.strip().split("\n"):
@@ -588,7 +591,7 @@ class VLLMModelManager:
                     containers.append(container_name)
 
             return containers
-        except subprocess.CalledProcessError:
+        except SecureSubprocessError:
             return []
 
     def get_current_vllm_backend(self) -> Optional[str]:
@@ -602,7 +605,10 @@ class VLLMModelManager:
                 "--format",
                 "{{.Config.Env}}",
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            result = secure_run(cmd, timeout=10)
+
+            if result.returncode != 0:
+                return None
 
             # Parse environment variables to find VLLM_URL
             env_vars = result.stdout.strip()
@@ -616,7 +622,7 @@ class VLLMModelManager:
                             return url_part.split(":")[0]
 
             return None
-        except subprocess.CalledProcessError:
+        except SecureSubprocessError:
             return None
 
     def show_vllm_status(self) -> None:
@@ -813,50 +819,74 @@ class VLLMModelManager:
 
     def _find_current_vllm_container(self) -> Optional[str]:
         """Find the currently running vLLM container using port 8005"""
-        # Use the faster command to detect active vLLM model using port 8005
-        cmd_str = (
-            "PID=$(sudo ss -tulpn | grep 8005 | grep -oP 'pid=\\K[0-9]+'); "
-            "cat /proc/$PID/cgroup | grep -oP '/app\\.slice/\\K[^.]+(?=\\.service)'"
-        )
-        verbose_print(f"[cyan]exec: {cmd_str}[/cyan]")
+        verbose_print(f"[cyan]Finding container using port {self.vllm_port}[/cyan]")
 
         try:
-            # Use shell=True to properly handle the pipe and command substitution
-            result = subprocess.run(
-                cmd_str, shell=True, capture_output=True, text=True, timeout=10
-            )
+            # First, get the PID using ss command
+            ss_result = secure_run(["ss", "-tulpn"], timeout=10)
 
-            if result.returncode == 0 and result.stdout.strip():
-                container_name = result.stdout.strip()
+            if ss_result.returncode != 0:
                 verbose_print(
-                    f"[cyan]Command completed successfully, found container: {container_name}[/cyan]"
+                    "[cyan]Failed to get network connections, trying fallback[/cyan]"
                 )
+                return self._find_container_fallback()
 
-                # Exclude sys-services-vllm-proxy as it uses port 8002, not 8005
-                if container_name and container_name != "sys-services-vllm-proxy":
-                    verbose_print(
-                        f"[cyan]Found container using port {self.vllm_port}: {container_name}[/cyan]"
-                    )
-                    return container_name
-                else:
-                    verbose_print(
-                        f"[cyan]Container {container_name} is sys-services-vllm-proxy, ignoring[/cyan]"
-                    )
-            else:
+            # Parse ss output to find PID using port 8005
+            pid = None
+            for line in ss_result.stdout.split("\n"):
+                if f":{self.vllm_port}" in line and "pid=" in line:
+                    # Extract PID from line like "users:(("python",pid=12345,fd=3))"
+                    import re
+
+                    pid_match = re.search(r"pid=(\d+)", line)
+                    if pid_match:
+                        pid = pid_match.group(1)
+                        break
+
+            if not pid:
                 verbose_print(
-                    f"[cyan]No container found using port {self.vllm_port} (command returned no results)[/cyan]"
+                    f"[cyan]No process found using port {self.vllm_port}[/cyan]"
                 )
+                return self._find_container_fallback()
+
+            verbose_print(f"[cyan]Found PID {pid} using port {self.vllm_port}[/cyan]")
+
+            # Get container name from cgroup
+            try:
+                with open(f"/proc/{pid}/cgroup", "r") as f:
+                    cgroup_content = f.read()
+
+                # Extract container name from cgroup path
+                import re
+
+                container_match = re.search(
+                    r"/app\.slice/([^.]+)\.service", cgroup_content
+                )
+                if container_match:
+                    container_name = container_match.group(1)
+                    verbose_print(f"[cyan]Found container: {container_name}[/cyan]")
+
+                    # Exclude sys-services-vllm-proxy as it uses port 8002, not 8005
+                    if container_name and container_name != "sys-services-vllm-proxy":
+                        verbose_print(
+                            f"[cyan]Found container using port {self.vllm_port}: {container_name}[/cyan]"
+                        )
+                        return container_name
+                    else:
+                        verbose_print(
+                            f"[cyan]Container {container_name} is sys-services-vllm-proxy, ignoring[/cyan]"
+                        )
+
+            except (FileNotFoundError, PermissionError) as e:
+                verbose_print(f"[cyan]Could not read cgroup for PID {pid}: {e}[/cyan]")
 
             # Fallback: try a simpler approach
             return self._find_container_fallback()
 
-        except subprocess.TimeoutExpired:
+        except SecureSubprocessError as e:
             verbose_print(
-                "[cyan]Container detection timed out, trying fallback method[/cyan]"
+                f"[cyan]Security error finding current vLLM container: {e}[/cyan]"
             )
-            return self._find_container_fallback()
-        except subprocess.CalledProcessError as e:
-            verbose_print(f"[cyan]Error finding current vLLM container: {e}[/cyan]")
             return self._find_container_fallback()
         except Exception as e:
             verbose_print(
@@ -916,6 +946,7 @@ class VLLMModelManager:
             import signal
 
             def timeout_handler(signum, frame):
+                _ = signum, frame  # Explicitly mark as unused for vulture
                 raise TimeoutError("Process enumeration timed out")
 
             # Set a 10-second timeout for process enumeration

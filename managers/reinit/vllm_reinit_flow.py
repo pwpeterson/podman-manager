@@ -327,6 +327,9 @@ class VLLMReinitFlow:
         console.print(f"[cyan]Updating VLLM_URL to: {vllm_url}[/cyan]")
         console.print()
 
+        # Update VLLM_URL in container file before service regeneration
+        self._update_container_file_vllm_url("sys-services-vllm-proxy", vllm_url)
+
         # Remove service file to allow regeneration with updated VLLM_URL
         self.service_manager.remove_service_file(
             "sys-services-vllm-proxy.service", dry_run=False
@@ -377,6 +380,8 @@ class VLLMReinitFlow:
             )
         console.print()
 
+        # Note: mcp-vllm-delegator does not use VLLM_URL, so no container file update needed
+
         # Remove mcp-vllm-delegator service file to allow regeneration
         self.service_manager.remove_service_file(
             "mcp-vllm-delegator.service", dry_run=False
@@ -412,4 +417,169 @@ class VLLMReinitFlow:
         console.print(
             f"[green]{success_timestamp} | Successfully reinitialized {display_name}[/green]"
         )
+
+        # Restore placeholder values in container files for future reinits
+        # Note: Only sys-services-vllm-proxy uses VLLM_URL, mcp-vllm-delegator does not
+        self._restore_container_file_vllm_url("sys-services-vllm-proxy")
+
         return True
+
+    def _update_container_file_vllm_url(
+        self, container_name: str, vllm_url: str
+    ) -> bool:
+        """Update VLLM_URL in the container file to replace REPLACED-DURING-REINIT placeholder.
+
+        Handles both old format (direct replacement) and new format (environment variable substitution).
+        """
+        from pathlib import Path
+
+        container_file_path = (
+            Path.home() / ".config/containers/systemd" / f"{container_name}.container"
+        )
+
+        if not container_file_path.exists():
+            verbose_print(
+                f"[cyan]Container file not found: {container_file_path}[/cyan]"
+            )
+            return False
+
+        try:
+            # Read the current container file
+            with open(container_file_path, "r") as f:
+                content = f.read()
+
+            # Check if using old format (direct replacement in container file)
+            if "Environment=VLLM_URL=REPLACED-DURING-REINIT" in content:
+                updated_content = content.replace(
+                    "Environment=VLLM_URL=REPLACED-DURING-REINIT",
+                    f"Environment=VLLM_URL={vllm_url}",
+                )
+
+                with open(container_file_path, "w") as f:
+                    f.write(updated_content)
+
+                verbose_print(
+                    f"[cyan]Updated {container_name}.container with VLLM_URL={vllm_url} (old format)[/cyan]"
+                )
+                return True
+
+            # Check if using new format (environment variable substitution)
+            elif "Environment=VLLM_URL=${VLLM_URL}" in content:
+                # Update the .env file instead
+                env_file_path = container_file_path.parent / ".env"
+                return self._update_env_file_vllm_url(env_file_path, vllm_url)
+
+            else:
+                verbose_print(
+                    f"[yellow]No VLLM_URL found in {container_name}.container[/yellow]"
+                )
+                return False
+
+        except Exception as e:
+            verbose_print(f"[cyan]Error updating container file: {e}[/cyan]")
+            return False
+
+    def _update_env_file_vllm_url(self, env_file_path, vllm_url: str) -> bool:
+        """Update VLLM_URL using systemctl --user set-environment for environment variable substitution."""
+        import subprocess
+
+        try:
+            # Use systemctl --user set-environment to set VLLM_URL
+            cmd = ["systemctl", "--user", "set-environment", f"VLLM_URL={vllm_url}"]
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+            verbose_print(
+                f"[cyan]Set user environment VLLM_URL={vllm_url} via systemctl (new format)[/cyan]"
+            )
+            return True
+
+        except subprocess.CalledProcessError as e:
+            verbose_print(
+                f"[cyan]Error setting user environment via systemctl: {e}[/cyan]"
+            )
+            verbose_print(f"[cyan]stderr: {e.stderr}[/cyan]")
+            return False
+        except Exception as e:
+            verbose_print(f"[cyan]Error updating user environment: {e}[/cyan]")
+            return False
+
+    def _restore_container_file_vllm_url(self, container_name: str) -> bool:
+        """Restore VLLM_URL placeholder in container file for future reinits.
+
+        Handles both old format (direct replacement) and new format (environment variable substitution).
+        """
+        from pathlib import Path
+
+        container_file_path = (
+            Path.home() / ".config/containers/systemd" / f"{container_name}.container"
+        )
+
+        if not container_file_path.exists():
+            return False
+
+        try:
+            # Read the current container file
+            with open(container_file_path, "r") as f:
+                content = f.read()
+
+            # Check if using old format (direct replacement in container file)
+            if "Environment=VLLM_URL=http://" in content:
+                import re
+
+                updated_content = re.sub(
+                    r"Environment=VLLM_URL=http://[^:\s]+:8005",
+                    "Environment=VLLM_URL=REPLACED-DURING-REINIT",
+                    content,
+                )
+
+                with open(container_file_path, "w") as f:
+                    f.write(updated_content)
+
+                verbose_print(
+                    f"[cyan]Restored {container_name}.container VLLM_URL placeholder (old format)[/cyan]"
+                )
+                return True
+
+            # Check if using new format (environment variable substitution)
+            elif "Environment=VLLM_URL=${VLLM_URL}" in content:
+                # Remove VLLM_URL from .env file
+                env_file_path = container_file_path.parent / ".env"
+                return self._remove_env_file_vllm_url(env_file_path)
+
+            else:
+                verbose_print(
+                    f"[cyan]No VLLM_URL found to restore in {container_name}.container[/cyan]"
+                )
+                return True  # Nothing to restore is not an error
+
+        except Exception as e:
+            verbose_print(f"[cyan]Error restoring container file: {e}[/cyan]")
+            return False
+
+    def _remove_env_file_vllm_url(self, env_file_path) -> bool:
+        """Remove VLLM_URL from user environment using systemctl --user unset-environment."""
+        import subprocess
+
+        try:
+            # Use systemctl --user unset-environment to remove VLLM_URL
+            cmd = ["systemctl", "--user", "unset-environment", "VLLM_URL"]
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+            verbose_print(
+                "[cyan]Unset user environment VLLM_URL via systemctl (new format cleanup)[/cyan]"
+            )
+            return True
+
+        except subprocess.CalledProcessError as e:
+            verbose_print(
+                f"[cyan]Error unsetting user environment via systemctl: {e}[/cyan]"
+            )
+            verbose_print(f"[cyan]stderr: {e.stderr}[/cyan]")
+            return False
+        except Exception as e:
+            verbose_print(f"[cyan]Error removing user environment: {e}[/cyan]")
+            return False
+
+    def _update_container_file_vllm_url_test(self, container_file_path, model_name):
+        """Test version of container file update method."""
+        return self._update_container_file_vllm_url(container_file_path, model_name)

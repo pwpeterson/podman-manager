@@ -12,6 +12,7 @@ from rich.table import Table
 from ai_analyzer import ai_analyzer
 from core.config import console, set_verbose
 from operations.common_actions import CommonActionsFormatter
+from utils.secure_subprocess import SecureSubprocessError, secure_run
 from utils.supabase_fixer import fix_supabase_environment_variables
 
 
@@ -488,11 +489,12 @@ class CommandRouter:
             if _verbose_enabled:
                 console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
-            result = subprocess.run(
+            result = secure_run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=10,
+                verbose=_verbose_enabled,
             )
             if result.returncode == 0:
                 # Create table without borders
@@ -582,8 +584,12 @@ class CommandRouter:
 
     def _handle_help_podman(self, args):
         try:
-            result = subprocess.run(
-                ["podman", "--help"], capture_output=True, text=True, timeout=10
+            result = secure_run(
+                ["podman", "--help"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                verbose=False,
             )
             if result.returncode == 0:
                 console.print("[bold blue]Podman Help Documentation[/bold blue]")
@@ -668,25 +674,41 @@ class CommandRouter:
 
         container_name = container["name"]
 
-        # Commands to run with their descriptions - using shell=True to force plain text
+        # Commands to run with their descriptions - using secure subprocess calls
         commands = [
             {
                 "name": "Podman Container Logs",
-                "cmd": f"podman logs {container_name} 2>&1 | cat",
+                "cmd": ["podman", "logs", container_name],
                 "description": f"podman logs {container_name}",
-                "shell": True,
             },
             {
                 "name": "Systemd Service Status",
-                "cmd": f"SYSTEMD_COLORS=0 systemctl --user status {container_name} --no-pager -l --plain --no-legend 2>&1 | cat",
+                "cmd": [
+                    "systemctl",
+                    "--user",
+                    "status",
+                    container_name,
+                    "--no-pager",
+                    "-l",
+                    "--plain",
+                    "--no-legend",
+                ],
                 "description": f"systemctl --user status {container_name} --no-pager -l --plain --no-legend",
-                "shell": True,
             },
             {
                 "name": "Systemd Service Logs",
-                "cmd": f"journalctl --user -u {container_name} -n 100 --no-pager --no-hostname --output=short-precise 2>&1 | cat",
+                "cmd": [
+                    "journalctl",
+                    "--user",
+                    "-u",
+                    container_name,
+                    "-n",
+                    "100",
+                    "--no-pager",
+                    "--no-hostname",
+                    "--output=short-precise",
+                ],
                 "description": f"journalctl --user -u {container_name} -n 100 --no-pager --no-hostname --output=short-precise",
-                "shell": True,
             },
         ]
 
@@ -706,23 +728,15 @@ class CommandRouter:
                 env["TERM"] = "dumb"  # Force non-interactive terminal
                 env["COLORTERM"] = ""  # Disable color terminal detection
 
-                if cmd_info.get("shell", False):
-                    result = subprocess.run(
-                        cmd_info["cmd"],
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                        env=env,
-                    )
-                else:
-                    result = subprocess.run(
-                        cmd_info["cmd"],
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                        env=env,
-                    )
+                # Use secure subprocess wrapper
+                result = secure_run(
+                    cmd_info["cmd"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=env,
+                    verbose=False,
+                )
 
                 if result.returncode == 0:
                     if result.stdout.strip():
@@ -739,10 +753,12 @@ class CommandRouter:
                         clean_error = self._strip_ansi_colors(result.stderr.strip())
                         console.print(f"[red]Error: {clean_error}[/red]")
 
+            except SecureSubprocessError as e:
+                console.print(f"[red]Security error: {e}[/red]")
             except subprocess.TimeoutExpired:
                 console.print("[red]Command timed out after 30 seconds[/red]")
             except FileNotFoundError:
-                console.print(f"[red]Command not found: {cmd_info['cmd'][0]}[/red]")
+                console.print("[red]Command not found[/red]")
             except Exception as e:
                 console.print(f"[red]Error running command: {e}[/red]")
 

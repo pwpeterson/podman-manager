@@ -8,6 +8,7 @@ from typing import List
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from core.config import console, verbose_print
+from utils.secure_subprocess import podman_cmd, secure_run
 
 
 class VolumeNetworkManager:
@@ -86,9 +87,8 @@ class VolumeNetworkManager:
 
         try:
             # Get volumes from podman
-            cmd = ["podman", "volume", "ls", "--format", "{{.Name}}"]
-            verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            verbose_print("[cyan]exec: podman volume ls --format {{.Name}}[/cyan]")
+            result = podman_cmd(["volume", "ls", "--format", "{{.Name}}"], timeout=10)
 
             if result.returncode == 0:
                 all_volumes = (
@@ -112,9 +112,8 @@ class VolumeNetworkManager:
 
         try:
             # Get networks from podman
-            cmd = ["podman", "network", "ls", "--format", "{{.Name}}"]
-            verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            verbose_print("[cyan]exec: podman network ls --format {{.Name}}[/cyan]")
+            result = podman_cmd(["network", "ls", "--format", "{{.Name}}"], timeout=10)
 
             if result.returncode == 0:
                 all_networks = (
@@ -199,10 +198,9 @@ class VolumeNetworkManager:
         """Copy a network from source to target stack."""
         try:
             # Get network details
-            inspect_cmd = ["podman", "network", "inspect", network_name]
-            verbose_print(f"[cyan]exec: {' '.join(inspect_cmd)}[/cyan]")
-            inspect_result = subprocess.run(
-                inspect_cmd, capture_output=True, text=True, timeout=10
+            verbose_print(f"[cyan]exec: podman network inspect {network_name}[/cyan]")
+            inspect_result = podman_cmd(
+                ["network", "inspect", network_name], timeout=10
             )
 
             if inspect_result.returncode != 0:
@@ -226,10 +224,11 @@ class VolumeNetworkManager:
             )
 
             # Check if target network already exists
-            check_cmd = ["podman", "network", "exists", target_network_name]
-            verbose_print(f"[cyan]exec: {' '.join(check_cmd)}[/cyan]")
-            check_result = subprocess.run(
-                check_cmd, capture_output=True, text=True, timeout=5
+            verbose_print(
+                f"[cyan]exec: podman network exists {target_network_name}[/cyan]"
+            )
+            check_result = podman_cmd(
+                ["network", "exists", target_network_name], timeout=5
             )
 
             if check_result.returncode == 0:
@@ -239,29 +238,36 @@ class VolumeNetworkManager:
                 return True
 
             # Create new network with similar configuration if available
-            create_cmd = ["podman", "network", "create"]
+            verbose_print(
+                f"[cyan]exec: podman network create {target_network_name}[/cyan]"
+            )
 
-            # Add configuration options if we have them
+            # Build command with configuration options
+            create_cmd = ["network", "create"]
+
+            # Add subnet if available
             if (
                 network_config
                 and "subnets" in network_config
                 and network_config["subnets"]
+                and network_config["subnets"][0].get("subnet")
             ):
-                subnet = network_config["subnets"][0].get("subnet")
-                if subnet:
-                    create_cmd.extend(["--subnet", subnet])
+                subnet = network_config["subnets"][0]["subnet"]
+                create_cmd.extend(["--subnet", subnet])
 
-            if network_config and "options" in network_config:
-                driver = network_config["options"].get("driver")
-                if driver and driver != "bridge":  # bridge is default
-                    create_cmd.extend(["--driver", driver])
+            # Add driver if available and not default
+            if (
+                network_config
+                and "options" in network_config
+                and network_config["options"].get("driver")
+                and network_config["options"]["driver"] != "bridge"
+            ):
+                driver = network_config["options"]["driver"]
+                create_cmd.extend(["--driver", driver])
 
             create_cmd.append(target_network_name)
 
-            verbose_print(f"[cyan]exec: {' '.join(create_cmd)}[/cyan]")
-            create_result = subprocess.run(
-                create_cmd, capture_output=True, text=True, timeout=10
-            )
+            create_result = podman_cmd(create_cmd, timeout=10)
 
             if create_result.returncode == 0:
                 console.print(f"[green]Created network: {target_network_name}[/green]")
@@ -287,10 +293,11 @@ class VolumeNetworkManager:
             )
 
             # Check if target volume already exists
-            check_cmd = ["podman", "volume", "exists", target_volume_name]
-            verbose_print(f"[cyan]exec: {' '.join(check_cmd)}[/cyan]")
-            check_result = subprocess.run(
-                check_cmd, capture_output=True, text=True, timeout=5
+            verbose_print(
+                f"[cyan]exec: podman volume exists {target_volume_name}[/cyan]"
+            )
+            check_result = podman_cmd(
+                ["volume", "exists", target_volume_name], timeout=5
             )
 
             if check_result.returncode == 0:
@@ -300,10 +307,11 @@ class VolumeNetworkManager:
                 return True
 
             # Create new volume
-            create_cmd = ["podman", "volume", "create", target_volume_name]
-            verbose_print(f"[cyan]exec: {' '.join(create_cmd)}[/cyan]")
-            create_result = subprocess.run(
-                create_cmd, capture_output=True, text=True, timeout=10
+            verbose_print(
+                f"[cyan]exec: podman volume create {target_volume_name}[/cyan]"
+            )
+            create_result = podman_cmd(
+                ["volume", "create", target_volume_name], timeout=10
             )
 
             if create_result.returncode != 0:
@@ -322,8 +330,7 @@ class VolumeNetworkManager:
                 return True
             else:
                 # Clean up failed volume
-                cleanup_cmd = ["podman", "volume", "rm", target_volume_name]
-                subprocess.run(cleanup_cmd, capture_output=True, text=True)
+                podman_cmd(["volume", "rm", target_volume_name])
                 return False
 
         except Exception as e:
@@ -336,23 +343,9 @@ class VolumeNetworkManager:
 
         try:
             # Use a lightweight container to copy data
-            copy_cmd = [
-                "podman",
-                "run",
-                "--rm",
-                "-v",
-                f"{source_volume}:/source:ro",
-                "-v",
-                f"{target_volume}:/target",
-                "--name",
-                temp_container_name,
-                "alpine:latest",
-                "sh",
-                "-c",
-                "cp -a /source/. /target/",
-            ]
-
-            verbose_print(f"[cyan]exec: {' '.join(copy_cmd)}[/cyan]")
+            verbose_print(
+                f"[cyan]exec: podman run --rm -v {source_volume}:/source:ro -v {target_volume}:/target --name {temp_container_name} alpine:latest sh -c 'cp -a /source/. /target/'[/cyan]"
+            )
 
             with Progress(
                 SpinnerColumn(),
@@ -363,8 +356,23 @@ class VolumeNetworkManager:
                 transient=True,
             ) as progress:
                 task = progress.add_task("copying", total=None)
-                copy_result = subprocess.run(
-                    copy_cmd, capture_output=True, text=True, timeout=300
+                copy_result = secure_run(
+                    [
+                        "podman",
+                        "run",
+                        "--rm",
+                        "-v",
+                        f"{source_volume}:/source:ro",
+                        "-v",
+                        f"{target_volume}:/target",
+                        "--name",
+                        temp_container_name,
+                        "alpine:latest",
+                        "sh",
+                        "-c",
+                        "cp -a /source/. /target/",
+                    ],
+                    timeout=300,
                 )
                 progress.remove_task(task)
 
@@ -379,8 +387,7 @@ class VolumeNetworkManager:
         except subprocess.TimeoutExpired:
             console.print(f"[red]Volume copy timed out for {source_volume}[/red]")
             # Try to clean up the container
-            cleanup_cmd = ["podman", "rm", "-f", temp_container_name]
-            subprocess.run(cleanup_cmd, capture_output=True, text=True)
+            podman_cmd(["rm", "-f", temp_container_name])
             return False
         except Exception as e:
             console.print(f"[red]Error copying volume data: {e}[/red]")
@@ -416,26 +423,22 @@ class VolumeNetworkManager:
         """Get volume size information."""
         try:
             # Get volume mount point
-            inspect_cmd = [
-                "podman",
-                "volume",
-                "inspect",
-                volume_name,
-                "--format",
-                "{{.Mountpoint}}",
-            ]
-            result = subprocess.run(
-                inspect_cmd, capture_output=True, text=True, timeout=5
+            result = podman_cmd(
+                [
+                    "volume",
+                    "inspect",
+                    volume_name,
+                    "--format",
+                    "{{.Mountpoint}}",
+                ],
+                timeout=5,
             )
 
             if result.returncode == 0 and result.stdout.strip():
                 mount_point = result.stdout.strip()
 
                 # Get size using du
-                du_cmd = ["du", "-sh", mount_point]
-                du_result = subprocess.run(
-                    du_cmd, capture_output=True, text=True, timeout=5
-                )
+                du_result = secure_run(["du", "-sh", mount_point], timeout=5)
 
                 if du_result.returncode == 0:
                     size = du_result.stdout.split()[0]
@@ -480,9 +483,8 @@ class VolumeNetworkManager:
 
             # Remove them
             for volume in orphaned_volumes:
-                rm_cmd = ["podman", "volume", "rm", volume]
-                verbose_print(f"[cyan]exec: {' '.join(rm_cmd)}[/cyan]")
-                result = subprocess.run(rm_cmd, capture_output=True, text=True)
+                verbose_print(f"[cyan]exec: podman volume rm {volume}[/cyan]")
+                result = podman_cmd(["volume", "rm", volume])
 
                 if result.returncode == 0:
                     console.print(f"[green]Removed orphaned volume: {volume}[/green]")
@@ -501,8 +503,9 @@ class VolumeNetworkManager:
         """Check if a volume is currently in use by any container."""
         try:
             # Check if any containers are using this volume
-            cmd = ["podman", "ps", "-a", "--format", "{{.Names}} {{.Mounts}}"]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            result = podman_cmd(
+                ["ps", "-a", "--format", "{{.Names}} {{.Mounts}}"], timeout=10
+            )
 
             if result.returncode == 0:
                 for line in result.stdout.strip().split("\n"):
