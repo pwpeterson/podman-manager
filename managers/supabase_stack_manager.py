@@ -18,6 +18,12 @@ class SupabaseStackManager:
         # Define the Supabase startup order based on docs/supabase-stack-startup-order.md
         self.startup_order = [
             {
+                "layer": "Vector Extension Layer",
+                "services": ["supabase-vector"],
+                "wait_time": 10,
+                "description": "Vector extension service - required by database",
+            },
+            {
                 "layer": "Database Layer (Core Data)",
                 "services": ["supabase-db"],
                 "wait_time": 15,
@@ -54,9 +60,9 @@ class SupabaseStackManager:
             },
             {
                 "layer": "Additional Services Layer",
-                "services": ["supabase-imgproxy", "supabase-pooler", "supabase-vector"],
+                "services": ["supabase-imgproxy", "supabase-pooler"],
                 "wait_time": 8,
-                "description": "Image processing, connection pooler, and vector services",
+                "description": "Image processing and connection pooler services",
             },
         ]
 
