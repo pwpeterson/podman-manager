@@ -1109,19 +1109,23 @@ For issues and feature requests:
 8. Use verbose mode: Add `-v` to see detailed execution
 9. Test AI analysis: `pm logs service-name -ai qwen25 -v`
 
-## Appendix: Migrated Documentation
+## Documentation
 
-This README consolidates information from the following documentation files that were previously in the `docs/` directory:
+### Complete Documentation
 
-- **AI_AGENT_SYSTEM.md** - AI agent configuration and usage
-- **AI_ANALYSIS_INTEGRATION.md** - AI analysis system integration
-- **AI_AGENT_SELECTION_GUIDE.md** - Guide for choosing AI agents
-- **BUILD_AI_ANALYSIS_INTEGRATION.md** - Build failure AI analysis
-- **COMMON_ACTIONS_SYSTEM.md** - Standardized troubleshooting commands
-- **CONTAINER_VALIDATION.md** - Container file validation system
-- **VOLUME_COPYING_GUIDE.md** - Advanced volume management
-- **STATUS_DISPLAY_ENHANCEMENT.md** - Enhanced status display
-- **TROUBLESHOOTING_AI_ANALYSIS.md** - AI analysis troubleshooting
-- **REFACTORING_SUMMARY.md** - Architecture refactoring details
+For comprehensive technical documentation, architecture details, and advanced topics, see the [`docs/`](docs/) directory:
 
-All information from these specialized documents has been integrated into the appropriate sections above, providing a single comprehensive reference for all PM tool functionality.
+- **[📚 Documentation Index](docs/README.md)** - Complete guide to all documentation
+- **[🏗️ Architecture Enhancements](docs/ARCHITECTURE_ENHANCEMENTS.md)** - Code consolidation and system improvements
+- **[🧠 vLLM System](docs/VLLM_SYSTEM.md)** - Complete vLLM model management
+- **[🤖 AI Analysis System](docs/AI_ANALYSIS_SYSTEM.md)** - AI-powered troubleshooting
+- **[🗄️ Supabase Stack](docs/SUPABASE_STACK.md)** - Supabase service orchestration
+- **[🔧 System Operations](docs/SYSTEM_OPERATIONS.md)** - Operational improvements and fixes
+
+### Quick Reference
+
+This README provides essential usage information and getting started guides. For detailed technical information, troubleshooting guides, and implementation details, refer to the comprehensive documentation in the [`docs/`](docs/) directory.
+
+### Legacy Documentation
+
+Previous documentation files have been consolidated and archived in [`docs/archive/`](docs/archive/) for historical reference.
