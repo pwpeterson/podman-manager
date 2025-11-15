@@ -3,12 +3,13 @@
 Refactored installer for quadlet stacks with improved separation of concerns.
 """
 
+import json
 import os
 import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from rich.table import Table
 
@@ -25,11 +26,7 @@ from core.fuzzy_matcher import FuzzyMatcher
 from core.service_discovery import get_service_discovery
 from core.validation_utils import get_validation_utils
 
-# Import network setup functionality
-try:
-    from setup_networks import NetworkManager
-except ImportError:
-    NetworkManager = None
+# Network setup functionality integrated directly
 
 
 class EnvironmentManager:
@@ -38,7 +35,12 @@ class EnvironmentManager:
     def __init__(self):
         self.env_file_path = Path("/home/pwp/srv/local-ai-packaged/.env")
         self.system_env_target = Path.home() / ".config/containers/systemd/.env"
-        self.network_manager = NetworkManager() if NetworkManager else None
+        self.source_config = Path(
+            "/home/pwp/srv/local-ai-packaged/quadlets/networks.config.json"
+        )
+        self.config_file = (
+            Path.home() / ".config/containers/systemd/networks.config.json"
+        )
 
     def load_and_clean_env_file(self) -> bool:
         """Copy .env file directly to systemd containers directory and setup networks."""
@@ -103,26 +105,23 @@ class EnvironmentManager:
 
     def _setup_networks(self) -> None:
         """Setup Podman networks from configuration."""
-        if not self.network_manager:
-            verbose_print(
-                "  [cyan]exec: NetworkManager not available, skipping network setup[/cyan]"
-            )
-            return
-
         try:
             console.print()
             console.print("[green]Setting up Podman networks...[/green]")
             if not is_verbose():
                 console.print()
-            verbose_print("  [cyan]exec: NetworkManager.setup_networks()[/cyan]")
+            verbose_print("  [cyan]exec: Setting up Podman networks[/cyan]")
 
-            # Validate dependencies
-            self.network_manager.validate_dependencies()
+            # Validate Podman is available
+            self._validate_podman()
+
+            # Ensure config file exists
+            self._ensure_network_config_file()
 
             # Load and setup networks
-            self.network_manager.load_config()
+            config_data = self._load_network_config()
+            networks = config_data.get("networks", [])
 
-            networks = self.network_manager.config_data.get("networks", [])
             if not networks:
                 verbose_print("  [cyan]exec: No networks found in configuration[/cyan]")
                 return
@@ -133,7 +132,7 @@ class EnvironmentManager:
             for network_config in networks:
                 name = network_config.get("name", "unknown")
 
-                if self.network_manager.network_exists(name):
+                if self._network_exists(name):
                     console.print(
                         f"  ✓ Network '{name}' already exists, skipping...",
                         style="yellow",
@@ -142,9 +141,7 @@ class EnvironmentManager:
                 else:
                     console.print(f"  → Creating network '{name}'...", style="blue")
                     try:
-                        was_created = self.network_manager.create_network(
-                            network_config
-                        )
+                        was_created = self._create_network(network_config)
                         if was_created:
                             created_count += 1
                             console.print(
@@ -165,6 +162,164 @@ class EnvironmentManager:
         except Exception as e:
             console.print(f"[yellow]Warning: Network setup failed: {e}[/yellow]")
             verbose_print(f"  [cyan]exec: Network setup error details: {e}[/cyan]")
+
+    def _validate_podman(self) -> None:
+        """Check if Podman is available."""
+        try:
+            subprocess.run(
+                ["podman", "--version"], capture_output=True, check=True, timeout=10
+            )
+        except (
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+            subprocess.TimeoutExpired,
+        ):
+            raise Exception("Podman is required but not found in PATH")
+
+    def _ensure_network_config_file(self) -> None:
+        """Ensure config file exists, copying from source if needed."""
+        if not self.config_file.exists():
+            if self.source_config.exists():
+                console.print(
+                    f"[yellow]Config file not found at {self.config_file}[/yellow]"
+                )
+                console.print(f"[blue]Copying from {self.source_config}...[/blue]")
+
+                # Create destination directory if it doesn't exist
+                self.config_file.parent.mkdir(parents=True, exist_ok=True)
+
+                try:
+                    shutil.copy2(self.source_config, self.config_file)
+                    console.print("[green]✓ Config file copied successfully[/green]")
+                except Exception as e:
+                    raise Exception(f"Failed to copy config file: {e}")
+            else:
+                raise Exception(
+                    f"Config file not found at {self.config_file} and source file not found at {self.source_config}"
+                )
+
+    def _load_network_config(self) -> Dict:
+        """Load and validate the JSON configuration file."""
+        try:
+            with open(self.config_file, "r") as f:
+                config_data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise Exception(f"Invalid JSON in config file: {e}")
+        except Exception as e:
+            raise Exception(f"Error reading config file: {e}")
+
+        # Validate config structure
+        if "networks" not in config_data:
+            raise Exception("Config file must contain 'networks' key")
+
+        if not isinstance(config_data["networks"], list):
+            raise Exception("'networks' must be a list")
+
+        return config_data
+
+    def _network_exists(self, name: str) -> bool:
+        """Check if a Podman network already exists."""
+        try:
+            result = subprocess.run(
+                ["podman", "network", "exists", name], capture_output=True, timeout=10
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, Exception):
+            return False
+
+    def _create_network(self, network_config: Dict) -> bool:
+        """Create a single network from configuration."""
+        name = network_config.get("name")
+        if not name:
+            raise Exception("Network configuration missing 'name' field")
+
+        # Build and execute create command
+        cmd = self._build_create_command(network_config)
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+
+            if result.returncode != 0:
+                raise Exception(
+                    f"Failed to create network '{name}': {result.stderr.strip()}"
+                )
+
+            return True
+
+        except subprocess.TimeoutExpired:
+            raise Exception(f"Timeout creating network '{name}'")
+        except Exception as e:
+            raise Exception(f"Error creating network '{name}': {e}")
+
+    def _build_create_command(self, network_config: Dict) -> List[str]:
+        """Build the podman network create command from network configuration."""
+        cmd = ["podman", "network", "create"]
+
+        # Add driver
+        if "driver" in network_config:
+            cmd.extend(["--driver", network_config["driver"]])
+
+        # Add subnet and gateway from first subnet
+        if "subnets" in network_config and network_config["subnets"]:
+            subnet_config = network_config["subnets"][0]
+            if "subnet" in subnet_config:
+                cmd.extend(["--subnet", subnet_config["subnet"]])
+            if "gateway" in subnet_config:
+                cmd.extend(["--gateway", subnet_config["gateway"]])
+
+        # Add internal flag
+        if network_config.get("internal", False):
+            cmd.append("--internal")
+
+        # Add disable-dns flag
+        if not network_config.get("dns_enabled", True):
+            cmd.append("--disable-dns")
+
+        # Add labels
+        if "labels" in network_config and network_config["labels"]:
+            for key, value in network_config["labels"].items():
+                cmd.extend(["--label", f"{key}={value}"])
+
+        # Add options (filter out Docker-specific options)
+        if "options" in network_config and network_config["options"]:
+            filtered_options = self._filter_docker_options(network_config["options"])
+            for key, value in filtered_options.items():
+                cmd.extend(["--opt", f"{key}={value}"])
+
+        # Add network name
+        cmd.append(network_config["name"])
+
+        return cmd
+
+    def _filter_docker_options(self, options: Dict) -> Dict:
+        """Filter out Docker-specific network options that Podman doesn't support."""
+        # Docker-specific options that Podman doesn't support
+        docker_specific_options = {
+            "com.docker.network.bridge.enable_icc",
+            "com.docker.network.bridge.enable_ip_masquerade",
+            "com.docker.network.bridge.host_binding_ipv4",
+            "com.docker.network.bridge.name",
+            "com.docker.network.driver.mtu",
+        }
+
+        filtered_options = {}
+        skipped_options = []
+
+        for key, value in options.items():
+            if key in docker_specific_options:
+                skipped_options.append(key)
+                console.print(
+                    f"    [dim yellow]Skipping Docker-specific option: {key}={value}[/dim yellow]"
+                )
+            else:
+                filtered_options[key] = value
+
+        if skipped_options:
+            console.print(
+                f"    [dim]Filtered out {len(skipped_options)} Docker-specific option(s)[/dim]"
+            )
+
+        return filtered_options
 
 
 class SystemdManager:
