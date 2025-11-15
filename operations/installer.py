@@ -134,8 +134,8 @@ class EnvironmentManager:
 
                 if self._network_exists(name):
                     console.print(
-                        f"  ✓ Network '{name}' already exists, skipping...",
-                        style="yellow",
+                        f"    Network '{name}' already exists, skipping...",
+                        style="cyan",
                     )
                     skipped_count += 1
                 else:
@@ -154,9 +154,8 @@ class EnvironmentManager:
                         )
 
             if created_count > 0 or skipped_count > 0:
-                console.print()
                 console.print(
-                    f"[green]Network setup complete! Created: {created_count}, Skipped: {skipped_count}[/green]"
+                    f"  Network setup complete! Created: {created_count}, Skipped: {skipped_count}"
                 )
 
         except Exception as e:
