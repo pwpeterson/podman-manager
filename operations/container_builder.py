@@ -800,6 +800,20 @@ class ContainerBuilder:
             console.print(f"[red]Error in podman build for {target}: {e}[/red]")
             return False
 
+    def build_only_service(self, target: str) -> bool:
+        """Build a single service without daemon reload or service start"""
+        # Only build the service - no systemctl operations
+        build_success = self.build_service(target)
+
+        if build_success:
+            console.print()
+            console.print(f"[green]Successfully built {target}[/green]")
+            console.print()
+        else:
+            console.print()
+
+        return build_success
+
     def rebuild_service(self, target: str) -> bool:
         """Rebuild a single service"""
         # Step 1: Build the service (this now handles build-first-then-stop internally)
@@ -858,6 +872,37 @@ class ContainerBuilder:
             console.print(f"[red]Failed to start {target} after build[/red]")
             console.print()
             return False
+
+    def build_only_stack(self, project: str) -> bool:
+        """Build an entire project stack without daemon reload or service start"""
+        if project == "vllm":
+            services = ["vllm-qwen25", "vllm-proxy", "vllm-delegator"]
+            display_name = "vLLM stack"
+        elif project == "taskflow":
+            services = ["taskflow-frontend", "taskflow-backend"]
+            display_name = "taskflow stack"
+        else:
+            # Generic project - find services that start with project name
+            services = [
+                short_name
+                for short_name in self.manager.quadlet_services.keys()
+                if short_name.startswith(f"{project}-")
+            ]
+            display_name = f"{project} stack"
+
+        if not services:
+            console.print(f"[red]No services found for {project} stack[/red]")
+            return False
+
+        # Only build images - no systemctl operations
+        build_success = self._build_stack(project, services)
+
+        if build_success:
+            console.print(f"[green]Successfully built {display_name}[/green]")
+        else:
+            console.print(f"[red]Failed to build images for {project} stack[/red]")
+
+        return build_success
 
     def rebuild_stack(self, project: str) -> bool:
         """Rebuild an entire project stack"""

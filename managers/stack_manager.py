@@ -759,7 +759,7 @@ class StackManager:
         if healthcheck_result is not None:
             if healthcheck_result:
                 verbose_print(
-                    f"[green]Service {target} is healthy (healthcheck passed)[/green]"
+                    f"[green]    Service {target} is healthy (healthcheck passed)[/green]"
                 )
                 return True
             else:

@@ -1002,7 +1002,7 @@ class CommandRouter:
         else:
             # Default to verbose for build command
             set_verbose(True)
-        return self.try_with_fallback(self.container_ops.rebuild, args.target)
+        return self.try_with_fallback(self.container_ops.build_only, args.target)
 
     def _handle_start(self, args):
         self.handle_command_verbose(args)

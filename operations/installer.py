@@ -111,8 +111,8 @@ class EnvironmentManager:
     def _setup_networks(self) -> None:
         """Setup Podman networks from configuration."""
         try:
-            console.print("[green]Setting up Podman networks...[/green]")
-            console.print("\tNetworks setup")
+            console.print("[green]Setting up required podman networks.[/green]")
+            console.print()
 
             # Only show detailed output in verbose mode
             if is_verbose():
