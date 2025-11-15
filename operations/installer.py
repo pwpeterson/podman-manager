@@ -391,6 +391,9 @@ class SystemdManager:
 
             console.print()
             console.print("[green]Systemd user session is healthy[/green]")
+            console.print()
+            console.print("[green]Creating the required system directory[/green]")
+            verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
             return True
 
         except subprocess.TimeoutExpired:
@@ -1256,11 +1259,6 @@ class FileManager:
         use_sudo: bool = False,
     ):
         """Copy quadlet files to target directory."""
-        # Show mkdir command once at the beginning
-        console.print("[green]Creating the required system directory[/green]")
-        verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
-        if not is_verbose():
-            console.print()
 
         # Copy startup wrapper files first
         self._copy_startup_wrapper_files(stack_dir, target_dir, use_sudo)
