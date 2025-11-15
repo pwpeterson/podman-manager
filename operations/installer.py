@@ -106,62 +106,88 @@ class EnvironmentManager:
     def _setup_networks(self) -> None:
         """Setup Podman networks from configuration."""
         try:
-            console.print()
             console.print("[green]Setting up Podman networks...[/green]")
-            if not is_verbose():
-                console.print()
-            verbose_print("  [cyan]exec: Setting up Podman networks[/cyan]")
+            console.print("\tNetworks setup")
 
-            # Validate Podman is available
-            self._validate_podman()
+            # Only show detailed output in verbose mode
+            if is_verbose():
+                verbose_print("  [cyan]exec: Setting up Podman networks[/cyan]")
 
-            # Ensure config file exists
-            self._ensure_network_config_file()
+                # Validate Podman is available
+                self._validate_podman()
 
-            # Load and setup networks
-            config_data = self._load_network_config()
-            networks = config_data.get("networks", [])
+                # Ensure config file exists
+                self._ensure_network_config_file()
 
-            if not networks:
-                verbose_print("  [cyan]exec: No networks found in configuration[/cyan]")
-                return
+                # Load and setup networks
+                config_data = self._load_network_config()
+                networks = config_data.get("networks", [])
 
-            created_count = 0
-            skipped_count = 0
+                if not networks:
+                    verbose_print(
+                        "  [cyan]exec: No networks found in configuration[/cyan]"
+                    )
+                    return
 
-            for network_config in networks:
-                name = network_config.get("name", "unknown")
+                created_count = 0
+                skipped_count = 0
 
-                if self._network_exists(name):
+                for network_config in networks:
+                    name = network_config.get("name", "unknown")
+
+                    if self._network_exists(name):
+                        console.print(
+                            f"    Network '{name}' already exists, skipping...",
+                            style="cyan",
+                        )
+                        skipped_count += 1
+                    else:
+                        console.print(f"  → Creating network '{name}'...", style="blue")
+                        try:
+                            was_created = self._create_network(network_config)
+                            if was_created:
+                                created_count += 1
+                                console.print(
+                                    f"  ✓ Network '{name}' created successfully",
+                                    style="green",
+                                )
+                        except Exception as e:
+                            console.print(
+                                f"  ✗ Failed to create network '{name}': {e}",
+                                style="red",
+                            )
+
+                if created_count > 0 or skipped_count > 0:
                     console.print(
-                        f"    Network '{name}' already exists, skipping...",
+                        f"    Network setup complete! Created: {created_count}, Skipped: {skipped_count}.",
                         style="cyan",
                     )
-                    skipped_count += 1
-                else:
-                    console.print(f"  → Creating network '{name}'...", style="blue")
-                    try:
-                        was_created = self._create_network(network_config)
-                        if was_created:
-                            created_count += 1
-                            console.print(
-                                f"  ✓ Network '{name}' created successfully",
-                                style="green",
-                            )
-                    except Exception as e:
-                        console.print(
-                            f"  ✗ Failed to create network '{name}': {e}", style="red"
-                        )
+            else:
+                # In non-verbose mode, just do the work silently
+                try:
+                    # Validate Podman is available
+                    self._validate_podman()
 
-            if created_count > 0 or skipped_count > 0:
-                console.print(
-                    f"    Network setup complete! Created: {created_count}, Skipped: {skipped_count}.",
-                    style="cyan",
-                )
+                    # Ensure config file exists
+                    self._ensure_network_config_file()
+
+                    # Load and setup networks
+                    config_data = self._load_network_config()
+                    networks = config_data.get("networks", [])
+
+                    if networks:
+                        for network_config in networks:
+                            name = network_config.get("name", "unknown")
+                            if not self._network_exists(name):
+                                self._create_network(network_config)
+                except Exception:
+                    # Silently continue if network setup fails in non-verbose mode
+                    pass
 
         except Exception as e:
-            console.print(f"[yellow]Warning: Network setup failed: {e}[/yellow]")
-            verbose_print(f"  [cyan]exec: Network setup error details: {e}[/cyan]")
+            if is_verbose():
+                console.print(f"[yellow]Warning: Network setup failed: {e}[/yellow]")
+                verbose_print(f"  [cyan]exec: Network setup error details: {e}[/cyan]")
 
     def _validate_podman(self) -> None:
         """Check if Podman is available."""
