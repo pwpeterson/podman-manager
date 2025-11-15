@@ -157,15 +157,53 @@ class NetworkManager:
             for key, value in network_config["labels"].items():
                 cmd.extend(["--label", f"{key}={value}"])
 
-        # Add options
+        # Add options (filter out Docker-specific options)
         if "options" in network_config and network_config["options"]:
-            for key, value in network_config["options"].items():
+            filtered_options = self._filter_docker_options(network_config["options"])
+            for key, value in filtered_options.items():
                 cmd.extend(["--opt", f"{key}={value}"])
 
         # Add network name
         cmd.append(network_config["name"])
 
         return cmd
+
+    def _filter_docker_options(self, options: Dict) -> Dict:
+        """Filter out Docker-specific network options that Podman doesn't support.
+
+        Args:
+            options: Dictionary of network options
+
+        Returns:
+            Filtered dictionary with only Podman-compatible options
+        """
+        # Docker-specific options that Podman doesn't support
+        docker_specific_options = {
+            "com.docker.network.bridge.enable_icc",
+            "com.docker.network.bridge.enable_ip_masquerade",
+            "com.docker.network.bridge.host_binding_ipv4",
+            "com.docker.network.bridge.name",
+            "com.docker.network.driver.mtu",
+        }
+
+        filtered_options = {}
+        skipped_options = []
+
+        for key, value in options.items():
+            if key in docker_specific_options:
+                skipped_options.append(key)
+                console.print(
+                    f"    [dim yellow]Skipping Docker-specific option: {key}={value}[/dim yellow]"
+                )
+            else:
+                filtered_options[key] = value
+
+        if skipped_options:
+            console.print(
+                f"    [dim]Filtered out {len(skipped_options)} Docker-specific option(s)[/dim]"
+            )
+
+        return filtered_options
 
     def create_network(self, network_config: Dict) -> bool:
         """Create a single network from configuration.
