@@ -25,6 +25,12 @@ from core.fuzzy_matcher import FuzzyMatcher
 from core.service_discovery import get_service_discovery
 from core.validation_utils import get_validation_utils
 
+# Import network setup functionality
+try:
+    from setup_networks import NetworkManager
+except ImportError:
+    NetworkManager = None
+
 
 class EnvironmentManager:
     """Handles environment file processing and system environment setup."""
@@ -32,9 +38,10 @@ class EnvironmentManager:
     def __init__(self):
         self.env_file_path = Path("/home/pwp/srv/local-ai-packaged/.env")
         self.system_env_target = Path.home() / ".config/containers/systemd/.env"
+        self.network_manager = NetworkManager() if NetworkManager else None
 
     def load_and_clean_env_file(self) -> bool:
-        """Copy .env file directly to systemd containers directory."""
+        """Copy .env file directly to systemd containers directory and setup networks."""
         if not self.env_file_path.exists():
             self._print_warning(f"Environment file not found: {self.env_file_path}")
             return False
@@ -47,7 +54,13 @@ class EnvironmentManager:
             "  [cyan]exec: Copy .env file to ~/.config/containers/systemd/[/cyan]"
         )
 
-        return self._copy_env_file_directly()
+        env_success = self._copy_env_file_directly()
+
+        # Setup networks after copying .env file
+        if env_success:
+            self._setup_networks()
+
+        return env_success
 
     def _copy_env_file_directly(self) -> bool:
         """Copy .env file directly to systemd containers directory."""
@@ -87,6 +100,71 @@ class EnvironmentManager:
 
     def _print_error(self, message: str) -> None:
         console.print(f"[red]{message}[/red]")
+
+    def _setup_networks(self) -> None:
+        """Setup Podman networks from configuration."""
+        if not self.network_manager:
+            verbose_print(
+                "  [cyan]exec: NetworkManager not available, skipping network setup[/cyan]"
+            )
+            return
+
+        try:
+            console.print()
+            console.print("[green]Setting up Podman networks...[/green]")
+            if not is_verbose():
+                console.print()
+            verbose_print("  [cyan]exec: NetworkManager.setup_networks()[/cyan]")
+
+            # Validate dependencies
+            self.network_manager.validate_dependencies()
+
+            # Load and setup networks
+            self.network_manager.load_config()
+
+            networks = self.network_manager.config_data.get("networks", [])
+            if not networks:
+                verbose_print("  [cyan]exec: No networks found in configuration[/cyan]")
+                return
+
+            created_count = 0
+            skipped_count = 0
+
+            for network_config in networks:
+                name = network_config.get("name", "unknown")
+
+                if self.network_manager.network_exists(name):
+                    console.print(
+                        f"  ✓ Network '{name}' already exists, skipping...",
+                        style="yellow",
+                    )
+                    skipped_count += 1
+                else:
+                    console.print(f"  → Creating network '{name}'...", style="blue")
+                    try:
+                        was_created = self.network_manager.create_network(
+                            network_config
+                        )
+                        if was_created:
+                            created_count += 1
+                            console.print(
+                                f"  ✓ Network '{name}' created successfully",
+                                style="green",
+                            )
+                    except Exception as e:
+                        console.print(
+                            f"  ✗ Failed to create network '{name}': {e}", style="red"
+                        )
+
+            if created_count > 0 or skipped_count > 0:
+                console.print()
+                console.print(
+                    f"[green]Network setup complete! Created: {created_count}, Skipped: {skipped_count}[/green]"
+                )
+
+        except Exception as e:
+            console.print(f"[yellow]Warning: Network setup failed: {e}[/yellow]")
+            verbose_print(f"  [cyan]exec: Network setup error details: {e}[/cyan]")
 
 
 class SystemdManager:
