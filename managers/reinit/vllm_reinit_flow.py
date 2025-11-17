@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from core.config import console, verbose_print
+from managers.reinit.vllm_startup_monitor import VLLMStartupMonitor
 
 
 class VLLMReinitFlow:
@@ -13,6 +14,7 @@ class VLLMReinitFlow:
         self.container_manager = container_manager
         self.service_manager = service_manager
         self._vllm_manager = None
+        self._startup_monitor = None
 
     @property
     def vllm_manager(self):
@@ -22,6 +24,13 @@ class VLLMReinitFlow:
 
             self._vllm_manager = VLLMModelManager(self.manager)
         return self._vllm_manager
+
+    @property
+    def startup_monitor(self):
+        """Lazy initialization of VLLM startup monitor"""
+        if self._startup_monitor is None:
+            self._startup_monitor = VLLMStartupMonitor(self.manager)
+        return self._startup_monitor
 
     def reinit_vllm_model_service(
         self, target: str, service_name: str, dry_run: bool = False
@@ -146,6 +155,15 @@ class VLLMReinitFlow:
         )
         console.print()
 
+        # Wait for VLLM model to be completely ready before restarting support services
+        console.print(f"[cyan]Waiting for {display_name} to be fully ready...[/cyan]")
+        if not self.startup_monitor.vllm_service_monitor_for_complete_start(
+            display_name
+        ):
+            console.print(f"[red]❌ {display_name} failed to become ready[/red]")
+            return False
+        console.print()
+
         # Restart sys-services-vllm-proxy and mcp-vllm-delegator
         success = self.restart_vllm_support_services(display_name)
         verbose_print(
@@ -192,6 +210,15 @@ class VLLMReinitFlow:
         console.print(
             f"[green]{started_timestamp} |   Restarted {display_name}[/green]"
         )
+        console.print()
+
+        # Wait for VLLM model to be completely ready before restarting support services
+        console.print(f"[cyan]Waiting for {display_name} to be fully ready...[/cyan]")
+        if not self.startup_monitor.vllm_service_monitor_for_complete_start(
+            display_name
+        ):
+            console.print(f"[red]❌ {display_name} failed to become ready[/red]")
+            return False
         console.print()
 
         # Restart sys-services-vllm-proxy and mcp-vllm-delegator

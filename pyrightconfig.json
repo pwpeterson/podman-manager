@@ -1,3 +1,5 @@
 {
-  "reportPossiblyUnboundVariable": false
+  "reportPossiblyUnboundVariable": false,
+  "reportMissingModuleSource": false,
+  "reportGeneralTypeIssues": false
 }

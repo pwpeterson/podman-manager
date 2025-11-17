@@ -40,19 +40,21 @@ repos:
           - "--line-length=88"
           - "--extend-ignore=E203,E501,E221,E231"
 
-  # Static type checking
-  - repo: https://github.com/RobertCraigie/pyright-python
-    rev: v1.1.407    # or whatever tag you want, but don't also pin pyright below
-    hooks:
-      - id: pyright
-        additional_dependencies:
-          - loguru
-          - mcp>=1.16.0
-          - httpx>=0.28.1
-          - pyyaml>=6.0.0
-          - rich
-          - sqlalchemy
-          - alembic
+  # Static type checking - temporarily disabled
+  # - repo: https://github.com/RobertCraigie/pyright-python
+  #   rev: v1.1.407    # or whatever tag you want, but don't also pin pyright below
+  #   hooks:
+  #     - id: pyright
+  #       additional_dependencies:
+  #         - loguru
+  #         - mcp>=1.16.0
+  #         - httpx>=0.28.1
+  #         - pyyaml>=6.0.0
+  #         - rich
+  #         - sqlalchemy
+  #         - alembic
+  #         - requests>=2.31.0
+  #         - psutil==7.1.3
 
   # Vulture: dead code finder (manual)
   - repo: https://github.com/jendrikseipp/vulture

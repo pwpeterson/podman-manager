@@ -29,6 +29,7 @@ class VLLMModelManager:
         self.proxy_image = (
             "sys-services-vllm-proxy:latest"  # Default, can be configured
         )
+        self._startup_monitor = None
 
     def switch_vllm_model(
         self, new_model_container: str, proxy_image: Optional[str] = None
@@ -310,9 +311,14 @@ class VLLMModelManager:
         console.print(f"[green]  Started {container_name}.[/green]")
         console.print()
 
-        # Optional: Wait for the vLLM model to be ready (can be disabled for faster startup)
-        # This is commented out to match the desired output format, but can be enabled if needed
-        # self._wait_for_vllm_ready(container_name)
+        # Wait for the vLLM model to be fully ready before proceeding
+        console.print(f"[cyan]Waiting for {container_name} to be fully ready...[/cyan]")
+        if not self._get_startup_monitor().vllm_service_monitor_for_complete_start(
+            container_name
+        ):
+            console.print(f"[red]❌ {container_name} failed to become ready[/red]")
+            return False
+        console.print()
 
         return True
 
@@ -1210,3 +1216,11 @@ class VLLMModelManager:
         return reinit_mgr.reinit(
             target, build=(build_type is not None), build_type=build_type
         )
+
+    def _get_startup_monitor(self):
+        """Get or create the startup monitor instance."""
+        if self._startup_monitor is None:
+            from managers.reinit.vllm_startup_monitor import VLLMStartupMonitor
+
+            self._startup_monitor = VLLMStartupMonitor(self.manager)
+        return self._startup_monitor
