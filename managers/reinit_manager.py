@@ -10,7 +10,7 @@ from .reinit import (
     ReinitAIAnalyzer,
     ReinitMonitor,
     ServiceManager,
-    VLLMReinitFlow,
+    ModelReinitFlow,
 )
 
 
@@ -24,7 +24,7 @@ class ReinitManager:
         self.health_checker = HealthChecker(manager)
         self.container_manager = ContainerManager(manager)
         self.service_manager = ServiceManager(manager)
-        self.vllm_flow = VLLMReinitFlow(
+        self.model_flow = ModelReinitFlow(
             manager, self.container_manager, self.service_manager
         )
         self.monitor = ReinitMonitor(manager, self.health_checker)
@@ -196,12 +196,12 @@ class ReinitManager:
                 f"\n[green]{timestamp} | Reinitializing {display_name}...[/green]\n"
             )
 
-        # Determine if this is a vLLM model service by checking ai_agents_config.json
-        is_vllm_model_service = self.service_manager.is_vllm_model_service(display_name)
+        # Determine if this is a model service by checking ai_agents_config.json
+        is_model_service = self.service_manager.is_model_service(display_name)
 
         # Route to appropriate reinit method based on service type
-        if is_vllm_model_service:
-            return self.vllm_flow.reinit_vllm_model_service(
+        if is_model_service:
+            return self.model_flow.reinit_model_service(
                 target, service_name, dry_run
             )
         else:
@@ -282,7 +282,7 @@ class ReinitManager:
             console.print(
                 f"[red]{started_timestamp} |   Failed to restart {display_name}[/red]"
             )
-            self.vllm_flow._handle_start_failure(target, start_result)
+            self.model_flow._handle_start_failure(target, start_result)
             error_message = start_result.stderr.strip() if start_result.stderr else ""
-            self.vllm_flow._run_reinit_failure_analysis(target, error_message)
+            self.model_flow._run_reinit_failure_analysis(target, error_message)
             return False

@@ -40,6 +40,7 @@ ALLOWED_COMMANDS = {
     "ping",
     "curl",
     "wget",
+    "ss",
     # File operations
     "find",
     "grep",

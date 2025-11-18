@@ -1,4 +1,4 @@
-"""Enhanced prompt generators for new AI analysis types in reinit process."""
+"""Enhanced prompt generators for handling timeout scenarios and container runtime issues."""
 
 from datetime import datetime
 from typing import Any, Dict
@@ -6,298 +6,312 @@ from typing import Any, Dict
 from .prompt_generators import PromptGenerator
 
 
-class PreReinitCheckPromptGenerator(PromptGenerator):
-    """Generate prompts for pre-reinit health check analysis."""
+class TimeoutDiagnosticPromptGenerator(PromptGenerator):
+    """Generate prompts for diagnosing timeout and container runtime issues."""
 
     def generate(self, target: str, data: Dict[str, Any]) -> str:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        timeout_context = data.get("timeout_context", {})
+        system_state = data.get("system_state", {})
+        error_details = data.get("start_error", "")
+        
+        return f"""You are a container runtime and systemd expert specializing in timeout and startup failure diagnosis.
 
-        health_issues = data.get("health_check_failed", False)
-        pre_reinit_state = data.get("pre_reinit_state", {})
-
-        return f"""You are a system administration expert specializing in container and systemd service troubleshooting.
-
-A pre-reinit health check has detected issues with the following service before attempting reinit:
-
-Service: {target}
-Timestamp: {timestamp}
-Health Check Status: {'FAILED' if health_issues else 'PASSED'}
-
-Pre-reinit State Information:
-{self._format_pre_reinit_state(pre_reinit_state)}
-
-Diagnostic Data:
-{self._format_diagnostic_data(data)}
-
-Please provide a focused analysis with:
-
-1. **Risk Assessment**: What are the risks of proceeding with reinit given these health check results?
-2. **Pre-reinit Fixes**: What issues should be resolved before attempting reinit?
-3. **Reinit Strategy**: What specific reinit approach would be safest given the current state?
-4. **Monitoring Points**: What should be watched carefully during the reinit process?
-
-Focus on actionable recommendations that will improve reinit success probability."""
-
-    def _format_pre_reinit_state(self, state: Dict[str, Any]) -> str:
-        """Format pre-reinit state information."""
-        if not state:
-            return "No pre-reinit state captured"
-
-        formatted = []
-
-        if "service_properties" in state:
-            formatted.append(f"Service Properties:\n{state['service_properties']}")
-
-        if "container_state" in state:
-            formatted.append(f"Container State: {state['container_state']}")
-
-        if "timestamp" in state:
-            formatted.append(
-                f"State Captured: {datetime.fromtimestamp(state['timestamp'])}"
-            )
-
-        return "\n\n".join(formatted) if formatted else "No state information available"
-
-    def _format_diagnostic_data(self, data: Dict[str, Any]) -> str:
-        """Format diagnostic data for display."""
-        formatted = []
-
-        # Format logs if available
-        if "recent_logs" in data:
-            logs = data["recent_logs"]
-            if logs:
-                formatted.append("Recent Logs:")
-                formatted.append(logs[:1000] + "..." if len(logs) > 1000 else logs)
-
-        # Format systemd status if available
-        if "systemd_status" in data:
-            formatted.append(f"Systemd Status:\n{data['systemd_status']}")
-
-        # Format container info if available
-        if "container_info" in data:
-            formatted.append(f"Container Info:\n{data['container_info']}")
-
-        return "\n\n".join(formatted) if formatted else "No diagnostic data available"
-
-
-class EnhancedReinitFailurePromptGenerator(PromptGenerator):
-    """Generate prompts for enhanced reinit failure analysis with full context."""
-
-    def generate(self, target: str, data: Dict[str, Any]) -> str:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        reinit_context = data.get("reinit_context", {})
-        pre_reinit_state = data.get("pre_reinit_state", {})
-        diagnostic_data = data.get("diagnostic_data", {})
-        exception = data.get("exception")
-
-        return f"""You are a system administration expert specializing in container reinit failure analysis.
-
-A reinit operation has failed with comprehensive context available for analysis:
+A service reinit operation has failed with timeout issues:
 
 Service: {target}
 Timestamp: {timestamp}
-Failure Type: Enhanced Reinit Failure
+Failure Type: Container startup timeout/error
 
-Reinit Context:
-{self._format_reinit_context(reinit_context)}
+Timeout Context:
+{self._format_timeout_context(timeout_context)}
 
-Pre-reinit State:
-{self._format_pre_reinit_state(pre_reinit_state)}
+System State:
+{self._format_system_state(system_state)}
 
-{self._format_exception(exception or "")}
+Error Details:
+{error_details or "Container status: error (commands timing out)"}
 
-Diagnostic Data:
-{self._format_diagnostic_data(diagnostic_data)}
+Diagnostic Analysis Required:
 
-System Information:
-{self._format_system_info(data)}
+**CRITICAL ISSUE**: System commands (podman, journalctl) are timing out, indicating:
+1. Container runtime (podman) may be hung or unresponsive
+2. Systemd may be experiencing issues
+3. System resources may be exhausted
+4. Storage/filesystem issues may be present
 
-Please provide a comprehensive failure analysis with:
+**Please provide a comprehensive diagnostic analysis with:**
 
-1. **Root Cause Analysis**: What specifically caused the reinit to fail?
-2. **Context Impact**: How did the pre-reinit state contribute to the failure?
-3. **Recovery Strategy**: Step-by-step recovery plan with specific commands
-4. **Prevention Measures**: How to prevent this failure in future reinits?
-5. **Alternative Approaches**: What alternative reinit strategies might work?
+### 1. Root Cause Analysis
+- Most likely causes of command timeouts
+- Container runtime state assessment
+- System resource implications
 
-Focus on actionable solutions that address the specific failure context."""
+### 2. Immediate Diagnostic Steps
+**Risk Level**: [low/medium/high]
+**Commands to run**:
+```bash
+# Safe diagnostic commands that won't hang
+command1
+command2
+```
 
-    def _format_reinit_context(self, context: Dict[str, Any]) -> str:
-        """Format reinit context information."""
+### 3. Progressive Recovery Steps
+**Step 1 - Gentle Recovery** (Risk: low)
+```bash
+# Commands for gentle recovery
+```
+
+**Step 2 - Container Runtime Reset** (Risk: medium)
+```bash
+# Commands for container runtime reset
+```
+
+**Step 3 - System Recovery** (Risk: high)
+```bash
+# Commands for system-level recovery if needed
+```
+
+### 4. Prevention Measures
+- Steps to prevent future timeout issues
+- Monitoring recommendations
+- System health checks
+
+**Service-Specific Context for {target}:**
+{self._get_service_specific_timeout_guidance(target)}
+
+**IMPORTANT**: Focus on timeout-resistant diagnostic commands and progressive recovery approach."""
+
+    def _format_timeout_context(self, context: Dict[str, Any]) -> str:
+        """Format timeout context information."""
         if not context:
-            return "No reinit context available"
-
+            return "Commands timing out: podman inspect, podman ps, journalctl"
+        
         formatted = []
-
-        if "target" in context:
-            formatted.append(f"Target: {context['target']}")
-
-        if "build" in context:
-            formatted.append(f"Build Requested: {context['build']}")
-
-        if "build_type" in context:
-            formatted.append(f"Build Type: {context['build_type']}")
-
-        if "vllm_model" in context:
-            formatted.append(f"vLLM Model Switch: {context['vllm_model']}")
-
-        if "start_time" in context:
-            start_time = datetime.fromtimestamp(context["start_time"])
-            formatted.append(f"Reinit Started: {start_time}")
-
-        return "\n".join(formatted) if formatted else "No context information available"
-
-    def _format_exception(self, exception: str) -> str:
-        """Format exception information."""
-        if exception:
-            return f"Exception Details:\n{exception}\n"
-        return ""
-
-    def _format_pre_reinit_state(self, state: Dict[str, Any]) -> str:
-        """Format pre-reinit state information."""
-        if not state:
-            return "No pre-reinit state captured"
-
-        formatted = []
-
-        if "service_properties" in state:
-            formatted.append(f"Service Properties:\n{state['service_properties']}")
-
-        if "container_state" in state:
-            formatted.append(f"Container State: {state['container_state']}")
-
-        if "timestamp" in state:
-            formatted.append(
-                f"State Captured: {datetime.fromtimestamp(state['timestamp'])}"
-            )
-
-        return "\n\n".join(formatted) if formatted else "No state information available"
-
-    def _format_diagnostic_data(self, data: Dict[str, Any]) -> str:
-        """Format diagnostic data for display."""
-        formatted = []
-
-        # Format logs if available
-        if "recent_logs" in data:
-            logs = data["recent_logs"]
-            if logs:
-                formatted.append("Recent Logs:")
-                formatted.append(logs[:1000] + "..." if len(logs) > 1000 else logs)
-
-        # Format systemd status if available
-        if "systemd_status" in data:
-            formatted.append(f"Systemd Status:\n{data['systemd_status']}")
-
-        # Format container info if available
-        if "container_info" in data:
-            formatted.append(f"Container Info:\n{data['container_info']}")
-
-        return "\n\n".join(formatted) if formatted else "No diagnostic data available"
-
-    def _format_system_info(self, data: Dict[str, Any]) -> str:
-        """Format system information."""
-        formatted = []
-
-        if "system_resources" in data:
-            resources = data["system_resources"]
-            if isinstance(resources, dict):
-                for key, value in resources.items():
-                    formatted.append(f"{key}: {value}")
-
-        if "network_info" in data:
-            formatted.append(f"Network: {data['network_info']}")
-
-        if "storage_info" in data:
-            formatted.append(f"Storage: {data['storage_info']}")
-
-        return "\n".join(formatted) if formatted else "System information not available"
-
-
-class PostReinitOptimizationPromptGenerator(PromptGenerator):
-    """Generate prompts for post-reinit optimization suggestions."""
-
-    def generate(self, target: str, data: Dict[str, Any]) -> str:
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        verification_results = data.get("verification_results", [])
-        reinit_context = data.get("reinit_context", {})
-        pre_reinit_state = data.get("pre_reinit_state", {})
-
-        return f"""You are a system optimization expert specializing in container and service performance.
-
-A reinit operation has completed successfully. Please analyze the results and provide optimization suggestions:
-
-Service: {target}
-Timestamp: {timestamp}
-Reinit Status: SUCCESS
-
-Verification Results:
-{self._format_verification_results(verification_results)}
-
-Reinit Performance:
-{self._format_reinit_performance(reinit_context, pre_reinit_state)}
-
-System Context:
-{self._format_system_info(data)}
-
-Please provide optimization recommendations with:
-
-1. **Performance Optimizations**: How to improve service startup time and resource usage
-2. **Configuration Tuning**: Specific configuration changes for better performance
-3. **Monitoring Setup**: What metrics to monitor for ongoing health
-4. **Maintenance Schedule**: Recommended maintenance tasks and frequency
-5. **Future Reinit Improvements**: How to make future reinits faster and more reliable
-
-Focus on practical, implementable optimizations that will improve service reliability and performance."""
-
-    def _format_verification_results(self, results: list) -> str:
-        """Format verification results."""
-        if not results:
-            return "No verification results available"
-
-        formatted = []
-        for check_name, result in results:
-            status = result.get("status", "unknown")
-            details = result.get("details", "No details")
-            formatted.append(f"{check_name}: {status.upper()} - {details}")
-
+        for key, value in context.items():
+            formatted.append(f"{key}: {value}")
+        
         return "\n".join(formatted)
 
-    def _format_reinit_performance(
-        self, reinit_context: Dict, pre_reinit_state: Dict
-    ) -> str:
-        """Format reinit performance information."""
+    def _format_system_state(self, state: Dict[str, Any]) -> str:
+        """Format system state information."""
+        if not state:
+            return "System state unknown due to command timeouts"
+        
         formatted = []
+        for key, value in state.items():
+            formatted.append(f"{key}: {value}")
+        
+        return "\n".join(formatted)
 
-        if "start_time" in reinit_context and "timestamp" in pre_reinit_state:
-            duration = reinit_context["start_time"] - pre_reinit_state["timestamp"]
-            formatted.append(f"Total Reinit Duration: {duration:.1f} seconds")
+    def _get_service_specific_timeout_guidance(self, target: str) -> str:
+        """Get service-specific guidance for timeout scenarios."""
+        guidance = []
+        
+        if "llama" in target.lower() or "vllm" in target.lower():
+            guidance.extend([
+                "- Large language models require significant memory and startup time",
+                "- Model loading can take several minutes and may appear hung",
+                "- Port 8005 conflicts with other models can cause startup issues",
+                "- Check for memory exhaustion during model loading",
+                "- Consider model file corruption or missing dependencies"
+            ])
+        
+        if "postgres" in target.lower():
+            guidance.extend([
+                "- Database recovery can cause extended startup times",
+                "- Check for corrupted database files or locks",
+                "- Verify sufficient disk space for database operations"
+            ])
+        
+        if not guidance:
+            guidance = [
+                "- Check for resource exhaustion (memory, disk, CPU)",
+                "- Verify container image availability and integrity",
+                "- Consider network connectivity issues"
+            ]
+        
+        return "\n".join([f"  {item}" for item in guidance])
 
-        if "build" in reinit_context:
-            formatted.append(
-                f"Build Operation: {'Yes' if reinit_context['build'] else 'No'}"
-            )
 
-        if "vllm_model" in reinit_context and reinit_context["vllm_model"]:
-            formatted.append(f"vLLM Model Switch: {reinit_context['vllm_model']}")
+class ContainerRuntimeDiagnosticPromptGenerator(PromptGenerator):
+    """Generate prompts for container runtime diagnostic issues."""
 
-        return "\n".join(formatted) if formatted else "No performance data available"
+    def generate(self, target: str, data: Dict[str, Any]) -> str:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        return f"""You are a Podman and container runtime expert specializing in runtime failures and recovery.
 
-    def _format_system_info(self, data: Dict[str, Any]) -> str:
-        """Format system information."""
+Container Runtime Diagnostic Request:
+
+Service: {target}
+Timestamp: {timestamp}
+Issue: Container runtime commands hanging/timing out
+
+Symptoms Observed:
+- podman inspect commands timeout
+- podman ps commands timeout  
+- journalctl commands timeout
+- Container status shows "error"
+- System appears to have container runtime issues
+
+**Diagnostic Analysis Required:**
+
+### 1. Container Runtime Health Assessment
+**Provide commands to check:**
+- Podman daemon status
+- Container runtime processes
+- Storage driver health
+- Network namespace issues
+
+### 2. Safe Diagnostic Commands
+**Commands that won't hang:**
+```bash
+# Use timeout prefixes and non-blocking operations
+timeout 5s podman version || echo "Podman unresponsive"
+timeout 3s systemctl --user is-active podman.socket || echo "Podman socket inactive"
+```
+
+### 3. Progressive Recovery Strategy
+**Phase 1 - Service Level** (Risk: low)
+```bash
+# Reset specific service
+systemctl --user reset-failed {target}.service
+systemctl --user daemon-reload
+```
+
+**Phase 2 - Container Runtime** (Risk: medium)
+```bash
+# Reset container runtime
+systemctl --user restart podman.socket
+podman system reset --force
+```
+
+**Phase 3 - System Level** (Risk: high)
+```bash
+# System-wide container cleanup
+# Only if other methods fail
+```
+
+### 4. Root Cause Investigation
+**Check for:**
+- Storage driver issues (overlay2, etc.)
+- Network namespace corruption
+- Resource exhaustion
+- Filesystem issues
+- Systemd service conflicts
+
+### 5. Prevention and Monitoring
+**Recommendations for:**
+- Container runtime health monitoring
+- Resource limit configuration
+- Cleanup automation
+- Early warning systems
+
+**Focus on timeout-resistant diagnostics and progressive recovery for {target}.**"""
+
+
+class SystemHealthPromptGenerator(PromptGenerator):
+    """Generate prompts for system health checks before operations."""
+
+    def generate(self, target: str, data: Dict[str, Any]) -> str:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        health_data = data.get("health_check_results", {})
+        
+        return f"""You are a system health expert specializing in pre-operation health validation.
+
+System Health Assessment Request:
+
+Target Operation: Reinit {target}
+Timestamp: {timestamp}
+Purpose: Validate system health before attempting service operations
+
+Health Check Results:
+{self._format_health_results(health_data)}
+
+**Analysis Required:**
+
+### 1. System Readiness Assessment
+**Evaluate:**
+- Container runtime health
+- Systemd service manager status
+- Resource availability
+- Storage system health
+- Network connectivity
+
+### 2. Pre-Operation Validation
+**Check if system is ready for:**
+- Service stop/start operations
+- Container management
+- Systemd daemon operations
+- Resource allocation
+
+### 3. Risk Assessment
+**Identify potential issues:**
+- Resource constraints that could cause failures
+- Runtime conflicts
+- System instability indicators
+- Service dependency problems
+
+### 4. Go/No-Go Recommendation
+**Provide clear recommendation:**
+- PROCEED: System is healthy for operation
+- CAUTION: System has issues but operation may succeed
+- ABORT: System issues likely to cause operation failure
+
+### 5. Remediation Steps
+**If issues found, provide:**
+- Immediate fixes for critical issues
+- System stabilization steps
+- Resource cleanup procedures
+
+**Service-Specific Health Considerations for {target}:**
+{self._get_service_health_requirements(target)}
+
+**Provide actionable health assessment with clear go/no-go decision.**"""
+
+    def _format_health_results(self, results: Dict[str, Any]) -> str:
+        """Format health check results."""
+        if not results:
+            return "Health check data not available (system may be unresponsive)"
+        
         formatted = []
+        for check, result in results.items():
+            status = "PASS" if result.get("healthy", False) else "FAIL"
+            details = result.get("details", "No details")
+            formatted.append(f"{check}: {status} - {details}")
+        
+        return "\n".join(formatted)
 
-        if "system_resources" in data:
-            resources = data["system_resources"]
-            if isinstance(resources, dict):
-                for key, value in resources.items():
-                    formatted.append(f"{key}: {value}")
-
-        if "network_info" in data:
-            formatted.append(f"Network: {data['network_info']}")
-
-        if "storage_info" in data:
-            formatted.append(f"Storage: {data['storage_info']}")
-
-        return "\n".join(formatted) if formatted else "System information not available"
+    def _get_service_health_requirements(self, target: str) -> str:
+        """Get service-specific health requirements."""
+        requirements = []
+        
+        if "llama" in target.lower() or "vllm" in target.lower():
+            requirements.extend([
+                "- Minimum 8GB available memory for model loading",
+                "- Port 8005 must be available",
+                "- No conflicting model services running",
+                "- Sufficient disk space for model files",
+                "- Container runtime must be responsive"
+            ])
+        
+        if "postgres" in target.lower():
+            requirements.extend([
+                "- Port 5432 availability",
+                "- Sufficient disk space for database",
+                "- No database lock files present",
+                "- Memory available for database operations"
+            ])
+        
+        if not requirements:
+            requirements = [
+                "- Container runtime operational",
+                "- Systemd service manager responsive",
+                "- Adequate system resources",
+                "- No conflicting services"
+            ]
+        
+        return "\n".join([f"  {req}" for req in requirements])

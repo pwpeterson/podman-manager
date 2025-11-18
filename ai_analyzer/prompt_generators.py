@@ -698,6 +698,18 @@ class PromptGeneratorFactory:
             )
 
             return IntelligentRetryFixesPromptGenerator()
+        elif analysis_type == "timeout_diagnostic":
+            from .enhanced_prompt_generators import TimeoutDiagnosticPromptGenerator
+
+            return TimeoutDiagnosticPromptGenerator()
+        elif analysis_type == "container_runtime_diagnostic":
+            from .enhanced_prompt_generators import ContainerRuntimeDiagnosticPromptGenerator
+
+            return ContainerRuntimeDiagnosticPromptGenerator()
+        elif analysis_type == "system_health_check":
+            from .enhanced_prompt_generators import SystemHealthPromptGenerator
+
+            return SystemHealthPromptGenerator()
 
         # Use standard generators
         generator_class = cls._generators.get(analysis_type, GenericPromptGenerator)

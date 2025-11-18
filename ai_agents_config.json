@@ -1,15 +1,45 @@
 {
-  "default_agent": "vllm-glm41-9b-thinking",
+  "default_agent": "llama-kimi-k2-thinking_q2",
   "agent_preferences": {
     "prefer_local": true,
     "fallback_order": [
-      "vllm-glm41-9b-thinking",
+      "llama-kimi-k2-thinking_q2",
+      "llama-kimi-k2-thinking_q1",
+      "vllm-deepseek-coder-v2",
       "vllm-glm4-9b-chat",
+      "vllm-glm41-9b-thinking",
+      "vllm-qwen25-coder-32b",
       "claude-sonnet-4-5",
       "gpt-4"
     ]
   },
   "agents": [
+    {
+      "name": "llama-kimi-k2-thinking_q1",
+      "display_name": "Kimi K2 Thinking Q1 (llama.cpp)",
+      "agent_type": "local_vllm",
+      "endpoint": "http://localhost:8002",
+      "model_name": "llama-kimi-k2-thinking_q1",
+      "api_key_env": null,
+      "max_tokens": 2048,
+      "temperature": 0.1,
+      "timeout": 60,
+      "enabled": true,
+      "description": "Local Kimi K2 Thinking Q1 model via llama.cpp"
+    },
+    {
+      "name": "llama-kimi-k2-thinking_q2",
+      "display_name": "Kimi K2 Thinking Q2 (llama.cpp)",
+      "agent_type": "local_vllm",
+      "endpoint": "http://localhost:8002",
+      "model_name": "llama-kimi-k2-thinking_q2",
+      "api_key_env": null,
+      "max_tokens": 2048,
+      "temperature": 0.1,
+      "timeout": 60,
+      "enabled": true,
+      "description": "Local Kimi K2 Thinking Q2 model via llama.cpp"
+    },
     {
       "name": "vllm-qwen25-coder-32b",
       "display_name": "Qwen2.5 Coder 32B (Local)",

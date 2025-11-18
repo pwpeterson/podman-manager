@@ -44,8 +44,8 @@ class ServiceManager:
                 )
                 return False
 
-    def is_vllm_model_service(self, service_name: str) -> bool:
-        """Check if a service is a vLLM model by looking in ai_agents_config.json"""
+    def is_model_service(self, service_name: str) -> bool:
+        """Check if a service is a model service (vLLM or llama.cpp) by looking in ai_agents_config.json"""
         try:
             import json
 
@@ -67,13 +67,18 @@ class ServiceManager:
             for agent in config.get("agents", []):
                 if agent.get("agent_type") == "local_vllm":
                     model_name = agent.get("model_name", "")
-                    if model_name == service_name:
+                    # Handle both exact match and hyphen/underscore variations
+                    model_name_normalized = model_name.replace("_", "-")
+                    service_name_normalized = service_name.replace("_", "-")
+                    
+                    if (model_name == service_name or
+                        model_name_normalized == service_name_normalized):
                         verbose_print(
-                            f"[cyan]Is {service_name} a vLLM model: true[/cyan]"
+                            f"[cyan]Is {service_name} a model service: true[/cyan]"
                         )
                         return True
 
-            verbose_print(f"[cyan]Is {service_name} a vLLM model: false[/cyan]")
+            verbose_print(f"[cyan]Is {service_name} a model service: false[/cyan]")
             return False
 
         except Exception as e:
@@ -83,34 +88,91 @@ class ServiceManager:
     def start_service(
         self, service_name: str, target: str, quiet: bool = False
     ) -> subprocess.CompletedProcess:
-        """Start a systemd service"""
+        """Start a systemd service with timeout handling"""
         start_cmd = ["systemctl", "--user", "restart", service_name]
-
-        return self.manager._run_systemctl_command(
-            start_cmd,
-            f"start_{target}",
-            quiet=quiet,
-        )
+        
+        if not quiet:
+            verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
+        
+        try:
+            result = subprocess.run(
+                start_cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,  # 30 second timeout for service start
+            )
+            return result
+        except subprocess.TimeoutExpired:
+            # Create a mock result for timeout
+            result = subprocess.CompletedProcess(
+                start_cmd, 124, "", f"Service start timed out after 30 seconds"
+            )
+            return result
+        except Exception as e:
+            # Create a mock result for other errors
+            result = subprocess.CompletedProcess(
+                start_cmd, 1, "", f"Service start failed: {str(e)}"
+            )
+            return result
 
     def stop_service(
         self, service_name: str, target: str, quiet: bool = True
     ) -> subprocess.CompletedProcess:
-        """Stop a systemd service"""
+        """Stop a systemd service with timeout handling"""
         stop_cmd = ["systemctl", "--user", "stop", service_name]
-
-        return self.manager._run_systemctl_command(
-            stop_cmd, f"stop_{target}", quiet=quiet
-        )
+        
+        if not quiet:
+            verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
+        
+        try:
+            result = subprocess.run(
+                stop_cmd,
+                capture_output=True,
+                text=True,
+                timeout=15,  # 15 second timeout for service stop
+            )
+            return result
+        except subprocess.TimeoutExpired:
+            # Create a mock result for timeout
+            result = subprocess.CompletedProcess(
+                stop_cmd, 124, "", f"Service stop timed out after 15 seconds"
+            )
+            return result
+        except Exception as e:
+            # Create a mock result for other errors
+            result = subprocess.CompletedProcess(
+                stop_cmd, 1, "", f"Service stop failed: {str(e)}"
+            )
+            return result
 
     def reload_daemon(self) -> bool:
-        """Reload systemd daemon"""
+        """Reload systemd daemon with timeout handling"""
         console.print("[green]Reloading systemd daemon...[/green]")
-        reload_success = self.manager.reload_daemon()
-        if reload_success:
-            console.print("[green]  Reloaded systemd daemon[/green]")
-        else:
-            console.print("[red]  Failed to reload systemd daemon[/red]")
-        return reload_success
+        
+        reload_cmd = ["systemctl", "--user", "daemon-reload"]
+        verbose_print(f"[cyan]exec: {' '.join(reload_cmd)}[/cyan]")
+        
+        try:
+            result = subprocess.run(
+                reload_cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,  # 10 second timeout for daemon reload
+            )
+            
+            if result.returncode == 0:
+                console.print("[green]  Reloaded systemd daemon[/green]")
+                return True
+            else:
+                console.print(f"[red]  Failed to reload systemd daemon: {result.stderr}[/red]")
+                return False
+                
+        except subprocess.TimeoutExpired:
+            console.print("[red]  Failed to reload systemd daemon: timeout after 10 seconds[/red]")
+            return False
+        except Exception as e:
+            console.print(f"[red]  Failed to reload systemd daemon: {str(e)}[/red]")
+            return False
 
     def monitor_service_startup(
         self, target: str, service_name: str, timeout: int = 10

@@ -1,4 +1,7 @@
-"""VLLM startup monitoring functionality for reinit operations."""
+"""Model startup monitoring functionality for reinit operations (VLLM and llama.cpp).
+
+Supports monitoring startup for both VLLM and llama.cpp models in the models-stack architecture.
+All models use port 8005 and provide compatible REST API endpoints."""
 
 import time
 from typing import Optional
@@ -12,21 +15,28 @@ from core.config import console, verbose_print
 
 
 class VLLMStartupMonitor:
-    """Monitors VLLM model service startup to ensure complete initialization before proceeding."""
+    """Monitors model service startup (VLLM and llama.cpp) to ensure complete initialization before proceeding.
+    
+    Supports the models-stack architecture:
+    - llama-kimi-k2-thinking_q1/q2 (llama.cpp models)
+    - vllm-deepseek-coder-v2, vllm-glm4-9b-chat, vllm-glm41-9b-thinking, vllm-qwen25-coder-32b (VLLM models)
+    
+    All models use port 8005 and provide compatible REST API endpoints for health and model checks.
+    """
 
     def __init__(self, manager):
         self.manager = manager
-        self.vllm_port = 8005
-        self.health_endpoint = f"http://localhost:{self.vllm_port}/health"
-        self.models_endpoint = f"http://localhost:{self.vllm_port}/v1/models"
+        self.model_port = 8005  # Both VLLM and llama.cpp use port 8005
+        self.health_endpoint = f"http://localhost:{self.model_port}/health"
+        self.models_endpoint = f"http://localhost:{self.model_port}/v1/models"
 
     def vllm_service_monitor_for_complete_start(
         self, container_name: str, timeout: int = 300, check_interval: float = 2.0
     ) -> bool:
-        """Monitor VLLM service until it's completely started and ready.
+        """Monitor model service (VLLM or llama.cpp) until it's completely started and ready.
 
         Args:
-            container_name: Name of the VLLM container to monitor
+            container_name: Name of the model container to monitor (VLLM or llama.cpp)
             timeout: Maximum time to wait in seconds (default: 5 minutes)
             check_interval: Time between checks in seconds (default: 2 seconds)
 
@@ -37,49 +47,11 @@ class VLLMStartupMonitor:
 
         start_time = time.time()
 
-        with Live(
-            self._create_startup_status_panel(container_name, "Initializing...", 0),
-            console=console,
-            refresh_per_second=1,
-        ) as live:
-
-            while time.time() - start_time < timeout:
-                elapsed = time.time() - start_time
-
-                # Check startup status
-                status_info = self._check_vllm_startup_status(container_name)
-
-                # Update live display
-                live.update(
-                    self._create_startup_status_panel(
-                        container_name, status_info["status"], elapsed, status_info
-                    )
-                )
-
-                # Check if fully ready
-                if status_info["ready"]:
-                    console.print(
-                        f"[green]✅ {container_name} is fully ready in {elapsed:.1f}s[/green]"
-                    )
-                    return True
-
-                # Check for critical errors
-                if status_info["error"]:
-                    console.print(
-                        f"[red]❌ {container_name} startup failed: {status_info['details']}[/red]"
-                    )
-                    return False
-
-                time.sleep(check_interval)
-
-            # Timeout reached
-            console.print(
-                f"[red]⏰ Timeout waiting for {container_name} to be ready ({timeout}s)[/red]"
-            )
-            return False
+        # Use the progress bar method instead of Live panel to avoid display issues
+        return self.wait_for_vllm_ready_with_progress(container_name, timeout)
 
     def _check_vllm_startup_status(self, container_name: str):
-        """Check the current startup status of a VLLM service.
+        """Check the current startup status of a model service (VLLM or llama.cpp).
 
         Returns:
             Dict with keys: status, ready, error, details, stage
@@ -91,18 +63,18 @@ class VLLMStartupMonitor:
                 return {
                     "status": f"Container {container_status}",
                     "ready": False,
-                    "error": container_status in ["exited", "dead", "error"],
+                    "error": container_status in ["exited", "dead", "error", "timeout", "no_runtime"],
                     "details": f"Container status: {container_status}",
                     "stage": "container_check",
                 }
 
             # Stage 2: Check if port is accessible
-            if not self._is_port_accessible(self.vllm_port):
+            if not self._is_port_accessible(self.model_port):
                 return {
                     "status": "Starting up (port not ready)",
                     "ready": False,
                     "error": False,
-                    "details": f"Port {self.vllm_port} not yet accessible",
+                    "details": f"Port {self.model_port} not yet accessible",
                     "stage": "port_check",
                 }
 
@@ -167,16 +139,25 @@ class VLLMStartupMonitor:
                 ["podman", "inspect", container_name, "--format", "{{.State.Status}}"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=3,  # Reduced timeout for faster failure detection
             )
 
             if result.returncode == 0:
                 return result.stdout.strip().lower()
             else:
-                return "not_found"
+                # Check if the error indicates container not found
+                if "no such container" in result.stderr.lower() or "not found" in result.stderr.lower():
+                    return "not_found"
+                return "error"
 
+        except subprocess.TimeoutExpired:
+            verbose_print(f"[cyan]Container status check timed out for {container_name}[/cyan]")
+            return "timeout"
+        except FileNotFoundError:
+            verbose_print(f"[cyan]podman command not found - container runtime not available[/cyan]")
+            return "no_runtime"
         except Exception as e:
-            verbose_print(f"[cyan]Error getting container status: {e}[/cyan]")
+            verbose_print(f"[cyan]Error getting container status for {container_name}: {e}[/cyan]")
             return "error"
 
     def _is_port_accessible(self, port: int) -> bool:
@@ -192,7 +173,7 @@ class VLLMStartupMonitor:
             return False
 
     def _check_health_endpoint(self):
-        """Check the VLLM health endpoint."""
+        """Check the model health endpoint (works for both VLLM and llama.cpp)."""
         try:
             response = requests.get(self.health_endpoint, timeout=5)
 
@@ -229,7 +210,7 @@ class VLLMStartupMonitor:
             }
 
     def _check_models_endpoint(self):
-        """Check if models are loaded via the models endpoint."""
+        """Check if models are loaded via the models endpoint (works for both VLLM and llama.cpp)."""
         try:
             response = requests.get(self.models_endpoint, timeout=10)
 
@@ -282,18 +263,42 @@ class VLLMStartupMonitor:
             }
 
     def _check_api_responsiveness(self):
-        """Check if the API is responsive with a simple test request."""
+        """Check if the API is responsive with a simple test request (works for both VLLM and llama.cpp)."""
         try:
+            # First, get the actual model name from the models endpoint
+            models_response = requests.get(self.models_endpoint, timeout=5)
+            if models_response.status_code != 200:
+                return {
+                    "responsive": False,
+                    "error": False,
+                    "details": "Models endpoint not ready for API test",
+                }
+            
+            try:
+                models_data = models_response.json()
+                if "data" not in models_data or len(models_data["data"]) == 0:
+                    return {
+                        "responsive": False,
+                        "error": False,
+                        "details": "No models available for API test",
+                    }
+                
+                # Use the first available model name
+                model_name = models_data["data"][0]["id"]
+            except Exception:
+                # Fallback to default if JSON parsing fails
+                model_name = "default"
+
             # Try a simple completion request to verify the API is fully operational
             test_payload = {
-                "model": "default",  # VLLM typically uses a default model name
+                "model": model_name,
                 "prompt": "Hello",
                 "max_tokens": 1,
                 "temperature": 0.1,
             }
 
             response = requests.post(
-                f"http://localhost:{self.vllm_port}/v1/completions",
+                f"http://localhost:{self.model_port}/v1/completions",
                 json=test_payload,
                 timeout=15,  # Longer timeout for first API call
             )
@@ -340,7 +345,7 @@ class VLLMStartupMonitor:
         elapsed: float,
         status_info: Optional[dict] = None,
     ) -> Panel:
-        """Create a rich panel showing VLLM startup status."""
+        """Create a rich panel showing model startup status."""
 
         # Create status content
         content_lines = [
@@ -380,7 +385,7 @@ class VLLMStartupMonitor:
 
         return Panel(
             content,
-            title="[bold]VLLM Startup Monitor[/bold]",
+            title="[bold]Model Startup Monitor[/bold]",
             border_style="cyan",
             padding=(1, 2),
         )
@@ -388,15 +393,16 @@ class VLLMStartupMonitor:
     def wait_for_vllm_ready_with_progress(
         self, container_name: str, timeout: int = 300
     ) -> bool:
-        """Wait for VLLM to be ready with a progress bar instead of live display.
+        """Wait for model to be ready with a progress bar instead of live display.
 
         Alternative method that uses a progress bar for simpler display.
+        Works for both VLLM and llama.cpp models.
         """
-        console.print(f"[cyan]Waiting for {container_name} to be ready...[/cyan]")
+        console.print(f"[cyan]Waiting for {container_name} to be fully ready...[/cyan]")
 
         with Progress(
             SpinnerColumn(),
-            TextColumn("[yellow]Initializing VLLM service...[/yellow]"),
+            TextColumn("[progress.description]{task.description}"),
             console=console,
             transient=True,
         ) as progress:
@@ -404,39 +410,94 @@ class VLLMStartupMonitor:
 
             start_time = time.time()
             last_status = ""
+            last_stage = ""
 
+            # Track consecutive failures to exit early if container doesn't exist
+            consecutive_not_found = 0
+            max_not_found_attempts = 3  # Exit after 3 consecutive "not_found" checks
+            
+            # Define stage names outside the loop for consistent access
+            stage_names = {
+                "container_check": "🐳 Container Status",
+                "port_check": "🔌 Port Accessibility",
+                "health_check": "❤️ Health Endpoint",
+                "model_loading": "🧠 Model Loading",
+                "api_warmup": "🚀 API Warmup",
+                "ready": "✅ Ready",
+                "error": "❌ Error",
+            }
+            
             while time.time() - start_time < timeout:
+                elapsed = time.time() - start_time
                 status_info = self._check_vllm_startup_status(container_name)
-
-                # Update progress description if status changed
-                if status_info["status"] != last_status:
-                    progress.update(
-                        task, description=f"[yellow]{status_info['status']}...[/yellow]"
-                    )
+                
+                # Early exit if container consistently doesn't exist, times out, or has runtime issues
+                details = status_info.get("details", "")
+                if (details.startswith("Container status: not_found") or 
+                    details.startswith("Container status: timeout") or
+                    details.startswith("Container status: no_runtime") or
+                    details.startswith("Container status: error")):
+                    consecutive_not_found += 1
+                    if consecutive_not_found >= max_not_found_attempts:
+                        if "not_found" in details:
+                            error_type = "not found"
+                            error_detail = "Container does not exist or was not created"
+                        elif "timeout" in details:
+                            error_type = "timed out"
+                            error_detail = "Container runtime commands are timing out - possible system issue"
+                        elif "no_runtime" in details:
+                            error_type = "container runtime unavailable"
+                            error_detail = "Podman/container runtime is not available or not responding"
+                        elif "error" in details:
+                            error_type = "failed"
+                            error_detail = "Container is in error state - startup failed"
+                        else:
+                            error_type = "failed"
+                            error_detail = "Unknown container issue"
+                        
+                        console.print(f"[red]❌ {container_name} container {error_type} after {consecutive_not_found} attempts[/red]")
+                        console.print(f"[dim]   {error_detail}[/dim]")
+                        
+                        # Provide specific guidance based on error type
+                        if "timeout" in details or "no_runtime" in details:
+                            console.print("[yellow]💡 This appears to be a container runtime issue.[/yellow]")
+                            console.print("[dim]   Try: systemctl --user restart podman.socket[/dim]")
+                            console.print("[dim]   Or: podman system reset --force (if safe to do so)[/dim]")
+                        elif "error" in details:
+                            console.print("[yellow]💡 Container failed to start - check logs for details.[/yellow]")
+                            console.print(f"[dim]   Try: journalctl --user -u {container_name}.service -n 20[/dim]")
+                        
+                        return False
+                else:
+                    consecutive_not_found = 0  # Reset counter if container status changes
+                
+                # Create detailed description with stage information (outside the if-else for both paths)
+                stage_display = stage_names.get(status_info.get("stage", ""), status_info.get("stage", ""))
+                
+                # Update progress description if status or stage changed
+                current_display = f"{stage_display} - {status_info['status']}"
+                if status_info["status"] != last_status or status_info.get("stage", "") != last_stage:
+                    if status_info.get("ready"):
+                        description = f"[green]{stage_display} - {status_info['status']} ({elapsed:.1f}s)[/green]"
+                    elif status_info.get("error"):
+                        description = f"[red]{stage_display} - {status_info['status']}[/red]"
+                    else:
+                        description = f"[yellow]{stage_display} - {status_info['status']} ({elapsed:.1f}s)[/yellow]"
+                    
+                    progress.update(task, description=description)
                     last_status = status_info["status"]
+                    last_stage = status_info.get("stage", "")
 
                 if status_info["ready"]:
-                    elapsed = time.time() - start_time
-                    progress.update(
-                        task, description=f"[green]Ready in {elapsed:.1f}s[/green]"
-                    )
-                    time.sleep(0.5)  # Brief pause to show completion
-                    progress.remove_task(task)
+                    console.print(f"[green]✅ {container_name} is fully ready in {elapsed:.1f}s[/green]")
                     return True
 
                 if status_info["error"]:
-                    progress.update(
-                        task,
-                        description=f"[red]Startup failed: {status_info['details']}[/red]",
-                    )
-                    time.sleep(0.5)  # Brief pause to show error
-                    progress.remove_task(task)
+                    console.print(f"[red]❌ {container_name} startup failed: {status_info['details']}[/red]")
                     return False
 
                 time.sleep(2.0)
 
             # Timeout
-            progress.update(task, description=f"[red]Timeout after {timeout}s[/red]")
-            time.sleep(0.5)
-            progress.remove_task(task)
+            console.print(f"[red]⏰ Timeout waiting for {container_name} to be ready ({timeout}s)[/red]")
             return False
