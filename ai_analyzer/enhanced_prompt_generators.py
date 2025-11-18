@@ -11,11 +11,11 @@ class TimeoutDiagnosticPromptGenerator(PromptGenerator):
 
     def generate(self, target: str, data: Dict[str, Any]) -> str:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+
         timeout_context = data.get("timeout_context", {})
         system_state = data.get("system_state", {})
         error_details = data.get("start_error", "")
-        
+
         return f"""You are a container runtime and systemd expert specializing in timeout and startup failure diagnosis.
 
 A service reinit operation has failed with timeout issues:
@@ -87,51 +87,55 @@ command2
         """Format timeout context information."""
         if not context:
             return "Commands timing out: podman inspect, podman ps, journalctl"
-        
+
         formatted = []
         for key, value in context.items():
             formatted.append(f"{key}: {value}")
-        
+
         return "\n".join(formatted)
 
     def _format_system_state(self, state: Dict[str, Any]) -> str:
         """Format system state information."""
         if not state:
             return "System state unknown due to command timeouts"
-        
+
         formatted = []
         for key, value in state.items():
             formatted.append(f"{key}: {value}")
-        
+
         return "\n".join(formatted)
 
     def _get_service_specific_timeout_guidance(self, target: str) -> str:
         """Get service-specific guidance for timeout scenarios."""
         guidance = []
-        
+
         if "llama" in target.lower() or "vllm" in target.lower():
-            guidance.extend([
-                "- Large language models require significant memory and startup time",
-                "- Model loading can take several minutes and may appear hung",
-                "- Port 8005 conflicts with other models can cause startup issues",
-                "- Check for memory exhaustion during model loading",
-                "- Consider model file corruption or missing dependencies"
-            ])
-        
+            guidance.extend(
+                [
+                    "- Large language models require significant memory and startup time",
+                    "- Model loading can take several minutes and may appear hung",
+                    "- Port 8005 conflicts with other models can cause startup issues",
+                    "- Check for memory exhaustion during model loading",
+                    "- Consider model file corruption or missing dependencies",
+                ]
+            )
+
         if "postgres" in target.lower():
-            guidance.extend([
-                "- Database recovery can cause extended startup times",
-                "- Check for corrupted database files or locks",
-                "- Verify sufficient disk space for database operations"
-            ])
-        
+            guidance.extend(
+                [
+                    "- Database recovery can cause extended startup times",
+                    "- Check for corrupted database files or locks",
+                    "- Verify sufficient disk space for database operations",
+                ]
+            )
+
         if not guidance:
             guidance = [
                 "- Check for resource exhaustion (memory, disk, CPU)",
                 "- Verify container image availability and integrity",
-                "- Consider network connectivity issues"
+                "- Consider network connectivity issues",
             ]
-        
+
         return "\n".join([f"  {item}" for item in guidance])
 
 
@@ -140,7 +144,7 @@ class ContainerRuntimeDiagnosticPromptGenerator(PromptGenerator):
 
     def generate(self, target: str, data: Dict[str, Any]) -> str:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+
         return f"""You are a Podman and container runtime expert specializing in runtime failures and recovery.
 
 Container Runtime Diagnostic Request:
@@ -151,7 +155,7 @@ Issue: Container runtime commands hanging/timing out
 
 Symptoms Observed:
 - podman inspect commands timeout
-- podman ps commands timeout  
+- podman ps commands timeout
 - journalctl commands timeout
 - Container status shows "error"
 - System appears to have container runtime issues
@@ -217,9 +221,9 @@ class SystemHealthPromptGenerator(PromptGenerator):
 
     def generate(self, target: str, data: Dict[str, Any]) -> str:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+
         health_data = data.get("health_check_results", {})
-        
+
         return f"""You are a system health expert specializing in pre-operation health validation.
 
 System Health Assessment Request:
@@ -276,42 +280,46 @@ Health Check Results:
         """Format health check results."""
         if not results:
             return "Health check data not available (system may be unresponsive)"
-        
+
         formatted = []
         for check, result in results.items():
             status = "PASS" if result.get("healthy", False) else "FAIL"
             details = result.get("details", "No details")
             formatted.append(f"{check}: {status} - {details}")
-        
+
         return "\n".join(formatted)
 
     def _get_service_health_requirements(self, target: str) -> str:
         """Get service-specific health requirements."""
         requirements = []
-        
+
         if "llama" in target.lower() or "vllm" in target.lower():
-            requirements.extend([
-                "- Minimum 8GB available memory for model loading",
-                "- Port 8005 must be available",
-                "- No conflicting model services running",
-                "- Sufficient disk space for model files",
-                "- Container runtime must be responsive"
-            ])
-        
+            requirements.extend(
+                [
+                    "- Minimum 8GB available memory for model loading",
+                    "- Port 8005 must be available",
+                    "- No conflicting model services running",
+                    "- Sufficient disk space for model files",
+                    "- Container runtime must be responsive",
+                ]
+            )
+
         if "postgres" in target.lower():
-            requirements.extend([
-                "- Port 5432 availability",
-                "- Sufficient disk space for database",
-                "- No database lock files present",
-                "- Memory available for database operations"
-            ])
-        
+            requirements.extend(
+                [
+                    "- Port 5432 availability",
+                    "- Sufficient disk space for database",
+                    "- No database lock files present",
+                    "- Memory available for database operations",
+                ]
+            )
+
         if not requirements:
             requirements = [
                 "- Container runtime operational",
                 "- Systemd service manager responsive",
                 "- Adequate system resources",
-                "- No conflicting services"
+                "- No conflicting services",
             ]
-        
+
         return "\n".join([f"  {req}" for req in requirements])

@@ -11,11 +11,11 @@ from docs.enhanced_model_startup_monitor import EnhancedModelStartupMonitor
 
 class ModelReinitFlow:
     """Handles model service reinit flows (VLLM and llama.cpp) with proper routing and container management.
-    
+
     Supports the models-stack architecture:
     - llama-kimi-k2-thinking_q1/q2 (llama.cpp models)
     - vllm-deepseek-coder-v2, vllm-glm4-9b-chat, vllm-glm41-9b-thinking, vllm-qwen25-coder-32b (VLLM models)
-    
+
     All models use port 8005 and only one runs at a time.
     """
 
@@ -35,11 +35,10 @@ class ModelReinitFlow:
             self._vllm_manager = VLLMModelManager(self.manager)
         return self._vllm_manager
 
-    
     @property
     def enhanced_monitor(self):
         """Lazy initialization of enhanced model startup monitor"""
-        if not hasattr(self, '_enhanced_monitor') or self._enhanced_monitor is None:
+        if not hasattr(self, "_enhanced_monitor") or self._enhanced_monitor is None:
             self._enhanced_monitor = EnhancedModelStartupMonitor(self.manager)
         return self._enhanced_monitor
 
@@ -70,7 +69,9 @@ class ModelReinitFlow:
         if current_container:
             # Detect model type for display
             model_type = self._detect_model_type(current_container)
-            console.print(f"[green]Current 8005: {current_container} ({model_type})[/green]")
+            console.print(
+                f"[green]Current 8005: {current_container} ({model_type})[/green]"
+            )
             console.print()
         else:
             console.print("[yellow]No active model detected on port 8005[/yellow]")
@@ -164,9 +165,7 @@ class ModelReinitFlow:
             return False
 
         started_timestamp = datetime.now().strftime("%H:%M:%S")
-        console.print(
-            f"[green]{started_timestamp} |   Started {display_name}[/green]"
-        )
+        console.print(f"[green]{started_timestamp} |   Started {display_name}[/green]")
         console.print()
 
         # Wait for model to be completely ready before restarting support services
@@ -174,10 +173,12 @@ class ModelReinitFlow:
         if not self.enhanced_monitor.monitor_model_startup(display_name):
             console.print(f"[red]❌ {display_name} failed to become ready[/red]")
             return False
-        
+
         # Model is now fully ready
         ready_timestamp = datetime.now().strftime("%H:%M:%S")
-        console.print(f"[green]{ready_timestamp} |   {display_name} is fully ready[/green]")
+        console.print(
+            f"[green]{ready_timestamp} |   {display_name} is fully ready[/green]"
+        )
         console.print()
 
         # Restart sys-services-vllm-proxy and mcp-vllm-delegator
@@ -187,9 +188,7 @@ class ModelReinitFlow:
         )
         return success
 
-    def _reinit_non_active_model_service(
-        self, target: str, service_name: str
-    ) -> bool:
+    def _reinit_non_active_model_service(self, target: str, service_name: str) -> bool:
         """Handle model reinit when there's no active model"""
         verbose_print(
             f"[cyan]_reinit_non_active_model_service started for {service_name}[/cyan]"
@@ -223,9 +222,7 @@ class ModelReinitFlow:
             return False
 
         started_timestamp = datetime.now().strftime("%H:%M:%S")
-        console.print(
-            f"[green]{started_timestamp} |   Started {display_name}[/green]"
-        )
+        console.print(f"[green]{started_timestamp} |   Started {display_name}[/green]")
         console.print()
 
         # Wait for model to be completely ready before restarting support services
@@ -233,10 +230,12 @@ class ModelReinitFlow:
         if not self.enhanced_monitor.monitor_model_startup(display_name):
             console.print(f"[red]❌ {display_name} failed to become ready[/red]")
             return False
-        
+
         # Model is now fully ready
         ready_timestamp = datetime.now().strftime("%H:%M:%S")
-        console.print(f"[green]{ready_timestamp} |   {display_name} is fully ready[/green]")
+        console.print(
+            f"[green]{ready_timestamp} |   {display_name} is fully ready[/green]"
+        )
         console.print()
 
         # Restart sys-services-vllm-proxy and mcp-vllm-delegator
@@ -306,12 +305,12 @@ class ModelReinitFlow:
         container_name = container["name"] if container else target
 
         console.print(f"[red]{container_name} failed to start.[/red]")
-        
+
         # Check if this is a llama.cpp service and try specialized troubleshooting first
         if self._is_llama_cpp_service(target):
             if self._try_llama_cpp_troubleshooting(target, error_message):
                 return  # Specialized troubleshooting handled the issue
-        
+
         console.print("[dim]Starting AI failure analysis...[/dim]")
 
         try:
@@ -322,23 +321,29 @@ class ModelReinitFlow:
 
             # Detect if this is a timeout scenario based on error patterns
             analysis_type = self._detect_failure_type(error_message)
-            
+
             # Prepare context data based on failure type
             context_data = {"start_error": error_message}
-            
+
             if analysis_type == "timeout_diagnostic":
                 # Add timeout-specific context
-                context_data.update({
-                    "timeout_context": {
-                        "commands_timing_out": ["podman inspect", "podman ps", "journalctl"],
-                        "container_status": "error",
-                        "system_responsiveness": "degraded"
-                    },
-                    "system_state": {
-                        "container_runtime": "potentially_hung",
-                        "systemd_status": "unknown_due_to_timeouts"
+                context_data.update(
+                    {
+                        "timeout_context": {
+                            "commands_timing_out": [
+                                "podman inspect",
+                                "podman ps",
+                                "journalctl",
+                            ],
+                            "container_status": "error",
+                            "system_responsiveness": "degraded",
+                        },
+                        "system_state": {
+                            "container_runtime": "potentially_hung",
+                            "systemd_status": "unknown_due_to_timeouts",
+                        },
                     }
-                })
+                )
 
             # Run unified AI analysis with error context and verbose mode
             # The analyzer will handle AI agent selection and display
@@ -367,29 +372,43 @@ class ModelReinitFlow:
         except Exception as e:
             verbose_print(f"  [cyan]exec: AI analysis failed with error: {e}[/cyan]")
             console.print(f"[yellow]⚠️  AI analysis failed: {e}[/yellow]")
-    
+
     def _detect_failure_type(self, error_message: str) -> str:
         """Detect the type of failure based on error patterns to choose appropriate analysis."""
         error_lower = error_message.lower() if error_message else ""
-        
+
         # Check for timeout indicators
         timeout_indicators = [
-            "timeout", "timed out", "command timeout", "connection timeout",
-            "no response", "unresponsive", "hanging", "stuck"
+            "timeout",
+            "timed out",
+            "command timeout",
+            "connection timeout",
+            "no response",
+            "unresponsive",
+            "hanging",
+            "stuck",
         ]
-        
+
         # Check for container runtime issues
         runtime_indicators = [
-            "container status: error", "podman inspect", "container runtime",
-            "runtime error", "container not found", "runtime unavailable"
+            "container status: error",
+            "podman inspect",
+            "container runtime",
+            "runtime error",
+            "container not found",
+            "runtime unavailable",
         ]
-        
+
         # Check for system resource issues
         resource_indicators = [
-            "out of memory", "disk space", "resource exhausted",
-            "no space left", "memory allocation", "resource limit"
+            "out of memory",
+            "disk space",
+            "resource exhausted",
+            "no space left",
+            "memory allocation",
+            "resource limit",
         ]
-        
+
         if any(indicator in error_lower for indicator in timeout_indicators):
             return "timeout_diagnostic"
         elif any(indicator in error_lower for indicator in runtime_indicators):
@@ -529,12 +548,12 @@ class ModelReinitFlow:
 
     def _detect_model_type(self, container_name: str) -> str:
         """Detect if container is VLLM or llama.cpp model"""
-        if container_name.startswith('vllm-'):
-            return 'VLLM'
-        elif container_name.startswith('llama-'):
-            return 'llama.cpp'
+        if container_name.startswith("vllm-"):
+            return "VLLM"
+        elif container_name.startswith("llama-"):
+            return "llama.cpp"
         else:
-            return 'model'
+            return "model"
 
     def _update_container_file_vllm_url(
         self, container_name: str, vllm_url: str
@@ -695,129 +714,178 @@ class ModelReinitFlow:
     def _update_container_file_vllm_url_test(self, container_file_path, model_name):
         """Test version of container file update method."""
         return self._update_container_file_vllm_url(container_file_path, model_name)
-    
+
     def _is_llama_cpp_service(self, target: str) -> bool:
         """Check if the target is a llama.cpp service."""
         # Check if it's a llama.cpp service based on naming patterns
-        llama_patterns = ['llama-', 'llama_']
+        llama_patterns = ["llama-", "llama_"]
         return any(pattern in target.lower() for pattern in llama_patterns)
-    
+
     def _try_llama_cpp_troubleshooting(self, target: str, error_message: str) -> bool:
         """Try specialized llama.cpp troubleshooting.
-        
+
         Returns:
             True if the issue was automatically fixed, False otherwise
         """
         try:
             from ai_analyzer.llama_cpp_troubleshooter import LlamaCppTroubleshooter
-            
-            console.print("[cyan]🔍 Running specialized llama.cpp diagnostics...[/cyan]")
-            
+
+            console.print(
+                "[cyan]🔍 Running specialized llama.cpp diagnostics...[/cyan]"
+            )
+
             troubleshooter = LlamaCppTroubleshooter()
-            
+
             # Get recent logs for diagnosis
             logs = self._get_recent_service_logs(target)
-            
+
             # Diagnose the issue
-            diagnosis = troubleshooter.diagnose_service_failure(target, error_message + "\n" + logs)
-            
+            diagnosis = troubleshooter.diagnose_service_failure(
+                target, error_message + "\n" + logs
+            )
+
             # Generate and display the troubleshooting report
             report = troubleshooter.generate_troubleshooting_report(diagnosis)
-            console.print("\n[bold cyan]🔧 llama.cpp Troubleshooting Report:[/bold cyan]")
+            console.print(
+                "\n[bold cyan]🔧 llama.cpp Troubleshooting Report:[/bold cyan]"
+            )
             console.print("[cyan]" + "─" * 60 + "[/cyan]")
-            for line in report.split('\n'):
+            for line in report.split("\n"):
                 if line.strip():
                     console.print(f"[cyan]{line}[/cyan]")
             console.print("[cyan]" + "─" * 60 + "[/cyan]")
-            
+
             # Try automatic fix if available
             if diagnosis["auto_fixable"]:
                 console.print("\n[green]⚡ Automatic fix available![/green]")
-                
+
                 # Ask user for permission to apply fix
                 try:
                     import sys
+
                     if sys.stdin.isatty():  # Only prompt if running interactively
                         response = input("Apply automatic fix? (y/N): ").strip().lower()
-                        if response in ['y', 'yes']:
+                        if response in ["y", "yes"]:
                             console.print("[cyan]Applying automatic fix...[/cyan]")
-                            
+
                             # Apply the fix
                             for fix in diagnosis["suggested_fixes"]:
                                 if fix.get("auto_fixable", False):
                                     if troubleshooter.apply_automatic_fix(fix):
-                                        console.print("[green]✅ Fix applied successfully![/green]")
-                                        console.print("[cyan]Reloading systemd and restarting service...[/cyan]")
-                                        
+                                        console.print(
+                                            "[green]✅ Fix applied successfully![/green]"
+                                        )
+                                        console.print(
+                                            "[cyan]Reloading systemd and restarting service...[/cyan]"
+                                        )
+
                                         # Reload systemd daemon
                                         if self.service_manager.reload_daemon():
                                             # Try to restart the service
-                                            start_result = self.service_manager.start_service(
-                                                f"{target}.service", target, quiet=False
+                                            start_result = (
+                                                self.service_manager.start_service(
+                                                    f"{target}.service",
+                                                    target,
+                                                    quiet=False,
+                                                )
                                             )
-                                            
+
                                             if start_result.returncode == 0:
-                                                console.print("[green]🎉 Service restarted successfully after fix![/green]")
+                                                console.print(
+                                                    "[green]🎉 Service restarted successfully after fix![/green]"
+                                                )
                                                 return True
                                             else:
-                                                console.print("[yellow]⚠️  Fix applied but service still fails to start[/yellow]")
-                                                console.print("[dim]Continuing with standard AI analysis...[/dim]")
+                                                console.print(
+                                                    "[yellow]⚠️  Fix applied but service still fails to start[/yellow]"
+                                                )
+                                                console.print(
+                                                    "[dim]Continuing with standard AI analysis...[/dim]"
+                                                )
                                         else:
-                                            console.print("[red]❌ Failed to reload systemd daemon[/red]")
+                                            console.print(
+                                                "[red]❌ Failed to reload systemd daemon[/red]"
+                                            )
                                     else:
-                                        console.print("[red]❌ Failed to apply automatic fix[/red]")
-                                        console.print("[dim]Continuing with standard AI analysis...[/dim]")
+                                        console.print(
+                                            "[red]❌ Failed to apply automatic fix[/red]"
+                                        )
+                                        console.print(
+                                            "[dim]Continuing with standard AI analysis...[/dim]"
+                                        )
                         else:
                             console.print("[yellow]Automatic fix not applied[/yellow]")
-                            console.print("[dim]Continuing with standard AI analysis...[/dim]")
+                            console.print(
+                                "[dim]Continuing with standard AI analysis...[/dim]"
+                            )
                     else:
-                        console.print("[yellow]Non-interactive mode: automatic fix not applied[/yellow]")
-                        console.print("[dim]Run with interactive terminal to apply fixes automatically[/dim]")
-                        console.print("[dim]Continuing with standard AI analysis...[/dim]")
+                        console.print(
+                            "[yellow]Non-interactive mode: automatic fix not applied[/yellow]"
+                        )
+                        console.print(
+                            "[dim]Run with interactive terminal to apply fixes automatically[/dim]"
+                        )
+                        console.print(
+                            "[dim]Continuing with standard AI analysis...[/dim]"
+                        )
                 except (EOFError, KeyboardInterrupt):
                     console.print("\n[yellow]User cancelled fix application[/yellow]")
                     console.print("[dim]Continuing with standard AI analysis...[/dim]")
             else:
-                console.print("\n[yellow]No automatic fix available for this issue[/yellow]")
+                console.print(
+                    "\n[yellow]No automatic fix available for this issue[/yellow]"
+                )
                 console.print("[dim]Continuing with standard AI analysis...[/dim]")
-            
+
             return False  # Continue with standard AI analysis
-            
+
         except ImportError:
-            verbose_print("[cyan]llama.cpp troubleshooter not available, using standard analysis[/cyan]")
+            verbose_print(
+                "[cyan]llama.cpp troubleshooter not available, using standard analysis[/cyan]"
+            )
             return False
         except Exception as e:
             verbose_print(f"[cyan]llama.cpp troubleshooting failed: {e}[/cyan]")
-            console.print(f"[yellow]⚠️  Specialized troubleshooting failed: {e}[/yellow]")
+            console.print(
+                f"[yellow]⚠️  Specialized troubleshooting failed: {e}[/yellow]"
+            )
             console.print("[dim]Continuing with standard AI analysis...[/dim]")
             return False
-    
+
     def _get_recent_service_logs(self, target: str, lines: int = 30) -> str:
         """Get recent service logs for troubleshooting.
-        
+
         Args:
             target: Service name
             lines: Number of recent log lines to retrieve
-            
+
         Returns:
             Recent log content or error message
         """
         import subprocess
-        
+
         try:
             # Try to get logs with a timeout to avoid hanging
             result = subprocess.run(
-                ["journalctl", "--user", "-u", f"{target}.service", "-n", str(lines), "--no-pager"],
+                [
+                    "journalctl",
+                    "--user",
+                    "-u",
+                    f"{target}.service",
+                    "-n",
+                    str(lines),
+                    "--no-pager",
+                ],
                 capture_output=True,
                 text=True,
-                timeout=10  # 10 second timeout
+                timeout=10,  # 10 second timeout
             )
-            
+
             if result.returncode == 0:
                 return result.stdout
             else:
                 return f"Error getting logs: {result.stderr}"
-                
+
         except subprocess.TimeoutExpired:
             return "Error: journalctl command timed out (system may be unresponsive)"
         except Exception as e:

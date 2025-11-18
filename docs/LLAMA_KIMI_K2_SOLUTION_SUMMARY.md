@@ -84,7 +84,7 @@ python3 quick_fix_llama_service.py
    ```ini
    # Change from:
    Exec=llama-server --host 0.0.0.0 --port 8005
-   
+
    # To:
    Exec=--server --host 0.0.0.0 --port 8005
    ```

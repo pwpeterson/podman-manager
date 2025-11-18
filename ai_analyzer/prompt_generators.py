@@ -703,7 +703,9 @@ class PromptGeneratorFactory:
 
             return TimeoutDiagnosticPromptGenerator()
         elif analysis_type == "container_runtime_diagnostic":
-            from .enhanced_prompt_generators import ContainerRuntimeDiagnosticPromptGenerator
+            from .enhanced_prompt_generators import (
+                ContainerRuntimeDiagnosticPromptGenerator,
+            )
 
             return ContainerRuntimeDiagnosticPromptGenerator()
         elif analysis_type == "system_health_check":

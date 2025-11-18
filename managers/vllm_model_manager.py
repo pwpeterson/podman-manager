@@ -22,7 +22,7 @@ from utils.secure_subprocess import SecureSubprocessError, secure_run
 
 class VLLMModelManager:
     """Manages model switching operations for both VLLM and llama.cpp models.
-    
+
     Supports the models-stack architecture:
     - llama-kimi-k2-thinking_q1 (llama.cpp)
     - llama-kimi-k2-thinking_q2 (llama.cpp)
@@ -30,7 +30,7 @@ class VLLMModelManager:
     - vllm-glm4-9b-chat (VLLM)
     - vllm-glm41-9b-thinking (VLLM)
     - vllm-qwen25-coder-32b (VLLM)
-    
+
     All models use port 8005 and only one runs at a time.
     """
 
@@ -49,7 +49,7 @@ class VLLMModelManager:
         self, new_model_container: str, proxy_image: Optional[str] = None
     ) -> bool:
         """Switch model backend to a different model container (VLLM or llama.cpp) with improved detection and cleanup.
-        
+
         Supports switching between any model in the models-stack:
         - llama-kimi-k2-thinking_q1/q2 (llama.cpp models)
         - vllm-deepseek-coder-v2, vllm-glm4-9b-chat, vllm-glm41-9b-thinking, vllm-qwen25-coder-32b (VLLM models)
@@ -79,12 +79,12 @@ class VLLMModelManager:
 
     def _detect_model_type(self, container_name: str) -> str:
         """Detect if container is VLLM or llama.cpp model"""
-        if container_name.startswith('vllm-'):
-            return 'VLLM'
-        elif container_name.startswith('llama-'):
-            return 'llama.cpp'
+        if container_name.startswith("vllm-"):
+            return "VLLM"
+        elif container_name.startswith("llama-"):
+            return "llama.cpp"
         else:
-            return 'model'
+            return "model"
 
     def _detect_and_stop_current_model(self) -> bool:
         """Detect current active model (VLLM or llama.cpp) and stop it properly"""
@@ -100,7 +100,9 @@ class VLLMModelManager:
 
         with Progress(
             SpinnerColumn(),
-            TextColumn("[yellow]Scanning for active model (VLLM/llama.cpp)...[/yellow]"),
+            TextColumn(
+                "[yellow]Scanning for active model (VLLM/llama.cpp)...[/yellow]"
+            ),
             console=console,
             transient=True,
         ) as progress:
@@ -272,7 +274,8 @@ class VLLMModelManager:
 
                 # Show completion message without spinner
                 progress.update(
-                    task, description=f"[green]Stopped {current_model_container}[/green]"
+                    task,
+                    description=f"[green]Stopped {current_model_container}[/green]",
                 )
                 time.sleep(0.5)  # Brief pause to show completion
                 progress.remove_task(task)
@@ -354,7 +357,9 @@ class VLLMModelManager:
 
         # Wait for the model to be fully ready before proceeding
         model_type = self._detect_model_type(container_name)
-        console.print(f"[cyan]Waiting for {container_name} ({model_type}) to be fully ready...[/cyan]")
+        console.print(
+            f"[cyan]Waiting for {container_name} ({model_type}) to be fully ready...[/cyan]"
+        )
         if not self._get_startup_monitor().vllm_service_monitor_for_complete_start(
             container_name
         ):
@@ -369,7 +374,9 @@ class VLLMModelManager:
         model_type = self._detect_model_type(container_name)
         with Progress(
             SpinnerColumn(),
-            TextColumn(f"[yellow]Waiting for {container_name} ({model_type}) to be ready...[/yellow]"),
+            TextColumn(
+                f"[yellow]Waiting for {container_name} ({model_type}) to be ready...[/yellow]"
+            ),
             console=console,
             transient=True,
         ) as progress:
@@ -625,7 +632,7 @@ class VLLMModelManager:
                 "name=vllm",
             ]
             vllm_result = secure_run(vllm_cmd, timeout=15)
-            
+
             # Get containers with llama in the name
             llama_cmd = [
                 "podman",
@@ -638,7 +645,7 @@ class VLLMModelManager:
             ]
             llama_result = secure_run(llama_cmd, timeout=15)
             containers = []
-            
+
             # Process VLLM containers
             if vllm_result.returncode == 0:
                 for line in vllm_result.stdout.strip().split("\n"):
@@ -649,7 +656,7 @@ class VLLMModelManager:
                         "mcp-vllm-delegator",
                     ]:
                         containers.append(container_name)
-            
+
             # Process llama.cpp containers
             if llama_result.returncode == 0:
                 for line in llama_result.stdout.strip().split("\n"):
@@ -725,7 +732,9 @@ class VLLMModelManager:
                 status = self._get_container_status(model)
                 model_type = self._detect_model_type(model)
                 marker = "→" if model == current_backend else " "
-                console.print(f"  {marker} [cyan]{model}[/cyan] ({model_type}) - {status}")
+                console.print(
+                    f"  {marker} [cyan]{model}[/cyan] ({model_type}) - {status}"
+                )
         else:
             console.print("  [yellow]No model containers found[/yellow]")
 
@@ -858,7 +867,10 @@ class VLLMModelManager:
                         proc.connections() if hasattr(proc, "connections") else []
                     )
                     for conn in connections:
-                        if hasattr(conn, "laddr") and conn.laddr.port == self.model_port:
+                        if (
+                            hasattr(conn, "laddr")
+                            and conn.laddr.port == self.model_port
+                        ):
                             cmdline = (
                                 " ".join(proc.cmdline())
                                 if proc.cmdline()
@@ -991,7 +1003,10 @@ class VLLMModelManager:
                 container_name = line.strip()
                 if (
                     container_name
-                    and ("vllm" in container_name.lower() or "llama" in container_name.lower())
+                    and (
+                        "vllm" in container_name.lower()
+                        or "llama" in container_name.lower()
+                    )
                     and container_name != "sys-services-vllm-proxy"
                 ):
                     # Check if this container is using port 8005
@@ -999,7 +1014,7 @@ class VLLMModelManager:
                         model_type = self._detect_model_type(container_name)
                         verbose_print(
                             f"[cyan]Fallback found {model_type} container using port {self.model_port}: {container_name}[/cyan]"
-            )
+                        )
                         return container_name
 
             verbose_print(
@@ -1171,7 +1186,7 @@ class VLLMModelManager:
             )
 
             running_vllm_containers = []
-            
+
             # Process VLLM containers
             for line in vllm_result.stdout.strip().split("\n"):
                 if line.strip():
@@ -1185,7 +1200,7 @@ class VLLMModelManager:
                             "Up" in status or "running" in status.lower()
                         ) and container_name != "sys-services-vllm-proxy":
                             running_vllm_containers.append(container_name)
-            
+
             # Process llama.cpp containers
             for line in llama_result.stdout.strip().split("\n"):
                 if line.strip():

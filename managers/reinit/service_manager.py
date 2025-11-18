@@ -70,9 +70,11 @@ class ServiceManager:
                     # Handle both exact match and hyphen/underscore variations
                     model_name_normalized = model_name.replace("_", "-")
                     service_name_normalized = service_name.replace("_", "-")
-                    
-                    if (model_name == service_name or
-                        model_name_normalized == service_name_normalized):
+
+                    if (
+                        model_name == service_name
+                        or model_name_normalized == service_name_normalized
+                    ):
                         verbose_print(
                             f"[cyan]Is {service_name} a model service: true[/cyan]"
                         )
@@ -90,10 +92,10 @@ class ServiceManager:
     ) -> subprocess.CompletedProcess:
         """Start a systemd service with timeout handling"""
         start_cmd = ["systemctl", "--user", "restart", service_name]
-        
+
         if not quiet:
             verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
-        
+
         try:
             result = subprocess.run(
                 start_cmd,
@@ -105,7 +107,7 @@ class ServiceManager:
         except subprocess.TimeoutExpired:
             # Create a mock result for timeout
             result = subprocess.CompletedProcess(
-                start_cmd, 124, "", f"Service start timed out after 30 seconds"
+                start_cmd, 124, "", "Service start timed out after 30 seconds"
             )
             return result
         except Exception as e:
@@ -120,10 +122,10 @@ class ServiceManager:
     ) -> subprocess.CompletedProcess:
         """Stop a systemd service with timeout handling"""
         stop_cmd = ["systemctl", "--user", "stop", service_name]
-        
+
         if not quiet:
             verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
-        
+
         try:
             result = subprocess.run(
                 stop_cmd,
@@ -135,7 +137,7 @@ class ServiceManager:
         except subprocess.TimeoutExpired:
             # Create a mock result for timeout
             result = subprocess.CompletedProcess(
-                stop_cmd, 124, "", f"Service stop timed out after 15 seconds"
+                stop_cmd, 124, "", "Service stop timed out after 15 seconds"
             )
             return result
         except Exception as e:
@@ -148,10 +150,10 @@ class ServiceManager:
     def reload_daemon(self) -> bool:
         """Reload systemd daemon with timeout handling"""
         console.print("[green]Reloading systemd daemon...[/green]")
-        
+
         reload_cmd = ["systemctl", "--user", "daemon-reload"]
         verbose_print(f"[cyan]exec: {' '.join(reload_cmd)}[/cyan]")
-        
+
         try:
             result = subprocess.run(
                 reload_cmd,
@@ -159,16 +161,20 @@ class ServiceManager:
                 text=True,
                 timeout=10,  # 10 second timeout for daemon reload
             )
-            
+
             if result.returncode == 0:
                 console.print("[green]  Reloaded systemd daemon[/green]")
                 return True
             else:
-                console.print(f"[red]  Failed to reload systemd daemon: {result.stderr}[/red]")
+                console.print(
+                    f"[red]  Failed to reload systemd daemon: {result.stderr}[/red]"
+                )
                 return False
-                
+
         except subprocess.TimeoutExpired:
-            console.print("[red]  Failed to reload systemd daemon: timeout after 10 seconds[/red]")
+            console.print(
+                "[red]  Failed to reload systemd daemon: timeout after 10 seconds[/red]"
+            )
             return False
         except Exception as e:
             console.print(f"[red]  Failed to reload systemd daemon: {str(e)}[/red]")

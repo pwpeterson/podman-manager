@@ -33,7 +33,7 @@ Edit the container file and replace `llama-server` with `--server`:
 # Before
 Exec=/app/llama-server --host 0.0.0.0 --port 8005
 
-# After  
+# After
 Exec=/app/llama-server --server --host 0.0.0.0 --port 8005
 ```
 
@@ -58,7 +58,7 @@ Exec=/app/llama-server --host 0.0.0.0 --port 8005
    ```bash
    nano ~/.config/containers/systemd/llama-kimi-k2-thinking-q1.container
    ```
-   
+
    Apply one of the fixes from Step 3.
 
 3. **Reload systemd:**

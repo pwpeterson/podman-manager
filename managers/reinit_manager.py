@@ -7,10 +7,10 @@ from core.config import console
 from .reinit import (
     ContainerManager,
     HealthChecker,
+    ModelReinitFlow,
     ReinitAIAnalyzer,
     ReinitMonitor,
     ServiceManager,
-    ModelReinitFlow,
 )
 
 
@@ -201,9 +201,7 @@ class ReinitManager:
 
         # Route to appropriate reinit method based on service type
         if is_model_service:
-            return self.model_flow.reinit_model_service(
-                target, service_name, dry_run
-            )
+            return self.model_flow.reinit_model_service(target, service_name, dry_run)
         else:
             return self._reinit_standard_service(
                 target, service_name, build_type, dry_run
