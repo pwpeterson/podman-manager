@@ -570,9 +570,10 @@ class ModelReinitFlow:
     def _update_container_file_model_vllm(
         self, container_name: str, vllm_url: str
     ) -> bool:
-        """Update MODEL_VLLM in the container file to replace REPLACED-DURING-REINIT placeholder.
+        """Update MODEL_VLLM or MODEL_URL in the container file to replace REPLACED-DURING-REINIT placeholder.
 
         Handles both old format (direct replacement) and new format (environment variable substitution).
+        Also handles MODEL_URL as an alternative to MODEL_VLLM.
         """
         from pathlib import Path
 
@@ -591,7 +592,7 @@ class ModelReinitFlow:
             with open(container_file_path, "r") as f:
                 content = f.read()
 
-            # Check if using old format (direct replacement in container file)
+            # Check if using old format (direct replacement in container file) - MODEL_VLLM
             if "Environment=MODEL_VLLM=REPLACED-DURING-REINIT" in content:
                 updated_content = content.replace(
                     "Environment=MODEL_VLLM=REPLACED-DURING-REINIT",
@@ -606,15 +607,35 @@ class ModelReinitFlow:
                 )
                 return True
 
-            # Check if using new format (environment variable substitution)
+            # Check if using old format (direct replacement in container file) - MODEL_URL
+            elif "Environment=MODEL_URL=REPLACED-DURING-REINIT" in content:
+                updated_content = content.replace(
+                    "Environment=MODEL_URL=REPLACED-DURING-REINIT",
+                    f"Environment=MODEL_URL={vllm_url}",
+                )
+
+                with open(container_file_path, "w") as f:
+                    f.write(updated_content)
+
+                verbose_print(
+                    f"[cyan]Updated {container_name}.container with MODEL_URL={vllm_url} (old format)[/cyan]"
+                )
+                return True
+
+            # Check if using new format (environment variable substitution) - MODEL_VLLM
             elif "Environment=MODEL_VLLM=${MODEL_VLLM}" in content:
                 # Update the .env file instead
                 env_file_path = container_file_path.parent / ".env"
                 return self._update_env_file_model_vllm(env_file_path, vllm_url)
 
+            # Check if using new format (environment variable substitution) - MODEL_URL
+            elif "Environment=MODEL_URL=${MODEL_URL}" in content:
+                # Update using systemctl set-environment for MODEL_URL
+                return self._update_env_file_model_url(vllm_url)
+
             else:
                 verbose_print(
-                    f"[yellow]No MODEL_VLLM found in {container_name}.container[/yellow]"
+                    f"[yellow]No MODEL_VLLM or MODEL_URL found in {container_name}.container[/yellow]"
                 )
                 return False
 
@@ -646,8 +667,32 @@ class ModelReinitFlow:
             verbose_print(f"[cyan]Error updating user environment: {e}[/cyan]")
             return False
 
+    def _update_env_file_model_url(self, vllm_url: str) -> bool:
+        """Update MODEL_URL using systemctl --user set-environment for environment variable substitution."""
+        import subprocess
+
+        try:
+            # Use systemctl --user set-environment to set MODEL_URL
+            cmd = ["systemctl", "--user", "set-environment", f"MODEL_URL={vllm_url}"]
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+            verbose_print(
+                f"[cyan]Set user environment MODEL_URL={vllm_url} via systemctl (new format)[/cyan]"
+            )
+            return True
+
+        except subprocess.CalledProcessError as e:
+            verbose_print(
+                f"[cyan]Error setting user environment via systemctl: {e}[/cyan]"
+            )
+            verbose_print(f"[cyan]stderr: {e.stderr}[/cyan]")
+            return False
+        except Exception as e:
+            verbose_print(f"[cyan]Error updating user environment: {e}[/cyan]")
+            return False
+
     def _restore_container_file_model_vllm(self, container_name: str) -> bool:
-        """Restore MODEL_VLLM placeholder in container file for future reinits.
+        """Restore MODEL_VLLM or MODEL_URL placeholder in container file for future reinits.
 
         Handles both old format (direct replacement) and new format (environment variable substitution).
         """
@@ -665,7 +710,7 @@ class ModelReinitFlow:
             with open(container_file_path, "r") as f:
                 content = f.read()
 
-            # Check if using old format (direct replacement in container file)
+            # Check if using old format (direct replacement in container file) - MODEL_VLLM
             if "Environment=MODEL_VLLM=http://" in content:
                 import re
 
@@ -683,15 +728,38 @@ class ModelReinitFlow:
                 )
                 return True
 
-            # Check if using new format (environment variable substitution)
+            # Check if using old format (direct replacement in container file) - MODEL_URL
+            elif "Environment=MODEL_URL=http://" in content:
+                import re
+
+                updated_content = re.sub(
+                    r"Environment=MODEL_URL=http://[^:\s]+:8005",
+                    "Environment=MODEL_URL=REPLACED-DURING-REINIT",
+                    content,
+                )
+
+                with open(container_file_path, "w") as f:
+                    f.write(updated_content)
+
+                verbose_print(
+                    f"[cyan]Restored {container_name}.container MODEL_URL placeholder (old format)[/cyan]"
+                )
+                return True
+
+            # Check if using new format (environment variable substitution) - MODEL_VLLM
             elif "Environment=MODEL_VLLM=${MODEL_VLLM}" in content:
                 # Remove MODEL_VLLM from .env file
                 env_file_path = container_file_path.parent / ".env"
                 return self._remove_env_file_model_vllm(env_file_path)
 
+            # Check if using new format (environment variable substitution) - MODEL_URL
+            elif "Environment=MODEL_URL=${MODEL_URL}" in content:
+                # Remove MODEL_URL from user environment
+                return self._remove_env_file_model_url()
+
             else:
                 verbose_print(
-                    f"[cyan]No MODEL_VLLM found to restore in {container_name}.container[/cyan]"
+                    f"[cyan]No MODEL_VLLM or MODEL_URL found to restore in {container_name}.container[/cyan]"
                 )
                 return True  # Nothing to restore is not an error
 
@@ -710,6 +778,30 @@ class ModelReinitFlow:
 
             verbose_print(
                 "[cyan]Unset user environment MODEL_VLLM via systemctl (new format cleanup)[/cyan]"
+            )
+            return True
+
+        except subprocess.CalledProcessError as e:
+            verbose_print(
+                f"[cyan]Error unsetting user environment via systemctl: {e}[/cyan]"
+            )
+            verbose_print(f"[cyan]stderr: {e.stderr}[/cyan]")
+            return False
+        except Exception as e:
+            verbose_print(f"[cyan]Error removing user environment: {e}[/cyan]")
+            return False
+
+    def _remove_env_file_model_url(self) -> bool:
+        """Remove MODEL_URL from user environment using systemctl --user unset-environment."""
+        import subprocess
+
+        try:
+            # Use systemctl --user unset-environment to remove MODEL_URL
+            cmd = ["systemctl", "--user", "unset-environment", "MODEL_URL"]
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+            verbose_print(
+                "[cyan]Unset user environment MODEL_URL via systemctl (new format cleanup)[/cyan]"
             )
             return True
 
