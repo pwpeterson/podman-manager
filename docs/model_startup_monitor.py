@@ -85,7 +85,7 @@ class ModelStartupMonitor:
                 "description": "Unknown model type",
             }
 
-    def monitor_model_startup(self, container_name: str, timeout: int = 300) -> bool:
+    def monitor_model_startup(self, container_name: str, timeout: int = 660) -> bool:
         """Monitor model startup with direct internal health checks on port 8005."""
         model_config = self.get_model_config(container_name)
         model_type = model_config["model_type"]
