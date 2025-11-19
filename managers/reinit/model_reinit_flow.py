@@ -462,7 +462,7 @@ class ModelReinitFlow:
         console.print()
 
         # Update MODEL_VLLM in container file before service regeneration
-        self._update_container_file_model_vllm("sys-services-model-proxy", vllm_url)
+        self._update_container_file_model_url("sys-services-model-proxy", vllm_url)
 
         # Remove service file to allow regeneration with updated MODEL_VLLM
         self.service_manager.remove_service_file(
@@ -554,7 +554,7 @@ class ModelReinitFlow:
 
         # Restore placeholder values in container files for future reinits
         # Note: Only sys-services-model-proxy uses MODEL_VLLM, mcp-model-delegator does not
-        self._restore_container_file_model_vllm("sys-services-model-proxy")
+        self._restore_container_file_model_url("sys-services-model-proxy")
 
         return True
 
@@ -567,7 +567,7 @@ class ModelReinitFlow:
         else:
             return "model"
 
-    def _update_container_file_model_vllm(
+    def _update_container_file_model_url(
         self, container_name: str, vllm_url: str
     ) -> bool:
         """Update MODEL_VLLM or MODEL_URL in the container file to replace REPLACED-DURING-REINIT placeholder.
@@ -691,7 +691,7 @@ class ModelReinitFlow:
             verbose_print(f"[cyan]Error updating user environment: {e}[/cyan]")
             return False
 
-    def _restore_container_file_model_vllm(self, container_name: str) -> bool:
+    def _restore_container_file_model_url(self, container_name: str) -> bool:
         """Restore MODEL_VLLM or MODEL_URL placeholder in container file for future reinits.
 
         Handles both old format (direct replacement) and new format (environment variable substitution).
