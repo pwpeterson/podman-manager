@@ -26,11 +26,11 @@ class ServiceLifecycle:
 
     def start(self, target: str, build: bool = False) -> bool:
         """Start a service or stack"""
-        # Handle vLLM model services with enhanced startup monitoring (exclude vllm-proxy)
+        # Handle vLLM model services with enhanced startup monitoring (exclude model-proxy)
         is_vllm_service = (
             "vllm" in target.lower()
             and not target.endswith("-stack")
-            and target != "vllm-proxy"
+            and target != "model-proxy"
         )
 
         if is_vllm_service:
@@ -142,9 +142,9 @@ class ServiceLifecycle:
         # Clear cache at the start of the operation
         self.manager._clear_auto_match_cache()
 
-        # Handle vLLM model switching if specified, or detect vLLM model services automatically (exclude vllm-proxy)
+        # Handle vLLM model switching if specified, or detect vLLM model services automatically (exclude model-proxy)
         is_vllm_service = "vllm" in target.lower() and target not in [
-            "vllm-proxy",
+            "model-proxy",
             "vllm-stack",
         ]
 

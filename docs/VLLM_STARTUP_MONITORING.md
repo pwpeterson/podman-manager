@@ -8,26 +8,24 @@ The VLLM startup monitoring system addresses the issue where `sys-services-vllm-
 
 ## Key Components
 
-### VLLMStartupMonitor Class
+### ModelStartupMonitor Class
 
-Location: `managers/reinit/vllm_startup_monitor.py`
+Location: `docs/model_startup_monitor.py`
 
-The main monitoring class that provides comprehensive startup verification for VLLM services.
+The main monitoring class that provides comprehensive startup verification for both vLLM and llama.cpp models using direct internal health checks on port 8005.
 
 #### Primary Method
 
 ```python
-vllm_service_monitor_for_complete_start(
+monitor_model_startup(
     container_name: str,
-    timeout: int = 300,
-    check_interval: float = 2.0
+    timeout: int = 300
 ) -> bool
 ```
 
 **Parameters:**
-- `container_name`: Name of the VLLM container to monitor
+- `container_name`: Name of the model container to monitor (vLLM or llama.cpp)
 - `timeout`: Maximum time to wait in seconds (default: 5 minutes)
-- `check_interval`: Time between checks in seconds (default: 2 seconds)
 
 **Returns:**
 - `True` if service is fully ready
@@ -35,46 +33,46 @@ vllm_service_monitor_for_complete_start(
 
 ## Monitoring Stages
 
-The monitoring process follows a comprehensive 5-stage verification:
+The monitoring process follows a comprehensive 5-stage verification using direct internal health checks on port 8005:
 
 ### 1. 🐳 Container Status Check
 - Verifies the container is in "running" state
 - Detects container failures early
 
 ### 2. 🔌 Port Accessibility Check
-- Tests if port 8005 is accessible for connections
-- Ensures the service is binding to the correct port
+- Tests if port 8005 is accessible for connections (direct internal check)
+- Ensures the model service is binding to the correct port
 
 ### 3. ❤️ Health Endpoint Check
-- Calls `GET /health` endpoint
-- Verifies the VLLM service is responding to HTTP requests
+- Calls `GET http://127.0.0.1:8005/health` (direct internal)
+- Verifies the model service is responding to HTTP requests
 
 ### 4. 🧠 Model Loading Check
-- Calls `GET /v1/models` endpoint
+- Calls `GET http://127.0.0.1:8005/v1/models` (direct internal)
 - Confirms that models are actually loaded and available
 - Parses response to count loaded models
 
 ### 5. 🚀 API Responsiveness Check
-- Sends a test completion request to `/v1/completions`
+- Sends a test completion request to `http://127.0.0.1:8005/v1/completions` (direct internal)
 - Verifies the API can handle actual inference requests
 - Uses minimal test payload to avoid resource consumption
 
 ## Integration Points
 
-### VLLMReinitFlow Integration
+### ModelReinitFlow Integration
 
-The monitoring is integrated into both VLLM reinit flows:
+The monitoring is integrated into both model reinit flows:
 
 ```python
-# In both _reinit_active_vllm_model_service and _reinit_non_active_vllm_model_service
-console.print(f"[cyan]Waiting for {display_name} to be fully ready...[/cyan]")
-if not self.startup_monitor.vllm_service_monitor_for_complete_start(display_name):
-    console.print(f"[red]❌ {display_name} failed to become ready[/red]")
+# In both _reinit_active_model_service and _reinit_non_active_model_service
+console.print(f"Waiting for {display_name} to be fully ready...")
+if not self.startup_monitor.monitor_model_startup(display_name):
+    console.print(f"❌ {display_name} failed to become ready")
     return False
 console.print()
 
 # Only after this check passes do we restart support services
-success = self.restart_vllm_support_services(display_name)
+success = self.restart_model_support_services(display_name)
 ```
 
 ### VLLMModelManager Integration
@@ -84,41 +82,38 @@ The model manager now waits for complete startup during model switching:
 ```python
 # In _start_vllm_backend method
 console.print(f"[cyan]Waiting for {container_name} to be fully ready...[/cyan]")
-if not self._get_startup_monitor().vllm_service_monitor_for_complete_start(container_name):
+if not self._get_startup_monitor().monitor_model_startup(container_name):
     console.print(f"[red]❌ {container_name} failed to become ready[/red]")
     return False
 ```
 
 ## User Experience
 
-### Before Enhancement
+### Before Fix
 ```
 19:45:23 | Restarted vllm-qwen2-5-coder-32b
-19:45:23 | Stopping sys-services-vllm-proxy...
-19:45:24 |   Stopped sys-services-vllm-proxy
-# Model still loading, proxy fails to connect
+19:45:23 | Stopping sys-services-model-proxy...
+19:45:24 |   Stopped sys-services-model-proxy
+# Model still loading, but monitoring tries to check via proxy (port 8002)
+# Proxy hasn't started yet, so monitoring fails
+⏰ Timeout waiting for vllm-qwen2-5-coder-32b (300s)
+❌ vllm-qwen2-5-coder-32b failed to become ready
 ```
 
-### After Enhancement
+### After Fix
 ```
 19:45:23 | Restarted vllm-qwen2-5-coder-32b
 
 Waiting for vllm-qwen2-5-coder-32b to be fully ready...
 🔍 Monitoring vllm-qwen2-5-coder-32b startup...
+Model type: vllm, Direct port: 8005
+Waiting for vllm-qwen2-5-coder-32b to be ready on port 8005...
 
-┌─ VLLM Startup Monitor ─────────────────────────┐
-│ Container: vllm-qwen2-5-coder-32b              │
-│ Status: Loading models...                      │
-│ Elapsed: 45.2s                                │
-│ Stage: 🧠 Model Loading                        │
-│ Details: Loading model files into memory       │
-│ ⏳ Startup in progress...                      │
-└────────────────────────────────────────────────┘
+# Direct monitoring on port 8005 (internal)
+✅ vllm-qwen2-5-coder-32b (vllm) is fully ready in 67.3s
 
-✅ vllm-qwen2-5-coder-32b is fully ready in 67.3s
-
-19:46:30 | Stopping sys-services-vllm-proxy...
-# Now proxy can successfully connect to ready model
+19:46:30 | Stopping sys-services-model-proxy...
+# Now proxy starts and connects to ready model
 ```
 
 ## Configuration
@@ -160,10 +155,10 @@ The monitor handles various error conditions:
 
 ### Manual Usage
 ```python
-from managers.reinit.vllm_startup_monitor import VLLMStartupMonitor
+from docs.model_startup_monitor import ModelStartupMonitor
 
-monitor = VLLMStartupMonitor(manager)
-if monitor.vllm_service_monitor_for_complete_start('vllm-model-name'):
+monitor = ModelStartupMonitor(manager)
+if monitor.monitor_model_startup('vllm-model-name'):
     print("Model is ready!")
 else:
     print("Model failed to start")
@@ -178,15 +173,14 @@ pm reinit vllm-qwen2-5-coder-32b
 pm vllm switch vllm-qwen2-5-coder-32b
 ```
 
-## Alternative Method
+## Key Fix
 
-For simpler use cases, there's also a progress bar version:
+The critical fix was changing from proxy-based monitoring (port 8002) to direct internal monitoring (port 8005):
 
-```python
-monitor.wait_for_vllm_ready_with_progress('container-name', timeout=300)
-```
+- **Before**: Tried to check model readiness via proxy service that hadn't started yet
+- **After**: Checks model readiness directly on port 8005, then starts proxy services
 
-This provides a simpler progress bar display instead of the detailed live status panel.
+This eliminates the circular dependency where the proxy needed the model to be ready, but the monitoring needed the proxy to be running.
 
 ## Future Enhancements
 

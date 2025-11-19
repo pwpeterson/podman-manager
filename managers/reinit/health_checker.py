@@ -201,7 +201,7 @@ class HealthChecker:
         try:
             # Check ports based on specific service types
             if "vllm" in target.lower() and target not in [
-                "vllm-proxy",
+                "model-proxy",
                 "mcp-vllm-delegator",
             ]:
                 import socket
@@ -219,10 +219,10 @@ class HealthChecker:
                             "status": "good",
                             "details": "vLLM model port 8005 available",
                         }
-            elif target == "vllm-proxy":
+            elif target == "model-proxy":
                 import socket
 
-                # vllm-proxy uses port 8002
+                # model-proxy uses port 8002
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     result = s.connect_ex(("localhost", 8002))
                     if result == 0:
@@ -235,21 +235,21 @@ class HealthChecker:
                             "status": "good",
                             "details": "vLLM proxy port 8002 available",
                         }
-            elif target == "mcp-vllm-delegator":
+            elif target == "mcp-model-delegator":
                 import socket
 
-                # mcp-vllm-delegator uses port 8003
+                # mcp-model-delegator uses port 8003
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     result = s.connect_ex(("localhost", 8003))
                     if result == 0:
                         return {
                             "status": "info",
-                            "details": "MCP vLLM delegator port 8003 in use",
+                            "details": "MCP model delegator port 8003 in use",
                         }
                     else:
                         return {
                             "status": "good",
-                            "details": "MCP vLLM delegator port 8003 available",
+                            "details": "MCP model delegator port 8003 available",
                         }
 
             return {"status": "good", "details": "Network connectivity OK"}
@@ -345,7 +345,7 @@ class HealthChecker:
             # Check if container is running
             if container["status"] == "running":
                 # For different service types, check appropriate health endpoints
-                if target == "mcp-vllm-delegator":
+                if target == "mcp-model-delegator":
                     try:
                         import requests
 
@@ -355,21 +355,21 @@ class HealthChecker:
                         if response.status_code == 200:
                             return {
                                 "status": "good",
-                                "details": "MCP vLLM delegator healthy and responding",
+                                "details": "MCP model delegator healthy and responding",
                             }
                         else:
                             return {
                                 "status": "warning",
-                                "details": "MCP vLLM delegator running but not responding",
+                                "details": "MCP model delegator running but not responding",
                             }
                     except Exception:
                         return {
                             "status": "info",
-                            "details": "MCP vLLM delegator running (health check unavailable)",
+                            "details": "MCP model delegator running (health check unavailable)",
                         }
                 elif "vllm" in target.lower() and target not in [
-                    "vllm-proxy",
-                    "mcp-vllm-delegator",
+                    "model-proxy",
+                    "mcp-model-delegator",
                 ]:
                     try:
                         import requests
@@ -393,7 +393,7 @@ class HealthChecker:
                             "status": "info",
                             "details": "vLLM model service running (health check unavailable)",
                         }
-                elif target == "vllm-proxy":
+                elif target == "model-proxy":
                     try:
                         import requests
 

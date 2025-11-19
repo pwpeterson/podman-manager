@@ -6,7 +6,7 @@ and only one model runs at a time."""
 from datetime import datetime
 
 from core.config import console, verbose_print
-from docs.enhanced_model_startup_monitor import EnhancedModelStartupMonitor
+from docs.model_startup_monitor import ModelStartupMonitor
 
 
 class ModelReinitFlow:
@@ -36,11 +36,11 @@ class ModelReinitFlow:
         return self._vllm_manager
 
     @property
-    def enhanced_monitor(self):
-        """Lazy initialization of enhanced model startup monitor"""
-        if not hasattr(self, "_enhanced_monitor") or self._enhanced_monitor is None:
-            self._enhanced_monitor = EnhancedModelStartupMonitor(self.manager)
-        return self._enhanced_monitor
+    def startup_monitor(self):
+        """Lazy initialization of model startup monitor"""
+        if not hasattr(self, "_startup_monitor") or self._startup_monitor is None:
+            self._startup_monitor = ModelStartupMonitor(self.manager)
+        return self._startup_monitor
 
     def reinit_model_service(
         self, target: str, service_name: str, dry_run: bool = False
@@ -59,7 +59,7 @@ class ModelReinitFlow:
             return True
 
         # Detection step - find current active model (VLLM or llama.cpp)
-        verbose_print("[cyan]Detecting active model using port 8005[/cyan]")
+        console.print("[cyan]Detecting active model using port 8005...[/cyan]")
         current_container = self.vllm_manager._find_current_vllm_container()
         verbose_print(
             f"[cyan]Detection result: current_container = {current_container}[/cyan]"
@@ -87,7 +87,7 @@ class ModelReinitFlow:
             result = self._reinit_active_model_service(
                 target, service_name, current_container
             )
-            verbose_print(f"[cyan]Active flow completed with result: {result}[/cyan]")
+            console.print(f"  Active flow completed with result: {result}")
             return result
         else:
             # Route to non-active model flow
@@ -95,9 +95,7 @@ class ModelReinitFlow:
                 "[cyan]No active model container detected, using non-active flow[/cyan]"
             )
             result = self._reinit_non_active_model_service(target, service_name)
-            verbose_print(
-                f"[cyan]Non-active flow completed with result: {result}[/cyan]"
-            )
+            console.print(f"  Active flow completed with result: {result}")
             return result
 
     def _reinit_active_model_service(
@@ -127,8 +125,8 @@ class ModelReinitFlow:
         with safe_spinner(
             f"Stopping {current_container}...", console, verbose=_verbose_enabled
         ):
-            stop_success = (
-                self.vllm_manager._detect_and_stop_current_vllm_model_silent()
+            stop_success = self.vllm_manager._stop_known_vllm_model_silent(
+                current_container
             )
 
         stopped_timestamp = datetime.now().strftime("%H:%M:%S")
@@ -164,15 +162,22 @@ class ModelReinitFlow:
             self._run_reinit_failure_analysis(target, error_message)
             return False
 
-        started_timestamp = datetime.now().strftime("%H:%M:%S")
-        console.print(f"[green]{started_timestamp} |   Started {display_name}[/green]")
-        console.print()
-
         # Wait for model to be completely ready before restarting support services
-        console.print(f"[cyan]Waiting for {display_name} to be fully ready...[/cyan]")
-        if not self.enhanced_monitor.monitor_model_startup(display_name):
-            console.print(f"[red]❌ {display_name} failed to become ready[/red]")
+        console.print(f"  Waiting for {display_name} to be fully ready...")
+        if not self.startup_monitor.monitor_model_startup(display_name):
+            console.print(f"  ❌ {display_name} failed to become ready")
+            console.print("  Active flow completed with result: False")
+            console.print()
+            started_timestamp = datetime.now().strftime("%H:%M:%S")
+            console.print(
+                f"[green]{started_timestamp} |   Restarted {display_name}[/green]"
+            )
             return False
+
+        started_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(
+            f"[green]{started_timestamp} |   Restarted {display_name}[/green]"
+        )
 
         # Model is now fully ready
         ready_timestamp = datetime.now().strftime("%H:%M:%S")
@@ -181,7 +186,7 @@ class ModelReinitFlow:
         )
         console.print()
 
-        # Restart sys-services-vllm-proxy and mcp-vllm-delegator
+        # Restart sys-services-model-proxy and mcp-model-delegator
         success = self.restart_model_support_services(display_name)
         verbose_print(
             f"[cyan]Active model service reinit completed with success={success}[/cyan]"
@@ -221,15 +226,22 @@ class ModelReinitFlow:
             self._run_reinit_failure_analysis(target, error_message)
             return False
 
-        started_timestamp = datetime.now().strftime("%H:%M:%S")
-        console.print(f"[green]{started_timestamp} |   Started {display_name}[/green]")
-        console.print()
-
         # Wait for model to be completely ready before restarting support services
-        console.print(f"[cyan]Waiting for {display_name} to be fully ready...[/cyan]")
-        if not self.enhanced_monitor.monitor_model_startup(display_name):
-            console.print(f"[red]❌ {display_name} failed to become ready[/red]")
+        console.print(f"  Waiting for {display_name} to be fully ready...")
+        if not self.startup_monitor.monitor_model_startup(display_name):
+            console.print(f"  ❌ {display_name} failed to become ready")
+            console.print("  Active flow completed with result: False")
+            console.print()
+            started_timestamp = datetime.now().strftime("%H:%M:%S")
+            console.print(
+                f"[green]{started_timestamp} |   Restarted {display_name}[/green]"
+            )
             return False
+
+        started_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(
+            f"[green]{started_timestamp} |   Restarted {display_name}[/green]"
+        )
 
         # Model is now fully ready
         ready_timestamp = datetime.now().strftime("%H:%M:%S")
@@ -238,7 +250,7 @@ class ModelReinitFlow:
         )
         console.print()
 
-        # Restart sys-services-vllm-proxy and mcp-vllm-delegator
+        # Restart sys-services-model-proxy and mcp-vllm-delegator
         success = self.restart_model_support_services(display_name)
         verbose_print(
             f"[cyan]Non-active model service reinit completed with success={success}[/cyan]"
@@ -420,41 +432,41 @@ class ModelReinitFlow:
             return "reinit_failure"
 
     def restart_model_support_services(self, display_name: str) -> bool:
-        """Restart sys-services-vllm-proxy and mcp-vllm-delegator services"""
+        """Restart sys-services-model-proxy and mcp-model-delegator services"""
         verbose_print(
             f"[cyan]restart_model_support_services called for {display_name}[/cyan]"
         )
 
-        # Stop sys-services-vllm-proxy using systemctl
+        # Stop sys-services-model-proxy using systemctl
         stop_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(
-            f"[green]{stop_timestamp} | Stopping sys-services-vllm-proxy...[/green]"
+            f"[green]{stop_timestamp} | Stopping sys-services-model-proxy...[/green]"
         )
         stop_result = self.service_manager.stop_service(
-            "sys-services-vllm-proxy.service", "sys-services-vllm-proxy", quiet=False
+            "sys-services-model-proxy.service", "sys-services-model-proxy", quiet=False
         )
         stopped_timestamp = datetime.now().strftime("%H:%M:%S")
         if stop_result.returncode == 0:
             console.print(
-                f"[green]{stopped_timestamp} |   Stopped sys-services-vllm-proxy[/green]"
+                f"[green]{stopped_timestamp} |   Stopped sys-services-model-proxy[/green]"
             )
         else:
             console.print(
-                f"[yellow]{stopped_timestamp} |   sys-services-vllm-proxy was not running or failed to stop[/yellow]"
+                f"[yellow]{stopped_timestamp} |   sys-services-model-proxy was not running or failed to stop[/yellow]"
             )
         console.print()
 
-        # Show VLLM_URL update message
+        # Show MODEL_VLLM update message
         vllm_url = f"http://{display_name}:8005"
-        console.print(f"[cyan]Updating VLLM_URL to: {vllm_url}[/cyan]")
+        console.print(f"[cyan]Updating MODEL_VLLM to: {vllm_url}[/cyan]")
         console.print()
 
-        # Update VLLM_URL in container file before service regeneration
-        self._update_container_file_vllm_url("sys-services-vllm-proxy", vllm_url)
+        # Update MODEL_VLLM in container file before service regeneration
+        self._update_container_file_model_vllm("sys-services-model-proxy", vllm_url)
 
-        # Remove service file to allow regeneration with updated VLLM_URL
+        # Remove service file to allow regeneration with updated MODEL_VLLM
         self.service_manager.remove_service_file(
-            "sys-services-vllm-proxy.service", dry_run=False
+            "sys-services-model-proxy.service", dry_run=False
         )
         console.print()
 
@@ -463,74 +475,74 @@ class ModelReinitFlow:
             return False
         console.print()
 
-        # Start sys-services-vllm-proxy using systemctl (this will regenerate the service with new VLLM_URL)
+        # Start sys-services-model-proxy using systemctl (this will regenerate the service with new MODEL_VLLM)
         start_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(
-            f"[green]{start_timestamp} | Restarting sys-services-vllm-proxy...[/green]"
+            f"[green]{start_timestamp} | Restarting sys-services-model-proxy...[/green]"
         )
         start_result = self.service_manager.start_service(
-            "sys-services-vllm-proxy.service", "sys-services-vllm-proxy", quiet=False
+            "sys-services-model-proxy.service", "sys-services-model-proxy", quiet=False
         )
         started_timestamp = datetime.now().strftime("%H:%M:%S")
         if start_result.returncode == 0:
             console.print(
-                f"[green]{started_timestamp} |   Restarted sys-services-vllm-proxy[/green]"
+                f"[green]{started_timestamp} |   Restarted sys-services-model-proxy[/green]"
             )
         else:
             console.print(
-                f"[red]{started_timestamp} |   Failed to restart sys-services-vllm-proxy[/red]"
+                f"[red]{started_timestamp} |   Failed to restart sys-services-model-proxy[/red]"
             )
             return False
         console.print()
 
-        # Stop mcp-vllm-delegator using systemctl
+        # Stop mcp-model-delegator using systemctl
         stop_timestamp2 = datetime.now().strftime("%H:%M:%S")
         console.print(
-            f"[green]{stop_timestamp2} | Stopping mcp-vllm-delegator...[/green]"
+            f"[green]{stop_timestamp2} | Stopping mcp-model-delegator...[/green]"
         )
         stop_result2 = self.service_manager.stop_service(
-            "mcp-vllm-delegator.service", "mcp-vllm-delegator", quiet=False
+            "mcp-model-delegator.service", "mcp-model-delegator", quiet=False
         )
         stopped_timestamp2 = datetime.now().strftime("%H:%M:%S")
         if stop_result2.returncode == 0:
             console.print(
-                f"[green]{stopped_timestamp2} |   Stopped mcp-vllm-delegator[/green]"
+                f"[green]{stopped_timestamp2} |   Stopped mcp-model-delegator[/green]"
             )
         else:
             console.print(
-                f"[yellow]{stopped_timestamp2} |   mcp-vllm-delegator was not running or failed to stop[/yellow]"
+                f"[yellow]{stopped_timestamp2} |   mcp-model-delegator was not running or failed to stop[/yellow]"
             )
         console.print()
 
-        # Note: mcp-vllm-delegator does not use VLLM_URL, so no container file update needed
+        # Note: mcp-model-delegator does not use MODEL_VLLM, so no container file update needed
 
-        # Remove mcp-vllm-delegator service file to allow regeneration
+        # Remove mcp-model-delegator service file to allow regeneration
         self.service_manager.remove_service_file(
-            "mcp-vllm-delegator.service", dry_run=False
+            "mcp-model-delegator.service", dry_run=False
         )
         console.print()
 
-        # Reload systemd daemon again after removing mcp-vllm-delegator service file
+        # Reload systemd daemon again after removing mcp-model-delegator service file
         if not self.service_manager.reload_daemon():
             return False
         console.print()
 
-        # Start mcp-vllm-delegator using systemctl
+        # Start mcp-model-delegator using systemctl
         start_timestamp2 = datetime.now().strftime("%H:%M:%S")
         console.print(
-            f"[green]{start_timestamp2} | Restarting mcp-vllm-delegator...[/green]"
+            f"[green]{start_timestamp2} | Restarting mcp-model-delegator...[/green]"
         )
         start_result = self.service_manager.start_service(
-            "mcp-vllm-delegator.service", "mcp-vllm-delegator", quiet=False
+            "mcp-model-delegator.service", "mcp-model-delegator", quiet=False
         )
         started_timestamp2 = datetime.now().strftime("%H:%M:%S")
         if start_result.returncode == 0:
             console.print(
-                f"[green]{started_timestamp2} |   Restarted mcp-vllm-delegator[/green]"
+                f"[green]{started_timestamp2} |   Restarted mcp-model-delegator[/green]"
             )
         else:
             console.print(
-                f"[red]{started_timestamp2} |   Failed to restart mcp-vllm-delegator[/red]"
+                f"[red]{started_timestamp2} |   Failed to restart mcp-model-delegator[/red]"
             )
             return False
         console.print()
@@ -541,8 +553,8 @@ class ModelReinitFlow:
         )
 
         # Restore placeholder values in container files for future reinits
-        # Note: Only sys-services-vllm-proxy uses VLLM_URL, mcp-vllm-delegator does not
-        self._restore_container_file_vllm_url("sys-services-vllm-proxy")
+        # Note: Only sys-services-model-proxy uses MODEL_VLLM, mcp-model-delegator does not
+        self._restore_container_file_model_vllm("sys-services-model-proxy")
 
         return True
 
@@ -555,10 +567,10 @@ class ModelReinitFlow:
         else:
             return "model"
 
-    def _update_container_file_vllm_url(
+    def _update_container_file_model_vllm(
         self, container_name: str, vllm_url: str
     ) -> bool:
-        """Update VLLM_URL in the container file to replace REPLACED-DURING-REINIT placeholder.
+        """Update MODEL_VLLM in the container file to replace REPLACED-DURING-REINIT placeholder.
 
         Handles both old format (direct replacement) and new format (environment variable substitution).
         """
@@ -580,29 +592,29 @@ class ModelReinitFlow:
                 content = f.read()
 
             # Check if using old format (direct replacement in container file)
-            if "Environment=VLLM_URL=REPLACED-DURING-REINIT" in content:
+            if "Environment=MODEL_VLLM=REPLACED-DURING-REINIT" in content:
                 updated_content = content.replace(
-                    "Environment=VLLM_URL=REPLACED-DURING-REINIT",
-                    f"Environment=VLLM_URL={vllm_url}",
+                    "Environment=MODEL_VLLM=REPLACED-DURING-REINIT",
+                    f"Environment=MODEL_VLLM={vllm_url}",
                 )
 
                 with open(container_file_path, "w") as f:
                     f.write(updated_content)
 
                 verbose_print(
-                    f"[cyan]Updated {container_name}.container with VLLM_URL={vllm_url} (old format)[/cyan]"
+                    f"[cyan]Updated {container_name}.container with MODEL_VLLM={vllm_url} (old format)[/cyan]"
                 )
                 return True
 
             # Check if using new format (environment variable substitution)
-            elif "Environment=VLLM_URL=${VLLM_URL}" in content:
+            elif "Environment=MODEL_VLLM=${MODEL_VLLM}" in content:
                 # Update the .env file instead
                 env_file_path = container_file_path.parent / ".env"
-                return self._update_env_file_vllm_url(env_file_path, vllm_url)
+                return self._update_env_file_model_vllm(env_file_path, vllm_url)
 
             else:
                 verbose_print(
-                    f"[yellow]No VLLM_URL found in {container_name}.container[/yellow]"
+                    f"[yellow]No MODEL_VLLM found in {container_name}.container[/yellow]"
                 )
                 return False
 
@@ -610,17 +622,17 @@ class ModelReinitFlow:
             verbose_print(f"[cyan]Error updating container file: {e}[/cyan]")
             return False
 
-    def _update_env_file_vllm_url(self, env_file_path, vllm_url: str) -> bool:
-        """Update VLLM_URL using systemctl --user set-environment for environment variable substitution."""
+    def _update_env_file_model_vllm(self, env_file_path, vllm_url: str) -> bool:
+        """Update MODEL_VLLM using systemctl --user set-environment for environment variable substitution."""
         import subprocess
 
         try:
-            # Use systemctl --user set-environment to set VLLM_URL
-            cmd = ["systemctl", "--user", "set-environment", f"VLLM_URL={vllm_url}"]
+            # Use systemctl --user set-environment to set MODEL_VLLM
+            cmd = ["systemctl", "--user", "set-environment", f"MODEL_VLLM={vllm_url}"]
             subprocess.run(cmd, capture_output=True, text=True, check=True)
 
             verbose_print(
-                f"[cyan]Set user environment VLLM_URL={vllm_url} via systemctl (new format)[/cyan]"
+                f"[cyan]Set user environment MODEL_VLLM={vllm_url} via systemctl (new format)[/cyan]"
             )
             return True
 
@@ -634,8 +646,8 @@ class ModelReinitFlow:
             verbose_print(f"[cyan]Error updating user environment: {e}[/cyan]")
             return False
 
-    def _restore_container_file_vllm_url(self, container_name: str) -> bool:
-        """Restore VLLM_URL placeholder in container file for future reinits.
+    def _restore_container_file_model_vllm(self, container_name: str) -> bool:
+        """Restore MODEL_VLLM placeholder in container file for future reinits.
 
         Handles both old format (direct replacement) and new format (environment variable substitution).
         """
@@ -654,12 +666,12 @@ class ModelReinitFlow:
                 content = f.read()
 
             # Check if using old format (direct replacement in container file)
-            if "Environment=VLLM_URL=http://" in content:
+            if "Environment=MODEL_VLLM=http://" in content:
                 import re
 
                 updated_content = re.sub(
-                    r"Environment=VLLM_URL=http://[^:\s]+:8005",
-                    "Environment=VLLM_URL=REPLACED-DURING-REINIT",
+                    r"Environment=MODEL_VLLM=http://[^:\s]+:8005",
+                    "Environment=MODEL_VLLM=REPLACED-DURING-REINIT",
                     content,
                 )
 
@@ -667,19 +679,19 @@ class ModelReinitFlow:
                     f.write(updated_content)
 
                 verbose_print(
-                    f"[cyan]Restored {container_name}.container VLLM_URL placeholder (old format)[/cyan]"
+                    f"[cyan]Restored {container_name}.container MODEL_VLLM placeholder (old format)[/cyan]"
                 )
                 return True
 
             # Check if using new format (environment variable substitution)
-            elif "Environment=VLLM_URL=${VLLM_URL}" in content:
-                # Remove VLLM_URL from .env file
+            elif "Environment=MODEL_VLLM=${MODEL_VLLM}" in content:
+                # Remove MODEL_VLLM from .env file
                 env_file_path = container_file_path.parent / ".env"
-                return self._remove_env_file_vllm_url(env_file_path)
+                return self._remove_env_file_model_vllm(env_file_path)
 
             else:
                 verbose_print(
-                    f"[cyan]No VLLM_URL found to restore in {container_name}.container[/cyan]"
+                    f"[cyan]No MODEL_VLLM found to restore in {container_name}.container[/cyan]"
                 )
                 return True  # Nothing to restore is not an error
 
@@ -687,17 +699,17 @@ class ModelReinitFlow:
             verbose_print(f"[cyan]Error restoring container file: {e}[/cyan]")
             return False
 
-    def _remove_env_file_vllm_url(self, env_file_path) -> bool:
-        """Remove VLLM_URL from user environment using systemctl --user unset-environment."""
+    def _remove_env_file_model_vllm(self, env_file_path) -> bool:
+        """Remove MODEL_VLLM from user environment using systemctl --user unset-environment."""
         import subprocess
 
         try:
-            # Use systemctl --user unset-environment to remove VLLM_URL
-            cmd = ["systemctl", "--user", "unset-environment", "VLLM_URL"]
+            # Use systemctl --user unset-environment to remove MODEL_VLLM
+            cmd = ["systemctl", "--user", "unset-environment", "MODEL_VLLM"]
             subprocess.run(cmd, capture_output=True, text=True, check=True)
 
             verbose_print(
-                "[cyan]Unset user environment VLLM_URL via systemctl (new format cleanup)[/cyan]"
+                "[cyan]Unset user environment MODEL_VLLM via systemctl (new format cleanup)[/cyan]"
             )
             return True
 

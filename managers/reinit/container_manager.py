@@ -300,10 +300,10 @@ class ContainerManager:
         except Exception:
             return False
 
-    def start_mcp_vllm_delegator(self) -> bool:
-        """Start mcp-vllm-delegator container"""
+    def start_mcp_model_delegator(self) -> bool:
+        """Start mcp-model-delegator container"""
         try:
             # Use the vLLM manager's method to restart the delegator
-            return self.vllm_manager._restart_mcp_vllm_delegator()
+            return self.vllm_manager._restart_mcp_model_delegator()
         except Exception:
             return False

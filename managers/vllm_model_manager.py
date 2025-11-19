@@ -37,11 +37,11 @@ class VLLMModelManager:
     def __init__(self, manager):
         self.manager = manager
         self.model_port = 8005  # Both VLLM and llama.cpp use port 8005
-        self.proxy_container = "sys-services-vllm-proxy"
+        self.proxy_container = "sys-services-model-proxy"
         self.proxy_port = 8002
         self.network_name = "local-ai-network"
         self.proxy_image = (
-            "sys-services-vllm-proxy:latest"  # Default, can be configured
+            "sys-services-model-proxy:latest"  # Default, can be configured
         )
         self._startup_monitor = None
 
@@ -68,7 +68,7 @@ class VLLMModelManager:
         if not self._start_model_backend(new_model_container):
             return False
 
-        # Step 3: Restart the proxy container with updated VLLM_URL
+        # Step 3: Restart the proxy container with updated MODEL_VLLM
         if not self._restart_vllm_proxy(new_model_container, proxy_image):
             return False
 
@@ -176,6 +176,50 @@ class VLLMModelManager:
                     f"[yellow]Port {self.model_port} is in use by unknown process, cleaning up...[/yellow]"
                 )
                 return self._cleanup_vllm_port()
+            return True
+
+    def _stop_known_vllm_model_silent(self, container_name: str) -> bool:
+        """Stop a known model container silently (no console output, no detection)"""
+        if container_name:
+            model_type = self._detect_model_type(container_name)
+            verbose_print(
+                f"[cyan]Found {model_type} model using port {self.model_port}: {container_name}[/cyan]"
+            )
+
+            # Stop the current container gracefully
+            service_name = f"{container_name}.service"
+            stop_cmd = ["systemctl", "--user", "stop", service_name]
+            verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
+
+            if self._run_command(stop_cmd):
+                verbose_print(f"[cyan]Stopped {container_name}[/cyan]")
+
+                # Wait for port to be released
+                max_wait_time = 30
+                wait_interval = 1
+                elapsed_time = 0
+
+                while elapsed_time < max_wait_time and self._is_port_in_use(
+                    self.model_port
+                ):
+                    time.sleep(wait_interval)
+                    elapsed_time += wait_interval
+
+                if self._is_port_in_use(self.model_port):
+                    verbose_print(
+                        f"[cyan]Warning: Port {self.model_port} still in use after stopping {container_name}[/cyan]"
+                    )
+                    # Try force cleanup as fallback
+                    return self._cleanup_vllm_port()
+
+                return True
+            else:
+                verbose_print(
+                    f"[cyan]Failed to stop {container_name}, trying force cleanup...[/cyan]"
+                )
+                return self._cleanup_vllm_port()
+        else:
+            verbose_print("[cyan]No container name provided for stopping[/cyan]")
             return True
 
     def _detect_and_stop_current_vllm_model_silent(self) -> bool:
@@ -360,9 +404,7 @@ class VLLMModelManager:
         console.print(
             f"[cyan]Waiting for {container_name} ({model_type}) to be fully ready...[/cyan]"
         )
-        if not self._get_startup_monitor().vllm_service_monitor_for_complete_start(
-            container_name
-        ):
+        if not self._get_startup_monitor().monitor_model_startup(container_name):
             console.print(f"[red]❌ {container_name} failed to become ready[/red]")
             return False
         console.print()
@@ -444,7 +486,7 @@ class VLLMModelManager:
             )
         console.print()
 
-        # Start new proxy with updated VLLM_URL
+        # Start new proxy with updated MODEL_VLLM
         console.print(f"[green]Starting {self.proxy_container}...[/green]")
         vllm_url = f"http://{backend_container}:{self.model_port}"
 
@@ -457,7 +499,7 @@ class VLLMModelManager:
             "--network",
             self.network_name,
             "-e",
-            f"VLLM_URL={vllm_url}",
+            f"MODEL_VLLM={vllm_url}",
             "-p",
             f"{self.proxy_port}:{self.proxy_port}",
             proxy_image or self.proxy_image,
@@ -472,20 +514,20 @@ class VLLMModelManager:
         console.print(f"[green]  Started {self.proxy_container}.[/green]")
         console.print()
 
-        # Restart mcp-vllm-delegator after proxy is started
-        if not self._restart_mcp_vllm_delegator():
+        # Restart mcp-model-delegator after proxy is started
+        if not self._restart_mcp_model_delegator():
             console.print(
-                "[yellow]Warning: Failed to restart mcp-vllm-delegator[/yellow]"
+                "[yellow]Warning: Failed to restart mcp-model-delegator[/yellow]"
             )
-            # Don't fail the entire operation if mcp-vllm-delegator fails
+            # Don't fail the entire operation if mcp-model-delegator fails
 
         return True
 
-    def _restart_mcp_vllm_delegator(self) -> bool:
-        """Restart the mcp-vllm-delegator container"""
-        mcp_container = "mcp-vllm-delegator"
+    def _restart_mcp_model_delegator(self) -> bool:
+        """Restart the mcp-model-delegator container"""
+        mcp_container = "mcp-model-delegator"
 
-        # Stop existing mcp-vllm-delegator
+        # Stop existing mcp-model-delegator
         console.print(f"[green]Stopping {mcp_container}...[/green]")
         if self._stop_container(mcp_container):
             console.print(f"[green]  Stopped {mcp_container}.[/green]")
@@ -495,7 +537,7 @@ class VLLMModelManager:
             )
         console.print()
 
-        # Remove existing mcp-vllm-delegator
+        # Remove existing mcp-model-delegator
         console.print(f"[green]Removing {mcp_container}...[/green]")
         if self._remove_container(mcp_container):
             console.print(f"[green]  Removed {mcp_container}.[/green]")
@@ -505,10 +547,10 @@ class VLLMModelManager:
             )
         console.print()
 
-        # Start new mcp-vllm-delegator
+        # Start new mcp-model-delegator
         console.print(f"[green]Starting {mcp_container}...[/green]")
 
-        # Use the standard container start command for mcp-vllm-delegator
+        # Use the standard container start command for mcp-model-delegator
         # This assumes the container is already configured and just needs to be started
         service_name = f"{mcp_container}.service"
         start_cmd = ["systemctl", "--user", "start", service_name]
@@ -524,7 +566,7 @@ class VLLMModelManager:
                 f"[cyan]Container {mcp_container} doesn't exist, trying to run it...[/cyan]"
             )
 
-            # Try to run the mcp-vllm-delegator container with basic configuration
+            # Try to run the mcp-model-delegator container with basic configuration
             # This is a fallback - the actual run command should be customized based on your setup
             run_cmd = [
                 "podman",
@@ -535,7 +577,7 @@ class VLLMModelManager:
                 "--network",
                 self.network_name,
                 # Add environment variables and other configuration as needed
-                "mcp-vllm-delegator:latest",  # Default image name
+                "mcp-model-delegator:latest",  # Default image name
             ]
 
             verbose_print(f"[cyan]exec: {' '.join(run_cmd)}[/cyan]")
@@ -619,7 +661,7 @@ class VLLMModelManager:
             return False
 
     def get_available_vllm_models(self) -> list:
-        """Get list of available model containers (VLLM and llama.cpp, excluding sys-services-vllm-proxy)"""
+        """Get list of available model containers (VLLM and llama.cpp, excluding sys-services-model-proxy)"""
         try:
             # Get containers with vllm in the name
             vllm_cmd = [
@@ -650,10 +692,10 @@ class VLLMModelManager:
             if vllm_result.returncode == 0:
                 for line in vllm_result.stdout.strip().split("\n"):
                     container_name = line.strip()
-                    # Exclude sys-services-vllm-proxy and mcp-vllm-delegator as they are not model containers
+                    # Exclude sys-services-model-proxy and mcp-model-delegator as they are not model containers
                     if container_name and container_name not in [
-                        "sys-services-vllm-proxy",
-                        "mcp-vllm-delegator",
+                        "sys-services-model-proxy",
+                        "mcp-model-delegator",
                     ]:
                         containers.append(container_name)
 
@@ -662,8 +704,8 @@ class VLLMModelManager:
                 for line in llama_result.stdout.strip().split("\n"):
                     container_name = line.strip()
                     if container_name and container_name not in [
-                        "sys-services-vllm-proxy",
-                        "mcp-vllm-delegator",
+                        "sys-services-model-proxy",
+                        "mcp-model-delegator",
                     ]:
                         containers.append(container_name)
 
@@ -674,7 +716,7 @@ class VLLMModelManager:
     def get_current_vllm_backend(self) -> Optional[str]:
         """Get the currently active vLLM backend container"""
         try:
-            # Inspect the proxy container to get the VLLM_URL environment variable
+            # Inspect the proxy container to get the MODEL_VLLM environment variable
             cmd = [
                 "podman",
                 "inspect",
@@ -687,10 +729,10 @@ class VLLMModelManager:
             if result.returncode != 0:
                 return None
 
-            # Parse environment variables to find VLLM_URL
+            # Parse environment variables to find MODEL_VLLM
             env_vars = result.stdout.strip()
             for env_var in env_vars.split():
-                if env_var.startswith("VLLM_URL="):
+                if env_var.startswith("MODEL_VLLM="):
                     vllm_url = env_var.split("=", 1)[1]
                     # Extract container name from URL (http://container:port)
                     if "://" in vllm_url:
@@ -950,15 +992,15 @@ class VLLMModelManager:
                     container_name = container_match.group(1)
                     verbose_print(f"[cyan]Found container: {container_name}[/cyan]")
 
-                    # Exclude sys-services-vllm-proxy as it uses port 8002, not 8005
-                    if container_name and container_name != "sys-services-vllm-proxy":
+                    # Exclude sys-services-model-proxy as it uses port 8002, not 8005
+                    if container_name and container_name != "sys-services-model-proxy":
                         verbose_print(
                             f"[cyan]Found container using port {self.model_port}: {container_name}[/cyan]"
                         )
                         return container_name
                     else:
                         verbose_print(
-                            f"[cyan]Container {container_name} is sys-services-vllm-proxy, ignoring[/cyan]"
+                            f"[cyan]Container {container_name} is sys-services-model-proxy, ignoring[/cyan]"
                         )
 
             except (FileNotFoundError, PermissionError) as e:
@@ -1007,7 +1049,7 @@ class VLLMModelManager:
                         "vllm" in container_name.lower()
                         or "llama" in container_name.lower()
                     )
-                    and container_name != "sys-services-vllm-proxy"
+                    and container_name != "sys-services-model-proxy"
                 ):
                     # Check if this container is using port 8005
                     if self._container_uses_port(container_name, self.model_port):
@@ -1118,10 +1160,10 @@ class VLLMModelManager:
                         container_name = parts[0].strip()
                         container_id = parts[1].strip()
 
-                        # Check if this container contains our process (exclude sys-services-vllm-proxy)
+                        # Check if this container contains our process (exclude sys-services-model-proxy)
                         if (
                             "vllm" in container_name.lower()
-                            and container_name != "sys-services-vllm-proxy"
+                            and container_name != "sys-services-model-proxy"
                         ):
                             inspect_cmd = [
                                 "podman",
@@ -1157,7 +1199,7 @@ class VLLMModelManager:
             return False
 
     def _find_vllm_container_by_inspection(self) -> Optional[str]:
-        """Find model container by inspecting all model containers (VLLM and llama.cpp, excluding sys-services-vllm-proxy)"""
+        """Find model container by inspecting all model containers (VLLM and llama.cpp, excluding sys-services-model-proxy)"""
         try:
             # Get all containers (running and stopped) with vllm or llama in the name
             vllm_cmd = [
@@ -1195,10 +1237,10 @@ class VLLMModelManager:
                         container_name = parts[0].strip()
                         status = parts[1].strip()
 
-                        # Exclude sys-services-vllm-proxy as it's not a model container (uses port 8002, not 8005)
+                        # Exclude sys-services-model-proxy as it's not a model container (uses port 8002, not 8005)
                         if (
                             "Up" in status or "running" in status.lower()
-                        ) and container_name != "sys-services-vllm-proxy":
+                        ) and container_name != "sys-services-model-proxy":
                             running_vllm_containers.append(container_name)
 
             # Process llama.cpp containers
@@ -1209,10 +1251,10 @@ class VLLMModelManager:
                         container_name = parts[0].strip()
                         status = parts[1].strip()
 
-                        # Exclude sys-services-vllm-proxy as it's not a model container (uses port 8002, not 8005)
+                        # Exclude sys-services-model-proxy as it's not a model container (uses port 8002, not 8005)
                         if (
                             "Up" in status or "running" in status.lower()
-                        ) and container_name != "sys-services-vllm-proxy":
+                        ) and container_name != "sys-services-model-proxy":
                             running_vllm_containers.append(container_name)
 
             # Check each container to see which one is actually using port 8005
@@ -1309,9 +1351,9 @@ class VLLMModelManager:
         self, target: str, new_vllm_model: str, build_type: Optional[str] = None
     ) -> bool:
         """Reinit a service and switch model if it's a model-related service (VLLM or llama.cpp)"""
-        # First perform the model switch if this is a model service (exclude sys-services-vllm-proxy)
+        # First perform the model switch if this is a model service (exclude sys-services-model-proxy)
         if ("vllm" in target.lower() or "llama" in target.lower()) and target not in [
-            "sys-services-vllm-proxy",
+            "sys-services-model-proxy",
             "vllm-stack",
             "models-stack",
         ]:
@@ -1334,7 +1376,7 @@ class VLLMModelManager:
     def _get_startup_monitor(self):
         """Get or create the startup monitor instance."""
         if self._startup_monitor is None:
-            from managers.reinit.vllm_startup_monitor import VLLMStartupMonitor
+            from docs.model_startup_monitor import ModelStartupMonitor
 
-            self._startup_monitor = VLLMStartupMonitor(self.manager)
+            self._startup_monitor = ModelStartupMonitor(self.manager)
         return self._startup_monitor

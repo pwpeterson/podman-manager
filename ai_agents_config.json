@@ -17,7 +17,7 @@
     {
       "name": "llama-kimi-k2-thinking_q1",
       "display_name": "Kimi K2 Thinking Q1 (llama.cpp)",
-      "agent_type": "local_vllm",
+      "agent_type": "local_model",
       "endpoint": "http://localhost:8002",
       "model_name": "llama-kimi-k2-thinking_q1",
       "api_key_env": null,
@@ -30,7 +30,7 @@
     {
       "name": "llama-kimi-k2-thinking_q2",
       "display_name": "Kimi K2 Thinking Q2 (llama.cpp)",
-      "agent_type": "local_vllm",
+      "agent_type": "local_model",
       "endpoint": "http://localhost:8002",
       "model_name": "llama-kimi-k2-thinking_q2",
       "api_key_env": null,
@@ -43,7 +43,7 @@
     {
       "name": "vllm-qwen25-coder-32b",
       "display_name": "Qwen2.5 Coder 32B (Local)",
-      "agent_type": "local_vllm",
+      "agent_type": "local_model",
       "endpoint": "http://localhost:8002",
       "model_name": "vllm-qwen25-coder-32b",
       "api_key_env": null,
@@ -56,7 +56,7 @@
     {
       "name": "vllm-glm41-9b-thinking",
       "display_name": "GLM-4.1-9B-Thinking",
-      "agent_type": "local_vllm",
+      "agent_type": "local_model",
       "endpoint": "http://localhost:8002",
       "model_name": "vllm-glm41-9b-thinking",
       "api_key_env": null,
@@ -69,7 +69,7 @@
     {
       "name": "vllm-glm4-9b-chat",
       "display_name": "GLM-4-9B-Chat",
-      "agent_type": "local_vllm",
+      "agent_type": "local_model",
       "endpoint": "http://localhost:8002",
       "model_name": "vllm-glm4-9b-chat",
       "api_key_env": null,
@@ -82,7 +82,7 @@
     {
       "name": "vllm-deepseek-coder-v2 ",
       "display_name": "DeepSeek-Coder-v2",
-      "agent_type": "local_vllm",
+      "agent_type": "local_model",
       "endpoint": "http://vllm-proxy:8002",
       "model_name": "vllm-deepseek-coder-v2 ",
       "api_key_env": null,
