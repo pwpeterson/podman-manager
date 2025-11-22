@@ -743,7 +743,6 @@ class ContainerBuilder:
                             progress.remove_task(task)
 
                     if result.returncode == 0:
-                        console.print()
                         console.print(
                             f"[green]Podman build completed for {target}[/green]"
                         )

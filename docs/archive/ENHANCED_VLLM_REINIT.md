@@ -56,7 +56,7 @@ The `ReinitManager` class has been enhanced with:
 ### Key Files Modified
 
 - `managers/reinit_manager.py`: Enhanced `_reinit_service_direct()` method
-- `managers/vllm_model_manager.py`: Improved container detection logging
+- `managers/model_model_manager.py`: Improved container detection logging
 
 ## Usage Examples
 

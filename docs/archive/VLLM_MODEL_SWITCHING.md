@@ -32,7 +32,7 @@ The vLLM model switching feature allows you to dynamically switch between differ
 
 ## New Components
 
-### VLLMModelManager (`managers/vllm_model_manager.py`)
+### ModelManger (`managers/model_model_manager.py`)
 
 Enhanced manager class that handles:
 - Graceful container shutdown with progress indicators
@@ -100,7 +100,7 @@ When working with vLLM services (detected automatically), the system now:
 
 ### Configuration
 
-The VLLMModelManager uses these default settings:
+The ModelManger uses these default settings:
 - **vLLM Port**: 8005
 - **Proxy Container**: `vllm-proxy`
 - **Proxy Port**: 8002
@@ -175,8 +175,8 @@ The vLLM model switching functionality requires:
 ## Files Modified/Added
 
 ### New Files
-- `managers/vllm_model_manager.py` - Main vLLM model management class
-- `VLLM_MODEL_SWITCHING.md` - This documentation
+- `managers/model_model_manager.py` - Main vLLM model management class
+- `model_model_SWITCHING.md` - This documentation
 - `test_vllm_integration.py` - Integration test script
 
 ### Modified Files
@@ -196,7 +196,7 @@ python test_vllm_integration.py
 ```
 
 This will test:
-- VLLMModelManager creation
+- ModelManger creation
 - Method functionality
 - Integration with ReinitManager
 - CLI parser integration

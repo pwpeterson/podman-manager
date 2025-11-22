@@ -837,10 +837,10 @@ def _add_vllm_commands(subparsers):
     )
 
     # vLLM models command
-    vllm_models_parser = subparsers.add_parser(
+    model_models_parser = subparsers.add_parser(
         "vllm-models", help="List available vLLM model containers"
     )
-    vllm_models_parser.add_argument(
+    model_models_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",

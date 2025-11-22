@@ -424,7 +424,7 @@ class CommandRouter:
         elif command == "vllm-status":
             return self._handle_vllm_status(args)
         elif command == "vllm-models":
-            return self._handle_vllm_models(args)
+            return self._handle_model_models(args)
         elif command == "vllm-current":
             return self._handle_vllm_current(args)
         elif command == "enable":
@@ -896,13 +896,13 @@ class CommandRouter:
             build_type = "quadlet"
 
         # Get vLLM model if specified
-        vllm_model = getattr(args, "vllm_model", None)
+        model_model = getattr(args, "model_model", None)
 
         # Check if this is enhanced reinit (command name is 'enhanced-reinit')
         is_enhanced = args.command == "enhanced-reinit"
 
         if is_enhanced:
-            return self._handle_enhanced_reinit_logic(args, build_type, vllm_model)
+            return self._handle_enhanced_reinit_logic(args, build_type, model_model)
         else:
             # Standard reinit
             dry_run = getattr(args, "dry_run", False)
@@ -910,7 +910,7 @@ class CommandRouter:
                 self.container_ops.reinit,
                 args.target,
                 build_type=build_type,
-                vllm_model=vllm_model,
+                model_model=model_model,
                 dry_run=dry_run,
             )
 
@@ -918,7 +918,7 @@ class CommandRouter:
         """Handle enhanced reinit - delegates to unified handler."""
         return self._handle_reinit(args)
 
-    def _handle_enhanced_reinit_logic(self, args, build_type, vllm_model):
+    def _handle_enhanced_reinit_logic(self, args, build_type, model_model):
         """Handle enhanced reinit logic with proactive AI troubleshooting."""
         try:
             from managers.reinit_manager import ReinitManager
@@ -934,7 +934,7 @@ class CommandRouter:
                 target=args.target,
                 build=build_type is not None,
                 build_type=build_type,
-                vllm_model=vllm_model,
+                model_model=model_model,
                 enable_ai_guidance=enable_ai_guidance,
             )
 
@@ -955,7 +955,7 @@ class CommandRouter:
                         "target": args.target,
                         "build": build_type is not None,
                         "build_type": build_type,
-                        "vllm_model": vllm_model,
+                        "model_model": model_model,
                         "enable_ai_guidance": enable_ai_guidance,
                     },
                     enable_auto_fixes=getattr(args, "enable_auto_fixes", True),
@@ -986,7 +986,7 @@ class CommandRouter:
                 self.container_ops.reinit,
                 args.target,
                 build_type=build_type,
-                vllm_model=vllm_model,
+                model_model=model_model,
                 dry_run=dry_run,
             )
         except Exception as e:
@@ -1021,12 +1021,12 @@ class CommandRouter:
     def _handle_restart(self, args):
         self.handle_command_verbose(args)
         # Get vLLM model if specified
-        vllm_model = getattr(args, "vllm_model", None)
+        model_model = getattr(args, "model_model", None)
         return self.try_with_fallback(
             self.container_ops.restart,
             args.target,
             build=getattr(args, "build", False),
-            vllm_model=vllm_model,
+            model_model=model_model,
         )
 
     def _handle_enable(self, args):
@@ -1168,12 +1168,12 @@ class CommandRouter:
         """Switch vLLM backend to a different model container"""
         self.handle_command_verbose(args)
         try:
-            from managers.vllm_model_manager import VLLMModelManager
+            from managers.model_model_manager import ModelManger
 
-            vllm_mgr = VLLMModelManager(self.manager)
+            vllm_mgr = ModelManger(self.manager)
 
             proxy_image = getattr(args, "proxy_image", None)
-            result = vllm_mgr.switch_vllm_model(args.model_container, proxy_image)
+            result = vllm_mgr.switch_model_model(args.model_container, proxy_image)
 
             if result:
                 console.print(
@@ -1200,9 +1200,9 @@ class CommandRouter:
         """Show current vLLM configuration and status"""
         self.handle_command_verbose(args)
         try:
-            from managers.vllm_model_manager import VLLMModelManager
+            from managers.model_model_manager import ModelManger
 
-            vllm_mgr = VLLMModelManager(self.manager)
+            vllm_mgr = ModelManger(self.manager)
             vllm_mgr.show_vllm_status()
             return True
         except ImportError:
@@ -1212,15 +1212,15 @@ class CommandRouter:
             console.print(f"[red]Error showing vLLM status: {e}[/red]")
             return False
 
-    def _handle_vllm_models(self, args):
+    def _handle_model_models(self, args):
         """List available vLLM model containers"""
         self.handle_command_verbose(args)
         try:
-            from managers.vllm_model_manager import VLLMModelManager
+            from managers.model_model_manager import ModelManger
 
-            vllm_mgr = VLLMModelManager(self.manager)
+            vllm_mgr = ModelManger(self.manager)
 
-            available_models = vllm_mgr.get_available_vllm_models()
+            available_models = vllm_mgr.get_available_model_models()
             current_backend = vllm_mgr.get_current_vllm_backend()
 
             console.print("[bold cyan]Available vLLM Model Containers[/bold cyan]")
@@ -1259,10 +1259,10 @@ class CommandRouter:
         """Show which vLLM model is currently using port 8005"""
         self.handle_command_verbose(args)
         try:
-            from managers.vllm_model_manager import VLLMModelManager
+            from managers.model_model_manager import ModelManger
 
-            vllm_mgr = VLLMModelManager(self.manager)
-            vllm_mgr.show_current_vllm_model()
+            vllm_mgr = ModelManger(self.manager)
+            vllm_mgr.show_current_model_model()
             return True
         except ImportError:
             console.print("[red]vLLM model manager not available[/red]")

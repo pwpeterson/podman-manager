@@ -40,13 +40,13 @@ class ReinitManager:
         target: str,
         build: bool = False,
         build_type: str | None = None,
-        vllm_model: str | None = None,
+        model_model: str | None = None,
         dry_run: bool = False,
         enhanced: bool = False,
     ) -> bool:
         """Stop service, reload daemon, and restart service (useful for .container file changes)"""
         if enhanced:
-            return self.enhanced_reinit(target, build, build_type, vllm_model)
+            return self.enhanced_reinit(target, build, build_type, model_model)
 
         # Clear cache at the start
         self.manager._clear_auto_match_cache()
@@ -56,11 +56,11 @@ class ReinitManager:
             build_type = "legacy"
 
         # Handle vLLM model switching if specified
-        if vllm_model:
+        if model_model:
             console.print(
-                f"[green]vLLM model switching requested: {vllm_model}[/green]"
+                f"[green]vLLM model switching requested: {model_model}[/green]"
             )
-            if not self.container_manager.vllm_manager.switch_vllm_model(vllm_model):
+            if not self.container_manager.model_manger.switch_model_model(model_model):
                 console.print("[red]vLLM model switch failed, aborting reinit[/red]")
                 return False
             console.print()
@@ -134,7 +134,7 @@ class ReinitManager:
         target: str,
         build: bool = False,
         build_type: str | None = None,
-        vllm_model: str | None = None,
+        model_model: str | None = None,
         enable_ai_guidance: bool = True,
     ) -> bool:
         """Enhanced reinit with proactive diagnostics and AI guidance."""
@@ -161,7 +161,7 @@ class ReinitManager:
             target,
             build,
             build_type,
-            vllm_model,
+            model_model,
             enable_ai_guidance,
             lambda t, b, bt, vm: self.reinit(t, b, bt, vm),
         )

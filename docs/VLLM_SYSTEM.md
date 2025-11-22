@@ -32,7 +32,7 @@ This document consolidates all vLLM-related functionality in the Podman Manager,
 
 ### New Components
 
-#### VLLMModelManager (`managers/vllm_model_manager.py`)
+#### ModelManger (`managers/model_model_manager.py`)
 
 Enhanced manager class that handles:
 - Graceful container shutdown with progress indicators
@@ -322,7 +322,7 @@ When working with vLLM services (detected automatically), the system now:
 
 #### Configuration
 
-The VLLMModelManager uses these default settings:
+The ModelManger uses these default settings:
 - **vLLM Port**: 8005
 - **Proxy Container**: `vllm-proxy`
 - **Proxy Port**: 8002

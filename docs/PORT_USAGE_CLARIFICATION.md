@@ -28,7 +28,7 @@ Based on the system output and code analysis:
 
 ## System Detection Logic
 
-The VLLMModelManager uses `_find_current_vllm_container()` which:
+The ModelManger uses `_find_current_vllm_container()` which:
 1. Looks for containers with "vllm" in the name
 2. Excludes "vllm-proxy" (correctly)
 3. Should exclude "mcp-vllm-delegator" but was including it

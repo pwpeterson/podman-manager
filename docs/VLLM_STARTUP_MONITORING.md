@@ -75,7 +75,7 @@ console.print()
 success = self.restart_model_support_services(display_name)
 ```
 
-### VLLMModelManager Integration
+### ModelManger Integration
 
 The model manager now waits for complete startup during model switching:
 

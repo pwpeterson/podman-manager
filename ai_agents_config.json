@@ -1,31 +1,25 @@
 {
-  "default_agent": "llama-kimi-k2-thinking_q2",
+  "default_agent": "vllm-qwen3-coder-30b",
   "agent_preferences": {
     "prefer_local": true,
     "fallback_order": [
-      "llama-kimi-k2-thinking_q2",
-      "llama-kimi-k2-thinking_q1",
-      "vllm-deepseek-coder-v2",
-      "vllm-glm4-9b-chat",
-      "vllm-glm41-9b-thinking",
-      "vllm-qwen25-coder-32b",
       "claude-sonnet-4-5",
       "gpt-4"
     ]
   },
   "agents": [
     {
-      "name": "llama-kimi-k2-thinking_q1",
-      "display_name": "Kimi K2 Thinking Q1 (llama.cpp)",
+      "name": "vllm-qwen3-coder-30b",
+      "display_name": "Qwen3-Coder-30B-A3B-Instruct",
       "agent_type": "local_model",
       "endpoint": "http://localhost:8002",
-      "model_name": "llama-kimi-k2-thinking_q1",
+      "model_name": "vllm-qwen3-coder-30b",
       "api_key_env": null,
       "max_tokens": 2048,
       "temperature": 0.1,
       "timeout": 60,
       "enabled": true,
-      "description": "Local Kimi K2 Thinking Q1 model via llama.cpp"
+      "description": "Local Qwen3-Coder-30B-A3B-Instruct"
     },
     {
       "name": "llama-kimi-k2-thinking_q2",

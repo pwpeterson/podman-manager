@@ -12,8 +12,8 @@ This directory contains documentation files that have been consolidated into the
 - `SPINNER_ENHANCEMENT_SUMMARY.md` - Spinner enhancements
 
 ### vLLM System → VLLM_SYSTEM.md
-- `VLLM_MODEL_SWITCHING.md` - vLLM model switching functionality
-- `VLLM_MODEL_SWITCHING.md.backup` - Backup of vLLM switching docs
+- `model_model_SWITCHING.md` - vLLM model switching functionality
+- `model_model_SWITCHING.md.backup` - Backup of vLLM switching docs
 - `ENHANCED_VLLM_REINIT.md` - Enhanced vLLM reinit process
 - `VLLM_URL_FIX_IMPLEMENTATION.md` - VLLM URL fix implementation
 - `VLLM_URL_UPDATE_FIX.md` - VLLM URL update fix

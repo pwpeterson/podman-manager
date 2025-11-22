@@ -82,7 +82,7 @@ managers/
 - `start_service()`
 - `stop_service()`
 - `reload_daemon()`
-- `is_vllm_model_service()`
+- `is_model_model_service()`
 - `capture_pre_reinit_state()`
 
 ### 4. VLLMReinitFlow (`vllm_reinit_flow.py`)
@@ -93,9 +93,9 @@ managers/
 - Error handling for vLLM services
 
 **Key Methods:**
-- `reinit_vllm_model_service()`
-- `_reinit_active_vllm_model_service()`
-- `_reinit_non_active_vllm_model_service()`
+- `reinit_model_model_service()`
+- `_reinit_active_model_model_service()`
+- `_reinit_non_active_model_model_service()`
 
 ### 5. ReinitMonitor (`monitoring.py`)
 **Responsibilities:**

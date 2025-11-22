@@ -134,7 +134,7 @@ class ReinitMonitor:
         target: str,
         build: bool,
         build_type: str | None,
-        vllm_model: str | None,
+        model_model: str | None,
         enable_ai_guidance: bool,
         reinit_func,
     ) -> bool:
@@ -146,14 +146,14 @@ class ReinitMonitor:
             "target": target,
             "build": build,
             "build_type": build_type,
-            "vllm_model": vllm_model,
+            "model_model": model_model,
             "start_time": time.time(),
         }
 
         # Execute the standard reinit process with enhanced monitoring
         try:
             # Use the provided reinit function
-            success = reinit_func(target, build, build_type, vllm_model)
+            success = reinit_func(target, build, build_type, model_model)
 
             if not success and enable_ai_guidance:
                 # Enhanced failure analysis with context
