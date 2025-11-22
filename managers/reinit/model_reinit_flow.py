@@ -23,17 +23,17 @@ class ModelReinitFlow:
         self.manager = manager
         self.container_manager = container_manager
         self.service_manager = service_manager
-        self._vllm_manager = None
+        self._model_manger = None
         self._startup_monitor = None
 
     @property
-    def vllm_manager(self):
+    def model_manger(self):
         """Lazy initialization of vLLM manager"""
-        if self._vllm_manager is None:
-            from managers.vllm_model_manager import VLLMModelManager
+        if self._model_manger is None:
+            from managers.model_manager import ModelManger
 
-            self._vllm_manager = VLLMModelManager(self.manager)
-        return self._vllm_manager
+            self._model_manger = ModelManger(self.manager)
+        return self._model_manger
 
     @property
     def startup_monitor(self):
@@ -60,7 +60,7 @@ class ModelReinitFlow:
 
         # Detection step - find current active model (VLLM or llama.cpp)
         console.print("[cyan]Detecting active model using port 8005...[/cyan]")
-        current_container = self.vllm_manager._find_current_vllm_container()
+        current_container = self.model_manger._find_current_vllm_container()
         verbose_print(
             f"[cyan]Detection result: current_container = {current_container}[/cyan]"
         )
@@ -125,7 +125,7 @@ class ModelReinitFlow:
         with safe_spinner(
             f"Stopping {current_container}...", console, verbose=_verbose_enabled
         ):
-            stop_success = self.vllm_manager._stop_known_vllm_model_silent(
+            stop_success = self.model_manger._stop_known_model_model_silent(
                 current_container
             )
 

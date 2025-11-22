@@ -14,16 +14,16 @@ class ContainerManager:
 
     def __init__(self, manager):
         self.manager = manager
-        self._vllm_manager = None
+        self._model_manger = None
 
     @property
-    def vllm_manager(self):
+    def model_manger(self):
         """Lazy initialization of vLLM manager"""
-        if self._vllm_manager is None:
-            from managers.vllm_model_manager import VLLMModelManager
+        if self._model_manger is None:
+            from managers.model_manager import ModelManger
 
-            self._vllm_manager = VLLMModelManager(self.manager)
-        return self._vllm_manager
+            self._model_manger = ModelManger(self.manager)
+        return self._model_manger
 
     def monitor_container_stop(self, container_name: str) -> bool:
         """Monitor container stop using journalctl to watch for service exit"""
@@ -147,7 +147,7 @@ class ContainerManager:
             task = progress.add_task("operation", total=None)
             verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
-            command_success = self.vllm_manager._run_command(cmd)
+            command_success = self.model_manger._run_command(cmd)
 
             # Show completion message without spinner
             if command_success:
@@ -201,17 +201,17 @@ class ContainerManager:
 
                 while (
                     elapsed_time < max_wait_time
-                    and self.vllm_manager._is_port_in_use(self.vllm_manager.vllm_port)
+                    and self.model_manger._is_port_in_use(self.model_manger.model_port)
                 ):
                     time.sleep(wait_interval)
                     elapsed_time += wait_interval
 
-                if self.vllm_manager._is_port_in_use(self.vllm_manager.vllm_port):
+                if self.model_manger._is_port_in_use(self.model_manger.model_port):
                     verbose_print(
-                        f"[cyan]Warning: Port {self.vllm_manager.vllm_port} still in use after stopping {current_container}[/cyan]"
+                        f"[cyan]Warning: Port {self.model_manger.model_port} still in use after stopping {current_container}[/cyan]"
                     )
                     # Try force cleanup as fallback
-                    return self.vllm_manager._cleanup_vllm_port()
+                    return self.model_manger._cleanup_model_port()
 
             return success
 
@@ -241,7 +241,7 @@ class ContainerManager:
                 # Stop the container again
                 stop_cmd = ["podman", "stop", "-t", "10", container_name]
                 verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
-                stop_result = self.vllm_manager._run_command(
+                stop_result = self.model_manger._run_command(
                     stop_cmd, suppress_errors=True
                 )
 
@@ -249,7 +249,7 @@ class ContainerManager:
                     # Try to remove again
                     rm_cmd = ["podman", "rm", container_name]
                     verbose_print(f"[cyan]exec: {' '.join(rm_cmd)}[/cyan]")
-                    remove_result = self.vllm_manager._run_command(
+                    remove_result = self.model_manger._run_command(
                         rm_cmd, suppress_errors=True
                     )
 
@@ -296,7 +296,7 @@ class ContainerManager:
         """Start vllm-proxy with the correct backend URL"""
         try:
             # Use the vLLM manager's method to restart the proxy
-            return self.vllm_manager._restart_vllm_proxy(backend_container)
+            return self.model_manger._restart_vllm_proxy(backend_container)
         except Exception:
             return False
 
@@ -304,6 +304,6 @@ class ContainerManager:
         """Start mcp-model-delegator container"""
         try:
             # Use the vLLM manager's method to restart the delegator
-            return self.vllm_manager._restart_mcp_model_delegator()
+            return self.model_manger._restart_mcp_model_delegator()
         except Exception:
             return False

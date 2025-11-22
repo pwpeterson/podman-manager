@@ -13,16 +13,16 @@ class ServiceLifecycle:
 
     def __init__(self, manager):
         self.manager = manager
-        self._vllm_manager = None
+        self._model_manger = None
 
     @property
-    def vllm_manager(self):
+    def model_manger(self):
         """Lazy initialization of vLLM manager"""
-        if self._vllm_manager is None:
-            from managers.vllm_model_manager import VLLMModelManager
+        if self._model_manger is None:
+            from managers.model_manager import ModelManger
 
-            self._vllm_manager = VLLMModelManager(self.manager)
-        return self._vllm_manager
+            self._model_manger = ModelManger(self.manager)
+        return self._model_manger
 
     def start(self, target: str, build: bool = False) -> bool:
         """Start a service or stack"""
@@ -38,7 +38,7 @@ class ServiceLifecycle:
                 "[yellow]Detected vLLM service, using enhanced startup monitoring...[/yellow]"
             )
             # Ensure any existing vLLM process is properly stopped first
-            if not self.vllm_manager._cleanup_vllm_port():
+            if not self.model_manger._cleanup_vllm_port():
                 console.print(
                     "[yellow]Warning: Could not properly stop existing vLLM model[/yellow]"
                 )
@@ -136,7 +136,7 @@ class ServiceLifecycle:
         return self._remove_service(target)
 
     def restart(
-        self, target: str, build: bool = False, vllm_model: Optional[str] = None
+        self, target: str, build: bool = False, model_model: Optional[str] = None
     ) -> bool:
         """Restart a service or stack"""
         # Clear cache at the start of the operation
@@ -148,11 +148,11 @@ class ServiceLifecycle:
             "vllm-stack",
         ]
 
-        if vllm_model:
+        if model_model:
             console.print(
-                f"[green]vLLM model switching requested: {vllm_model}[/green]"
+                f"[green]vLLM model switching requested: {model_model}[/green]"
             )
-            if not self.vllm_manager.switch_vllm_model(vllm_model):
+            if not self.model_manger.switch_model_model(model_model):
                 console.print("[red]vLLM model switch failed, aborting restart[/red]")
                 return False
             console.print()
@@ -161,7 +161,7 @@ class ServiceLifecycle:
             console.print(
                 "[yellow]Detected vLLM service, ensuring proper shutdown...[/yellow]"
             )
-            if not self.vllm_manager._cleanup_vllm_port():
+            if not self.model_manger._cleanup_vllm_port():
                 console.print(
                     "[yellow]Warning: Could not properly stop current vLLM model[/yellow]"
                 )
