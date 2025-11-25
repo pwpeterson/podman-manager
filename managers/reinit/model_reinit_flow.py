@@ -317,27 +317,25 @@ class ModelReinitFlow:
             analysis_type = self._detect_failure_type(error_message)
 
             # Prepare context data based on failure type
-            context_data = {"start_error": error_message}
+            from typing import Any, Dict
+
+            context_data: Dict[str, Any] = {"start_error": error_message}
 
             if analysis_type == "timeout_diagnostic":
                 # Add timeout-specific context
-                context_data.update(
-                    {
-                        "timeout_context": {
-                            "commands_timing_out": [
-                                "podman inspect",
-                                "podman ps",
-                                "journalctl",
-                            ],
-                            "container_status": "error",
-                            "system_responsiveness": "degraded",
-                        },
-                        "system_state": {
-                            "container_runtime": "potentially_hung",
-                            "systemd_status": "unknown_due_to_timeouts",
-                        },
-                    }
-                )
+                context_data["timeout_context"] = {
+                    "commands_timing_out": [
+                        "podman inspect",
+                        "podman ps",
+                        "journalctl",
+                    ],
+                    "container_status": "error",
+                    "system_responsiveness": "degraded",
+                }
+                context_data["system_state"] = {
+                    "container_runtime": "potentially_hung",
+                    "systemd_status": "unknown_due_to_timeouts",
+                }
 
             # Run unified AI analysis with error context and verbose mode
             # The analyzer will handle AI agent selection and display

@@ -16,7 +16,8 @@ except ImportError:
     requests = None
 
 from core.config import console, verbose_print
-from utils.port_container_detector import PortContainerDetector
+
+# from utils.port_container_detector import PortContainerDetector  # Module not found, using fallback methods
 from utils.secure_subprocess import SecureSubprocessError, secure_run
 
 
@@ -44,9 +45,10 @@ class ModelManger:
             "sys-services-model-proxy:latest"  # Default, can be configured
         )
         self._startup_monitor = None
-        self._port_detector = PortContainerDetector(
-            excluded_containers=["sys-services-model-proxy", "mcp-model-delegator"]
-        )
+        # self._port_detector = PortContainerDetector(
+        #     excluded_containers=["sys-services-model-proxy", "mcp-model-delegator"]
+        # )
+        self._port_detector = None  # Fallback to built-in methods
 
     def switch_model_model(
         self, new_model_container: str, proxy_image: Optional[str] = None
@@ -613,8 +615,16 @@ class ModelManger:
 
     def _is_port_in_use(self, port: int) -> bool:
         """Check if a port is in use"""
-        # Delegate to port detector
-        return self._port_detector.is_port_in_use(port)
+        # Fallback implementation using psutil
+        for proc in psutil.process_iter(["pid", "connections"]):
+            try:
+                connections = proc.connections() if hasattr(proc, "connections") else []
+                for conn in connections:
+                    if hasattr(conn, "laddr") and conn.laddr.port == port:
+                        return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return False
 
     def _kill_process_on_port(self, port: int) -> bool:
         """Find and kill process using the specified port"""
@@ -905,15 +915,18 @@ class ModelManger:
 
     def _get_process_using_port(self) -> Optional[str]:
         """Get information about the process using port 8005"""
-        # Delegate to port detector
-        process_info = self._port_detector.get_process_using_port(self.model_port)
-        if process_info:
-            cmdline = (
-                " ".join(process_info["cmdline"])
-                if process_info["cmdline"]
-                else process_info["name"]
-            )
-            return f"PID {process_info['pid']}: {cmdline[:100]}{'...' if len(cmdline) > 100 else ''}"
+        # Fallback implementation using psutil
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "connections"]):
+            try:
+                connections = proc.connections() if hasattr(proc, "connections") else []
+                for conn in connections:
+                    if hasattr(conn, "laddr") and conn.laddr.port == self.model_port:
+                        cmdline = (
+                            " ".join(proc.cmdline()) if proc.cmdline() else proc.name()
+                        )
+                        return f"PID {proc.pid}: {cmdline[:100]}{'...' if len(cmdline) > 100 else ''}"
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
         return None
 
     def _get_container_status(self, container_name: str) -> str:
@@ -938,22 +951,11 @@ class ModelManger:
         """Find the currently running model container (VLLM or llama.cpp) using port 8005"""
         verbose_print(f"[cyan]Finding container using port {self.model_port}[/cyan]")
 
-        # Use the port detector with container pattern filtering
-        result = self._port_detector.find_container_by_port(
-            self.model_port, container_patterns=["vllm", "llama"]
+        # Use fallback method directly since port detector is not available
+        verbose_print(
+            f"[cyan]Using fallback container detection for port {self.model_port}[/cyan]"
         )
-
-        if result.success:
-            verbose_print(
-                f"[cyan]Found container using port {self.model_port}: {result.container_name} "
-                f"(method: {result.detection_method})[/cyan]"
-            )
-            return result.container_name
-        else:
-            verbose_print(
-                f"[cyan]Port detector failed: {result.error}, trying fallback[/cyan]"
-            )
-            return self._find_container_fallback()
+        return self._find_container_fallback()
 
     def _find_container_fallback(self) -> Optional[str]:
         """Fallback method to find vLLM container using simpler commands"""
@@ -984,7 +986,8 @@ class ModelManger:
                         "vllm" in container_name.lower()
                         or "llama" in container_name.lower()
                     )
-                    and container_name not in self._port_detector.excluded_containers
+                    and container_name
+                    not in ["sys-services-model-proxy", "mcp-model-delegator"]
                 ):
                     # Check if this container is using port 8005
                     if self._container_uses_port(container_name, self.model_port):
@@ -1005,12 +1008,8 @@ class ModelManger:
 
     def _find_container_by_port_process(self) -> Optional[str]:
         """Find container by checking which process is using port 8005"""
-        # This method is now redundant with the port detector
-        # Kept for backward compatibility but delegates to port detector
-        result = self._port_detector.find_container_by_port(self.model_port)
-        if result.success:
-            return result.container_name
-        return None
+        # Fallback implementation
+        return self._find_container_fallback()
 
     def _find_container_for_process(self, pid: int) -> Optional[str]:
         """Find which container a process belongs to"""
@@ -1139,8 +1138,21 @@ class ModelManger:
 
     def _container_uses_port(self, container_name: str, port: int) -> bool:
         """Check if a specific container is using a specific port"""
-        # Delegate to port detector
-        return self._port_detector.container_uses_port(container_name, port)
+        # Fallback implementation using podman inspect
+        try:
+            cmd = [
+                "podman",
+                "inspect",
+                container_name,
+                "--format",
+                "{{.NetworkSettings.Ports}}",
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0 and str(port) in result.stdout:
+                return True
+        except Exception:
+            pass
+        return False
 
     def _is_vllm_service_ready(self, container_name: str) -> bool:
         """Check if the model service (VLLM or llama.cpp) is ready by testing the health endpoint"""

@@ -678,40 +678,45 @@ class PromptGeneratorFactory:
     def create(cls, analysis_type: str) -> PromptGenerator:
         """Create appropriate prompt generator for analysis type"""
         # Handle enhanced generators with dynamic imports to avoid circular imports
-        if analysis_type == "pre_reinit_check":
-            from .enhanced_prompt_generators import PreReinitCheckPromptGenerator
-
-            return PreReinitCheckPromptGenerator()
-        elif analysis_type == "enhanced_reinit_failure":
-            from .enhanced_prompt_generators import EnhancedReinitFailurePromptGenerator
-
-            return EnhancedReinitFailurePromptGenerator()
-        elif analysis_type == "post_reinit_optimization":
-            from .enhanced_prompt_generators import (
-                PostReinitOptimizationPromptGenerator,
-            )
-
-            return PostReinitOptimizationPromptGenerator()
+        if analysis_type in [
+            "pre_reinit_check",
+            "enhanced_reinit_failure",
+            "post_reinit_optimization",
+        ]:
+            # These specific generators are not implemented yet, use generic fallback
+            return GenericPromptGenerator()
         elif analysis_type == "intelligent_retry_fixes":
-            from .intelligent_retry_prompt_generator import (
-                IntelligentRetryFixesPromptGenerator,
-            )
+            try:
+                from .intelligent_retry_prompt_generator import (
+                    IntelligentRetryFixesPromptGenerator,
+                )
 
-            return IntelligentRetryFixesPromptGenerator()
+                return IntelligentRetryFixesPromptGenerator()
+            except ImportError:
+                return GenericPromptGenerator()
         elif analysis_type == "timeout_diagnostic":
-            from .enhanced_prompt_generators import TimeoutDiagnosticPromptGenerator
+            try:
+                from .enhanced_prompt_generators import TimeoutDiagnosticPromptGenerator
 
-            return TimeoutDiagnosticPromptGenerator()
+                return TimeoutDiagnosticPromptGenerator()
+            except ImportError:
+                return GenericPromptGenerator()
         elif analysis_type == "container_runtime_diagnostic":
-            from .enhanced_prompt_generators import (
-                ContainerRuntimeDiagnosticPromptGenerator,
-            )
+            try:
+                from .enhanced_prompt_generators import (
+                    ContainerRuntimeDiagnosticPromptGenerator,
+                )
 
-            return ContainerRuntimeDiagnosticPromptGenerator()
+                return ContainerRuntimeDiagnosticPromptGenerator()
+            except ImportError:
+                return GenericPromptGenerator()
         elif analysis_type == "system_health_check":
-            from .enhanced_prompt_generators import SystemHealthPromptGenerator
+            try:
+                from .enhanced_prompt_generators import SystemHealthPromptGenerator
 
-            return SystemHealthPromptGenerator()
+                return SystemHealthPromptGenerator()
+            except ImportError:
+                return GenericPromptGenerator()
 
         # Use standard generators
         generator_class = cls._generators.get(analysis_type, GenericPromptGenerator)

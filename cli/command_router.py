@@ -1168,7 +1168,7 @@ class CommandRouter:
         """Switch vLLM backend to a different model container"""
         self.handle_command_verbose(args)
         try:
-            from managers.model_model_manager import ModelManger
+            from managers.model_manager import ModelManger
 
             vllm_mgr = ModelManger(self.manager)
 
@@ -1200,7 +1200,7 @@ class CommandRouter:
         """Show current vLLM configuration and status"""
         self.handle_command_verbose(args)
         try:
-            from managers.model_model_manager import ModelManger
+            from managers.model_manager import ModelManger
 
             vllm_mgr = ModelManger(self.manager)
             vllm_mgr.show_vllm_status()
@@ -1216,7 +1216,7 @@ class CommandRouter:
         """List available vLLM model containers"""
         self.handle_command_verbose(args)
         try:
-            from managers.model_model_manager import ModelManger
+            from managers.model_manager import ModelManger
 
             vllm_mgr = ModelManger(self.manager)
 
@@ -1259,7 +1259,7 @@ class CommandRouter:
         """Show which vLLM model is currently using port 8005"""
         self.handle_command_verbose(args)
         try:
-            from managers.model_model_manager import ModelManger
+            from managers.model_manager import ModelManger
 
             vllm_mgr = ModelManger(self.manager)
             vllm_mgr.show_current_model_model()

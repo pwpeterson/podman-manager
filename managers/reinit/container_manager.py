@@ -211,7 +211,7 @@ class ContainerManager:
                         f"[cyan]Warning: Port {self.model_manger.model_port} still in use after stopping {current_container}[/cyan]"
                     )
                     # Try force cleanup as fallback
-                    return self.model_manger._cleanup_model_port()
+                    return self.model_manger._cleanup_vllm_port()
 
             return success
 
