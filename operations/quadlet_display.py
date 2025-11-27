@@ -18,14 +18,14 @@ class QuadletDisplayManager:
         self.manager = manager
 
     def show_status(self, target=None, verbose=False):
-        """Show projects and services in alphabetical tree format with running status"""
+        """Show projects and services in table format with systemd and podman status columns"""
 
         # Show status while retrieving
         console.print("\n[green]Retrieving podman status...[/green]")
         # Get all available projects and services
         all_items = self._get_all_projects_and_services()
         # Get all container statuses at once
-        all_container_statuses = self._get_all_container_statuses(verbose=verbose)
+        all_container_statuses = self._get_all_container_statuses(verbose=False)
 
         if not all_items:
             console.print("[red]No projects or services found![/red]")
@@ -75,7 +75,14 @@ class QuadletDisplayManager:
             all_items = filtered_items
 
         console.print()
-        tree = Tree("Stacks & Services", style="cyan")
+
+        # Create table with three columns
+        table = Table(
+            show_header=True, header_style="bold cyan", box=None, padding=(0, 2)
+        )
+        table.add_column("Stacks & Services", style="cyan", no_wrap=False)
+        table.add_column("systemd", style="white", no_wrap=False)
+        table.add_column("podman ps", style="white", no_wrap=False)
 
         # Sort projects alphabetically
         for project_name in sorted(all_items.keys()):
@@ -84,8 +91,8 @@ class QuadletDisplayManager:
             # Use display_name if available, otherwise use project_name
             display_name = project_info.get("display_name", project_name)
 
-            # For mixed projects, just show the project name without type suffix
-            project_node = tree.add(f"[cyan]{display_name}[/cyan]")
+            # Add stack header row
+            table.add_row(f"[bold cyan]{display_name}[/bold cyan]", "", "")
 
             services = project_info.get("services", {})
             if services:
@@ -94,68 +101,33 @@ class QuadletDisplayManager:
                     # Get the clean service name (remove color formatting)
                     clean_service_name = self._extract_clean_service_name(service_name)
 
-                    # Get service status from cached data
-                    status_info = self._get_service_status_from_cache(
+                    # Get service status from cached data (returns tuple: systemd, podman)
+                    systemd_status, podman_status = self._get_service_status_columns(
                         clean_service_name, all_container_statuses
                     )
 
                     # Check if service has a Dockerfile and add buildable indicator
                     has_dockerfile = self._has_dockerfile(service_name)
-                    buildable_indicator = " [blue]🔨[/blue]" if has_dockerfile else ""
+                    buildable_indicator = " 🔨" if has_dockerfile else ""
 
-                    # Format service with status (30 character field for alignment)
-                    clean_service_display = self._extract_clean_service_name(
-                        service_name
-                    )
-
-                    if has_dockerfile:
-                        # For services with Dockerfile: subtract 4 spaces from padding
-                        service_name_length = len(clean_service_display)
-                        normal_padding = 30 - service_name_length
-                        padding_needed = (
-                            normal_padding - 4
-                        )  # Subtract 4 spaces as requested
-
-                        if padding_needed < 0:
-                            # Service name too long, truncate it
-                            max_service_length = 26  # 30 - 4 for spacing adjustment
-                            truncated_service = service_name
-                            while (
-                                len(self._extract_clean_service_name(truncated_service))
-                                > max_service_length
-                            ):
-                                truncated_service = truncated_service[:-1]
-                            service_display = (
-                                truncated_service + " " + buildable_indicator
-                            )
-                        else:
-                            # Add space and emoji, then reduced padding
-                            service_display = (
-                                service_name
-                                + " "
-                                + buildable_indicator
-                                + (" " * padding_needed)
-                            )
+                    # Color code service name based on systemd status only
+                    if "active" in systemd_status:
+                        service_color = "green"
+                    elif "failed" in systemd_status:
+                        service_color = "red"
+                    elif "inactive" in systemd_status or "starting" in systemd_status:
+                        service_color = "yellow"
                     else:
-                        # No indicator, pad to full 30 characters
-                        padding_needed = 30 - len(clean_service_display)
-                        service_display = service_name + (" " * padding_needed)
+                        service_color = "white"
 
-                    service_with_status = f"{service_display} {status_info}"
+                    # Format service name with color and indicator
+                    service_display = f"  [{service_color}]{clean_service_name}[/{service_color}]{buildable_indicator}"
 
-                    # Add verbose information if requested
-                    if verbose:
-                        verbose_info = self._get_verbose_service_info(
-                            clean_service_name, all_container_statuses
-                        )
-                        if verbose_info:
-                            service_with_status += f" {verbose_info}"
-
-                    project_node.add(service_with_status)
+                    table.add_row(service_display, systemd_status, podman_status)
             else:
-                project_node.add("[dim](no services found)[/dim]")
+                table.add_row("  [dim](no services found)[/dim]", "", "")
 
-        console.print(tree)
+        console.print(table)
         console.print()
 
     def _get_all_projects_and_services(self):
@@ -676,12 +648,27 @@ class QuadletDisplayManager:
                 ["ps", "-a", "--format", "{{.Names}};{{.Status}}"], timeout=5
             )
 
+            if verbose:
+                console.print(
+                    f"  [dim]Debug: podman returncode={result.returncode}, stdout length={len(result.stdout) if result.stdout else 0}[/dim]"
+                )
+                if result.stdout:
+                    console.print(
+                        f"  [dim]Debug: First 200 chars of stdout: {result.stdout[:200]}[/dim]"
+                    )
+
             if result.returncode == 0 and result.stdout.strip():
                 container_statuses = {}
                 for line in result.stdout.strip().split("\n"):
                     if ";" in line:
                         name, status = line.split(";", 1)
                         container_statuses[name.strip()] = status.strip()
+
+                if verbose:
+                    console.print(
+                        f"  [dim]Debug: Parsed {len(container_statuses)} containers[/dim]"
+                    )
+
                 return container_statuses
 
             return {}
@@ -692,10 +679,16 @@ class QuadletDisplayManager:
                     "  [yellow]⚠️  Podman command timed out after 5s - using systemd fallback[/yellow]"
                 )
             return {}
-        except Exception:
+        except Exception as e:
+            if verbose:
+                console.print(
+                    f"  [red]Debug: Exception in _get_all_container_statuses: {e}[/red]"
+                )
             return {}
 
-    def _parse_systemctl_status(self, status_output: str, service_name: str) -> str:
+    def _parse_systemctl_status(
+        self, status_output: str, service_name: str
+    ) -> tuple[str, str]:
         """
         Parse systemctl status output to extract status information.
 
@@ -705,7 +698,7 @@ class QuadletDisplayManager:
            Active: active (running) since Tue 2025-11-11 13:08:46 CST; 1h 2min ago
         "
 
-        Returns formatted status string with Rich markup.
+        Returns tuple: (formatted status string with Rich markup, uptime string)
         """
         lines = status_output.strip().split("\n")
 
@@ -726,82 +719,49 @@ class QuadletDisplayManager:
 
                         # Format based on status
                         if "active (running)" in status_clean:
-                            if time_part:
-                                return f"[green]active (systemd) {time_part}[/green]"
-                            else:
-                                return "[green]active (systemd)[/green]"
+                            return ("[green]active[/green]", time_part)
                         elif "active" in status_clean and "start" in status_clean:
-                            return "[yellow]starting (systemd)[/yellow]"
+                            return ("[yellow]starting[/yellow]", "")
                         elif "failed" in status_clean:
-                            return "[red]failed (systemd)[/red]"
+                            return ("[red]failed[/red]", "")
                         elif "inactive" in status_clean:
-                            return "[yellow]inactive (systemd)[/yellow]"
+                            return ("[yellow]inactive[/yellow]", "")
                         else:
-                            return f"[dim]{status_clean} (systemd)[/dim]"
+                            return (f"[dim]{status_clean}[/dim]", "")
                     else:
                         # Handle cases without 'since'
                         status_part = line.replace("Active: ", "").strip()
                         if "active (running)" in status_part:
-                            return "[green]active (systemd)[/green]"
+                            return ("[green]active[/green]", "")
                         elif "failed" in status_part:
-                            return "[red]failed (systemd)[/red]"
+                            return ("[red]failed[/red]", "")
                         elif "inactive" in status_part:
-                            return "[yellow]inactive (systemd)[/yellow]"
+                            return ("[yellow]inactive[/yellow]", "")
                         else:
-                            return f"[dim]{status_part} (systemd)[/dim]"
+                            return (f"[dim]{status_part}[/dim]", "")
                 except Exception:
                     # Fallback if parsing fails
-                    return "[dim]unknown (systemd)[/dim]"
+                    return ("[dim]unknown[/dim]", "")
 
         # Look for Loaded line to check if service exists
         for line in lines:
             line = line.strip()
             if line.startswith("Loaded:"):
                 if "not-found" in line or "not found" in line:
-                    return "[white]not found[/white]"
+                    return ("[white]not found[/white]", "")
                 elif "loaded" in line:
                     # Service exists but no Active line found - unusual case
-                    return "[dim]unknown (systemd)[/dim]"
+                    return ("[dim]unknown[/dim]", "")
 
         # If we get here, service likely doesn't exist
-        return "[white]not found[/white]"
+        return ("[white]not found[/white]", "")
 
     def _get_service_status_from_cache(self, service_name, all_container_statuses):
-        """Get service status from cached container statuses with systemd fallback"""
+        """Get service status combining systemd status with podman health info"""
         try:
-            # If we have container statuses, use them
-            if all_container_statuses:
-                # Check exact match first
-                if service_name in all_container_statuses:
-                    return self._format_status(all_container_statuses[service_name])
-
-                # Check for partial matches
-                for container_name, status in all_container_statuses.items():
-                    if service_name in container_name:
-                        return self._format_status(status)
-
-                # Check for common service variations
-                variations = [
-                    service_name.replace("-", "_"),
-                    service_name.replace("_", "-"),
-                    f"local-ai-{service_name}",
-                    f"supabase-{service_name}",
-                    service_name.replace("local-ai-", ""),
-                    service_name.replace("supabase-", ""),
-                ]
-
-                for variation in variations:
-                    if variation in all_container_statuses:
-                        return self._format_status(all_container_statuses[variation])
-
-                    # Check partial matches for variations
-                    for container_name, status in all_container_statuses.items():
-                        if variation in container_name:
-                            return self._format_status(status)
-
-            # Fallback: check systemd service status when podman is unresponsive
+            # ALWAYS get systemd status first for uptime info
+            systemd_status = None
             try:
-                # Use systemctl status to get human-readable status information
                 status_result = secure_run(
                     [
                         "systemctl",
@@ -813,34 +773,293 @@ class QuadletDisplayManager:
                     ],
                     timeout=3,
                 )
-
-                # Parse the status output
                 if status_result.stdout:
-                    return self._parse_systemctl_status(
+                    systemd_status = self._parse_systemctl_status(
                         status_result.stdout, service_name
                     )
-                else:
-                    return "[white]not found[/white]"
-
-            except subprocess.TimeoutExpired:
-                return "[red]timeout[/red]"
             except Exception:
+                pass
+
+            # Get podman health status from cache or direct query
+            podman_health = None
+
+            # Try to find health status in cache first
+            if all_container_statuses:
+                # Check exact match first
+                if service_name in all_container_statuses:
+                    podman_health = self._extract_health_status(
+                        all_container_statuses[service_name]
+                    )
+                else:
+                    # Check for partial matches
+                    for container_name, status in all_container_statuses.items():
+                        if service_name in container_name:
+                            podman_health = self._extract_health_status(status)
+                            break
+
+                    # Check for common service variations
+                    if not podman_health:
+                        variations = [
+                            service_name.replace("-", "_"),
+                            service_name.replace("_", "-"),
+                            f"local-ai-{service_name}",
+                            f"supabase-{service_name}",
+                            service_name.replace("local-ai-", ""),
+                            service_name.replace("supabase-", ""),
+                        ]
+
+                        for variation in variations:
+                            if variation in all_container_statuses:
+                                podman_health = self._extract_health_status(
+                                    all_container_statuses[variation]
+                                )
+                                break
+
+                            # Check partial matches for variations
+                            for (
+                                container_name,
+                                status,
+                            ) in all_container_statuses.items():
+                                if variation in container_name:
+                                    podman_health = self._extract_health_status(status)
+                                    break
+                            if podman_health:
+                                break
+
+            # If no health status in cache, try direct podman query
+            if not podman_health:
+                name_variations = [
+                    service_name,
+                    service_name.replace("-", "_"),
+                    service_name.replace("_", "-"),
+                ]
+
+                for name_variant in name_variations:
+                    try:
+                        result = podman_cmd(
+                            [
+                                "ps",
+                                "-a",
+                                "--filter",
+                                f"name=^{name_variant}$",
+                                "--format",
+                                "{{.Status}}",
+                            ],
+                            timeout=3,
+                        )
+                        if result.returncode == 0 and result.stdout.strip():
+                            podman_health = self._extract_health_status(
+                                result.stdout.strip()
+                            )
+                            break
+                    except Exception:
+                        continue
+
+            # Format as two columns: systemd status | podman status
+            if systemd_status and podman_health:
+                # Both statuses available
+                return f"{systemd_status} | {podman_health}"
+            elif systemd_status:
+                # Only systemd status available
+                # Check inactive BEFORE active (since "active" is substring of "inactive")
+                if "inactive (systemd)" in systemd_status:
+                    return f"{systemd_status} | [dim](not running)[/dim]"
+                elif "failed (systemd)" in systemd_status:
+                    return f"{systemd_status} | [dim](not running)[/dim]"
+                elif "active (systemd)" in systemd_status:
+                    return f"{systemd_status} | [dim](not available)[/dim]"
+                return systemd_status
+            else:
+                # No systemd status - service not found
                 return "[white]not found[/white]"
 
         except Exception:
             return "[red]error[/red]"
 
+    def _get_service_status_columns(self, service_name, all_container_statuses):
+        """Get service status as separate systemd and podman columns (returns tuple)"""
+        try:
+            # Get systemd status (returns tuple: status, uptime)
+            systemd_status = None
+            uptime = ""
+            try:
+                status_result = secure_run(
+                    [
+                        "systemctl",
+                        "--user",
+                        "status",
+                        f"{service_name}.service",
+                        "--no-pager",
+                        "--lines=0",
+                    ],
+                    timeout=3,
+                )
+                if status_result.stdout:
+                    systemd_status, uptime = self._parse_systemctl_status(
+                        status_result.stdout, service_name
+                    )
+            except Exception:
+                pass
+
+            # Get podman health status from cache or direct query
+            podman_health = None
+
+            # Try to find health status in cache first
+            if all_container_statuses:
+                # Check exact match first
+                if service_name in all_container_statuses:
+                    podman_health = self._extract_health_status(
+                        all_container_statuses[service_name]
+                    )
+                else:
+                    # Check for partial matches
+                    for container_name, status in all_container_statuses.items():
+                        if service_name in container_name:
+                            podman_health = self._extract_health_status(status)
+                            break
+
+                    # Check for common service variations
+                    if not podman_health:
+                        variations = [
+                            service_name.replace("-", "_"),
+                            service_name.replace("_", "-"),
+                            f"local-ai-{service_name}",
+                            f"supabase-{service_name}",
+                            service_name.replace("local-ai-", ""),
+                            service_name.replace("supabase-", ""),
+                        ]
+
+                        for variation in variations:
+                            if variation in all_container_statuses:
+                                podman_health = self._extract_health_status(
+                                    all_container_statuses[variation]
+                                )
+                                break
+
+                            # Check partial matches for variations
+                            for (
+                                container_name,
+                                status,
+                            ) in all_container_statuses.items():
+                                if variation in container_name:
+                                    podman_health = self._extract_health_status(status)
+                                    break
+                            if podman_health:
+                                break
+
+            # If no health status in cache, try direct podman query
+            if not podman_health:
+                name_variations = [
+                    service_name,
+                    service_name.replace("-", "_"),
+                    service_name.replace("_", "-"),
+                ]
+
+                for name_variant in name_variations:
+                    try:
+                        result = podman_cmd(
+                            [
+                                "ps",
+                                "-a",
+                                "--filter",
+                                f"name=^{name_variant}$",
+                                "--format",
+                                "{{.Status}}",
+                            ],
+                            timeout=3,
+                        )
+                        if result.returncode == 0 and result.stdout.strip():
+                            podman_health = self._extract_health_status(
+                                result.stdout.strip()
+                            )
+                            break
+                    except Exception:
+                        continue
+
+            # Build podman column: uptime + health status with color coding
+            podman_column = ""
+
+            # Color code uptime - green indicates running
+            uptime_colored = ""
+            if uptime:
+                uptime_colored = f"[green]{uptime}[/green]"
+
+            if podman_health:
+                # Color code based on health status
+                if "(healthy)" in podman_health:
+                    health_colored = "[green](healthy)[/green]"
+                elif "(unhealthy)" in podman_health:
+                    health_colored = "[yellow](unhealthy)[/yellow]"
+                elif "(starting)" in podman_health:
+                    health_colored = "[yellow](starting)[/yellow]"
+                elif "(running)" in podman_health:
+                    health_colored = "[green](running)[/green]"
+                elif "(not available)" in podman_health:
+                    health_colored = "[dim](not available)[/dim]"
+                else:
+                    health_colored = podman_health
+
+                if uptime_colored:
+                    podman_column = f"{uptime_colored} {health_colored}"
+                else:
+                    podman_column = health_colored
+            elif systemd_status:
+                # No podman health - add appropriate indicator
+                if "inactive" in systemd_status or "failed" in systemd_status:
+                    if uptime_colored:
+                        podman_column = f"{uptime_colored} [dim](not running)[/dim]"
+                    else:
+                        podman_column = "[dim](not running)[/dim]"
+                elif "active" in systemd_status:
+                    if uptime_colored:
+                        podman_column = f"{uptime_colored} [dim](not available)[/dim]"
+                    else:
+                        podman_column = "[dim](not available)[/dim]"
+            elif uptime_colored:
+                # Just uptime, no status
+                podman_column = uptime_colored
+
+            # Return as tuple (systemd_column, podman_column)
+            if systemd_status:
+                return (systemd_status, podman_column)
+            else:
+                return ("[white]not found[/white]", "")
+
+        except Exception:
+            return ("[red]error[/red]", "")
+
+    def _extract_health_status(self, podman_status):
+        """Extract health status from podman status string"""
+        if not podman_status:
+            return None
+
+        status_lower = podman_status.lower()
+        if "(healthy)" in status_lower:
+            return "(healthy)"
+        elif "(unhealthy)" in status_lower:
+            return "(unhealthy)"
+        elif "(starting)" in status_lower:
+            return "(starting)"
+        elif "(running)" in status_lower:
+            return "(running)"
+        elif "up" in status_lower:
+            # Container is running but has no health status indicator
+            return "(not available)"
+        return None
+
     def _format_status(self, status):
-        """Format container status with appropriate colors"""
+        """Format container status with appropriate colors, preserving health status"""
         status_lower = status.lower()
 
         if "unhealthy" in status_lower or "starting" in status_lower:
             return f"[yellow]{status}[/yellow]"
         elif "up" in status_lower or "running" in status_lower:
-            # If status only has 'Up n <time period>' without health status, add (running)
-            if "up" in status_lower and "(" not in status:
+            # Preserve health status from podman (e.g., "(healthy)")
+            # Only add (running) if there's no parenthesis at all
+            if "(" not in status:
                 return f"[green]{status} (running)[/green]"
             else:
+                # Status already has health info like "(healthy)" - preserve it
                 return f"[green]{status}[/green]"
         elif "exited" in status_lower:
             # Check exit code

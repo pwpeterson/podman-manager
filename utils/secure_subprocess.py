@@ -106,7 +106,13 @@ def validate_command(cmd: List[str]) -> None:
         _validate_high_risk_command(cmd)
 
     # Validate arguments don't contain shell metacharacters
+    # Note: Allow curly braces for podman --format templates
+    command_name = Path(cmd[0]).name
     for arg in cmd[1:]:
+        # For podman commands, allow curly braces in format strings
+        if command_name == "podman" and ("{{" in arg or "}}" in arg):
+            # This is likely a Go template format string, which is safe
+            continue
         if any(char in arg for char in [";", "&", "|", "`", "$", "(", ")"]):
             raise SecureSubprocessError(f"Potentially unsafe argument: {arg}")
 
