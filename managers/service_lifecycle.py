@@ -26,6 +26,31 @@ class ServiceLifecycle:
 
     def start(self, target: str, build: bool = False) -> bool:
         """Start a service or stack"""
+        # Handle mcp-crawl4ai-rag service - prompt to disable roo code mcp service first
+        if target == "mcp-crawl4ai-rag":
+            console.print(f"\n[green]Starting {target}...[/green]")
+            console.print()
+            console.print(
+                "[red]IMPORTANT[/red] [bright_yellow]Disable the roo code mcp-crawl4ai-rag service before starting[/bright_yellow]"
+            )
+            console.print(
+                "[bright_yellow]Has the roo code mcp-crawl4ai-rag service been disabled? (y/n):[/bright_yellow] ",
+                end="",
+            )
+
+            # Get user input
+            try:
+                response = input().strip().lower()
+                if response != "y":
+                    console.print(
+                        "[yellow]Exiting start operation. Please disable the roo code mcp-crawl4ai-rag service first.[/yellow]"
+                    )
+                    return False
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[yellow]Operation cancelled by user.[/yellow]")
+                return False
+            console.print()
+
         # Handle vLLM model services with enhanced startup monitoring (exclude model-proxy)
         is_vllm_service = (
             "vllm" in target.lower()
@@ -142,6 +167,31 @@ class ServiceLifecycle:
         # Clear cache at the start of the operation
         self.manager._clear_auto_match_cache()
 
+        # Handle mcp-crawl4ai-rag service - prompt to disable roo code mcp service first
+        if target == "mcp-crawl4ai-rag":
+            console.print(f"\n[green]Restarting {target}...[/green]")
+            console.print()
+            console.print(
+                "[red]IMPORTANT[/red] [bright_yellow]Disable the roo code mcp-crawl4ai-rag service before restarting[/bright_yellow]"
+            )
+            console.print(
+                "[bright_yellow]Has the roo code mcp-crawl4ai-rag service been disabled? (y/n):[/bright_yellow] ",
+                end="",
+            )
+
+            # Get user input
+            try:
+                response = input().strip().lower()
+                if response != "y":
+                    console.print(
+                        "[yellow]Exiting restart operation. Please disable the roo code mcp-crawl4ai-rag service first.[/yellow]"
+                    )
+                    return False
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[yellow]Operation cancelled by user.[/yellow]")
+                return False
+            console.print()
+
         # Handle vLLM model switching if specified, or detect vLLM model services automatically (exclude model-proxy)
         is_vllm_service = "vllm" in target.lower() and target not in [
             "model-proxy",
@@ -230,7 +280,31 @@ class ServiceLifecycle:
 
             if result.returncode == 0:
                 console.print(f"  [green]Restarted {service_name}[/green]")
-                console.print()  # Add newline after successful restart
+
+                # Handle mcp-crawl4ai-rag service - prompt to re-enable roo code mcp service
+                if target == "mcp-crawl4ai-rag":
+                    console.print("  ")
+                    console.print(
+                        "[red]IMPORTANT[/red] [bright_yellow]Enable the roo code mcp-crawl4ai-rag service[/bright_yellow]"
+                    )
+                    console.print(
+                        "[bright_yellow]Has the roo code mcp-crawl4ai-rag service been enabled? (y/n):[/bright_yellow] ",
+                        end="",
+                    )
+
+                    # Get user input
+                    try:
+                        response = input().strip().lower()
+                        if response != "y":
+                            console.print(
+                                "[bright_red]mcp-crawl4ai-rag will not work until re-enabled[/bright_red]"
+                            )
+                    except (KeyboardInterrupt, EOFError):
+                        console.print(
+                            "\n[bright_red]mcp-crawl4ai-rag will not work until re-enabled[/bright_red]"
+                        )
+                    console.print()
+
                 return True
             else:
                 # Trigger automatic AI analysis for restart failures
@@ -649,7 +723,34 @@ class ServiceLifecycle:
             builder = ContainerBuilder(self.manager)
             if not builder.build_service(target):
                 return False
-        return self.manager.start_service(target)
+
+        result = self.manager.start_service(target)
+
+        # Handle mcp-crawl4ai-rag service - prompt to re-enable roo code mcp service after successful start
+        if result and target == "mcp-crawl4ai-rag":
+            console.print("  ")
+            console.print(
+                "[red]IMPORTANT[/red] [bright_yellow]Enable the roo code mcp-crawl4ai-rag service[/bright_yellow]"
+            )
+            console.print(
+                "[bright_yellow]Has the roo code mcp-crawl4ai-rag service been enabled? (y/n):[/bright_yellow] ",
+                end="",
+            )
+
+            # Get user input
+            try:
+                response = input().strip().lower()
+                if response != "y":
+                    console.print(
+                        "[bright_red]mcp-crawl4ai-rag will not work until re-enabled[/bright_red]"
+                    )
+            except (KeyboardInterrupt, EOFError):
+                console.print(
+                    "\n[bright_red]mcp-crawl4ai-rag will not work until re-enabled[/bright_red]"
+                )
+            console.print()
+
+        return result
 
     def _trigger_restart_failure_analysis(
         self, target: str, service_name: str, result
