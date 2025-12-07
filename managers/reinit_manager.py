@@ -227,13 +227,13 @@ class ReinitManager:
             )
             return True
 
-        # Handle mcp-crawl4ai-rag service - prompt to disable roo code mcp service first
-        if target == "mcp-crawl4ai-rag":
+        # Handle mcp-crawl4ai-rag-sse service - prompt to disable roo code mcp service first
+        if target == "mcp-crawl4ai-rag-sse":
             console.print(
-                "[red]IMPORTANT[/red] [bright_yellow]Disable the roo code mcp-crawl4ai-rag service before reinitializing[/bright_yellow]"
+                "[red]IMPORTANT[/red] [bright_yellow]Disable the roo code mcp-crawl4ai-rag-sse service before reinitializing[/bright_yellow]"
             )
             console.print(
-                "[bright_yellow]Has the roo code mcp-crawl4ai-rag service been disabled? (y/n):[/bright_yellow] ",
+                "[bright_yellow]Has the roo code mcp-crawl4ai-rag-sse service been disabled? (y/n):[/bright_yellow] ",
                 end="",
             )
 
@@ -242,7 +242,7 @@ class ReinitManager:
                 response = input().strip().lower()
                 if response != "y":
                     console.print(
-                        "[yellow]Exiting reinit operation. Please disable the roo code mcp-crawl4ai-rag service first.[/yellow]"
+                        "[yellow]Exiting reinit operation. Please disable the roo code mcp-crawl4ai-rag-sse service first.[/yellow]"
                     )
                     return False
             except (KeyboardInterrupt, EOFError):
@@ -295,14 +295,14 @@ class ReinitManager:
                 f"[green]{started_timestamp} |   Restarted {display_name}.[/green]"
             )
 
-            # Handle mcp-crawl4ai-rag service - prompt to re-enable roo code mcp service
-            if target == "mcp-crawl4ai-rag":
+            # Handle mcp-crawl4ai-rag-sse service - prompt to re-enable roo code mcp service
+            if target == "mcp-crawl4ai-rag-sse":
                 console.print()
                 console.print(
-                    "[red]IMPORTANT[/red] [bright_yellow]Enable the roo code mcp-crawl4ai-rag service[/bright_yellow]"
+                    "[red]IMPORTANT[/red] [bright_yellow]Enable the roo code mcp-crawl4ai-rag-sse service[/bright_yellow]"
                 )
                 console.print(
-                    "[bright_yellow]Has the roo code mcp-crawl4ai-rag service been enabled? (y/n):[/bright_yellow] ",
+                    "[bright_yellow]Has the roo code mcp-crawl4ai-rag-sse service been enabled? (y/n):[/bright_yellow] ",
                     end="",
                 )
 
@@ -311,11 +311,11 @@ class ReinitManager:
                     response = input().strip().lower()
                     if response != "y":
                         console.print(
-                            "[bright_red]mcp-crawl4ai-rag will not work until re-enabled[/bright_red]"
+                            "[bright_red]mcp-crawl4ai-rag-sse will not work until re-enabled[/bright_red]"
                         )
                 except (KeyboardInterrupt, EOFError):
                     console.print(
-                        "\n[bright_red]mcp-crawl4ai-rag will not work until re-enabled[/bright_red]"
+                        "\n[bright_red]mcp-crawl4ai-rag-sse will not work until re-enabled[/bright_red]"
                     )
                 console.print()
 
