@@ -643,9 +643,9 @@ class QuadletDisplayManager:
             if verbose:
                 console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
 
-            # Use shorter timeout to prevent hanging
+            # Use 30 second timeout for podman ps command
             result = podman_cmd(
-                ["ps", "-a", "--format", "{{.Names}};{{.Status}}"], timeout=5
+                ["ps", "-a", "--format", "{{.Names}};{{.Status}}"], timeout=30
             )
 
             if verbose:
@@ -676,7 +676,7 @@ class QuadletDisplayManager:
         except subprocess.TimeoutExpired:
             if verbose:
                 console.print(
-                    "  [yellow]⚠️  Podman command timed out after 5s - using systemd fallback[/yellow]"
+                    "  [yellow]⚠️  Podman command timed out after 30s - using systemd fallback[/yellow]"
                 )
             return {}
         except Exception as e:
