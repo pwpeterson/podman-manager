@@ -6,22 +6,29 @@
       "context": "/home/pwp/srv/coding_agent/mcp/mcp-crawl4ai-rag",
       "image_name": "localhost/mcp-crawl4ai-rag:latest"
     },
-    "mcp-model-delegator": {
-      "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-model-delegator",
-      "dockerfile": "Dockerfile.mcp-model-delegator",
-      "context": "/home/pwp/srv/coding_agent/mcp/mcp-model-delegator",
-      "image_name": "localhost/mcp-model-delegator:latest"
+    "mcp-model-toolbox": {
+      "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-model-toolbox",
+      "dockerfile": "Dockerfile.mcp-model-toolbox",
+      "context": "/home/pwp/srv/coding_agent/mcp/mcp-model-toolbox",
+      "image_name": "localhost/mcp-model-toolbox:latest"
     },
     "sys-services-model-proxy": {
       "build_dir": "/home/pwp/srv/sys-services/model-proxy",
       "dockerfile": "Dockerfile.sys-services-model-proxy",
       "context": "/home/pwp/srv/sys-services/model-proxy",
       "image_name": "localhost/sys-services-model-proxy:latest"
+    },
+    "mcp-model-proxy-assistant": {
+      "build_dir": "/home/pwp/srv/sys-services/model-proxy",
+      "dockerfile": "Dockerfile.mcp-model-proxy-assistant",
+      "context": "/home/pwp/srv/sys-services/model-proxy",
+      "image_name": "localhost/mcp-model-proxy-assistant:latest"
     }
   },
   "podman_build_services": [
     "mcp-crawl4ai-rag",
+    "mcp-model-toolbox",
     "sys-services-model-proxy",
-    "mcp-model-delegator"
+    "mcp-model-proxy-assistant"
   ]
 }

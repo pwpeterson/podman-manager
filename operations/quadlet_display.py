@@ -21,11 +21,14 @@ class QuadletDisplayManager:
         """Show projects and services in table format with systemd and podman status columns"""
 
         # Show status while retrieving
-        console.print("\n[green]Retrieving podman status...[/green]")
+        if verbose:
+            console.print("\n[green]Retrieving podman status (verbose mode)...[/green]")
+        else:
+            console.print("\n[green]Retrieving podman status...[/green]")
         # Get all available projects and services
-        all_items = self._get_all_projects_and_services()
+        all_items = self._get_all_projects_and_services(verbose=verbose)
         # Get all container statuses at once
-        all_container_statuses = self._get_all_container_statuses(verbose=False)
+        all_container_statuses = self._get_all_container_statuses(verbose=verbose)
 
         if not all_items:
             console.print("[red]No projects or services found![/red]")
@@ -130,7 +133,7 @@ class QuadletDisplayManager:
         console.print(table)
         console.print()
 
-    def _get_all_projects_and_services(self):
+    def _get_all_projects_and_services(self, verbose=False):
         """Get all projects and services from quadlets only"""
         all_items = {}
 
@@ -149,9 +152,13 @@ class QuadletDisplayManager:
                         short_name, {"installed": False, "source": False}
                     )
 
-                    # Only show services that are actually installed
-                    # Skip services that are only available in source but not installed
-                    if not status["installed"]:
+                    # In verbose mode, show all services (installed and source-only)
+                    # In normal mode, only show installed services
+                    if not verbose and not status["installed"]:
+                        if verbose:
+                            console.print(
+                                f"  [dim]Debug: Skipping {short_name} (not installed)[/dim]"
+                            )
                         continue
 
                     if status["installed"] and status["source"]:
