@@ -155,6 +155,10 @@ class ServiceDiscovery:
             for service_name, service_config in stdio_services.items():
                 self.stdio_services[service_name] = service_config
 
+                # Add to quadlet_services dict so it appears in listings
+                # Use service name as-is (no .service suffix for STDIO services)
+                self.quadlet_services[service_name] = service_name
+
                 # Override any existing service status with STDIO flag (STDIO takes priority)
                 self.service_status[service_name] = {
                     "installed": False,
