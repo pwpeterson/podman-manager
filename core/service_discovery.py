@@ -1,5 +1,6 @@
 """Unified service discovery utility for quadlet services and stacks."""
 
+import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -14,6 +15,9 @@ class ServiceDiscovery:
         self.quadlets_source_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
         # Installed directory
         self.quadlets_dir = Path.home() / ".config" / "containers" / "systemd"
+        # STDIO services config (use script directory, not current working directory)
+        script_dir = Path(__file__).parent.parent
+        self.stdio_config_path = script_dir / "stdio_services_config.json"
 
         # Discovered data
         self.quadlet_services: Dict[str, str] = {}  # service_name -> full_service_name
@@ -21,9 +25,11 @@ class ServiceDiscovery:
         self.service_status: Dict[str, Dict[str, bool]] = (
             {}
         )  # service_name -> {installed, source}
+        self.stdio_services: Dict[str, Dict] = {}  # service_name -> stdio config
 
         # Perform discovery
         self._discover_all_services()
+        self._discover_stdio_services()
 
     def _discover_all_services(self) -> None:
         """Auto-discover all quadlet services from both source and installed directories."""
@@ -133,10 +139,61 @@ class ServiceDiscovery:
             self.stack_services["standalone"] = standalone_services
             logger.debug("Created standalone group: {}", standalone_services)
 
+    def _discover_stdio_services(self) -> None:
+        """Discover STDIO services from configuration file."""
+        if not self.stdio_config_path.exists():
+            logger.debug(
+                "No STDIO services config found at: {}", self.stdio_config_path
+            )
+            return
+
+        try:
+            with open(self.stdio_config_path, "r") as f:
+                config = json.load(f)
+
+            stdio_services = config.get("stdio_services", {})
+            for service_name, service_config in stdio_services.items():
+                self.stdio_services[service_name] = service_config
+
+                # Override any existing service status with STDIO flag (STDIO takes priority)
+                self.service_status[service_name] = {
+                    "installed": False,
+                    "source": False,
+                    "stdio": True,
+                }
+
+                # Add to stack if specified (ensure it's in the right stack)
+                stack_name = service_config.get("stack", "stdio-services")
+                if stack_name not in self.stack_services:
+                    self.stack_services[stack_name] = []
+                if service_name not in self.stack_services[stack_name]:
+                    self.stack_services[stack_name].append(service_name)
+
+                # Remove from other stacks if present (STDIO services should only be in their designated stack)
+                for other_stack, services in list(self.stack_services.items()):
+                    if other_stack != stack_name and service_name in services:
+                        services.remove(service_name)
+                        logger.debug(
+                            "Removed {} from {} (moved to STDIO stack {})",
+                            service_name,
+                            other_stack,
+                            stack_name,
+                        )
+
+                logger.debug(
+                    "Discovered STDIO service: {} in stack {}", service_name, stack_name
+                )
+
+            logger.info("Discovered {} STDIO services", len(self.stdio_services))
+
+        except Exception as e:
+            logger.error("Error loading STDIO services config: {}", e)
+
     def refresh_discovery(self) -> None:
         """Re-discover all services and stacks."""
         logger.debug("Refreshing service discovery")
         self._discover_all_services()
+        self._discover_stdio_services()
 
     def get_available_stacks(self) -> List[str]:
         """Get list of available stack names."""
@@ -198,12 +255,23 @@ class ServiceDiscovery:
                 return (stack, container_file)
         return None
 
+    def is_stdio_service(self, service_name: str) -> bool:
+        """Check if a service is a STDIO service."""
+        return service_name in self.stdio_services
+
+    def get_stdio_service_info(self, service_name: str) -> Optional[Dict]:
+        """Get STDIO service configuration."""
+        return self.stdio_services.get(service_name)
+
     def get_service_display_info(self, service_name: str) -> str:
         """Get display information for a service."""
         info_parts = []
 
+        # Check if STDIO service
+        if self.is_stdio_service(service_name):
+            info_parts.append("[cyan](stdio)[/cyan]")
         # Check installation status
-        if service_name in self.service_status:
+        elif service_name in self.service_status:
             status = self.service_status[service_name]
             if status.get("installed", False):
                 info_parts.append("[green](installed)[/green]")

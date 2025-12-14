@@ -57,6 +57,11 @@ class QuadletManager:
         """Access to service status information."""
         return self.discovery.service_status
 
+    @property
+    def stdio_services(self) -> Dict[str, Dict]:
+        """Access to STDIO services information."""
+        return self.discovery.stdio_services
+
     def _validate_prerequisites(self) -> bool:
         """Validate that required tools exist"""
         logger.debug("Starting prerequisites validation")

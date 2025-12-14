@@ -113,8 +113,11 @@ class QuadletDisplayManager:
                     has_dockerfile = self._has_dockerfile(service_name)
                     buildable_indicator = " 🔨" if has_dockerfile else ""
 
-                    # Color code service name based on systemd status only
-                    if "active" in systemd_status:
+                    # Color code service name based on systemd status
+                    # Check if this is a STDIO service first
+                    if "stdio" in systemd_status:
+                        service_color = "green"  # STDIO services in green
+                    elif "active" in systemd_status:
                         service_color = "green"
                     elif "failed" in systemd_status:
                         service_color = "red"
@@ -152,16 +155,22 @@ class QuadletDisplayManager:
                         short_name, {"installed": False, "source": False}
                     )
 
+                    # Check if this is a STDIO service
+                    is_stdio = status.get("stdio", False)
+
                     # In verbose mode, show all services (installed and source-only)
-                    # In normal mode, only show installed services
-                    if not verbose and not status["installed"]:
+                    # In normal mode, only show installed services (but always show STDIO services)
+                    if not verbose and not status["installed"] and not is_stdio:
                         if verbose:
                             console.print(
                                 f"  [dim]Debug: Skipping {short_name} (not installed)[/dim]"
                             )
                         continue
 
-                    if status["installed"] and status["source"]:
+                    if is_stdio:
+                        # Cyan: STDIO service (not managed by systemd)
+                        color = "cyan"
+                    elif status["installed"] and status["source"]:
                         # Green: installed and available in source
                         color = "green"
                     elif status["installed"] and not status["source"]:
@@ -886,6 +895,15 @@ class QuadletDisplayManager:
     def _get_service_status_columns(self, service_name, all_container_statuses):
         """Get service status as separate systemd and podman columns (returns tuple)"""
         try:
+            # Check if this is a STDIO service
+            if (
+                hasattr(self.manager, "stdio_services")
+                and service_name in self.manager.stdio_services
+            ):
+                return self._get_stdio_service_status(
+                    service_name, all_container_statuses
+                )
+
             # Get systemd status (returns tuple: status, uptime)
             systemd_status = None
             uptime = ""
@@ -1034,6 +1052,44 @@ class QuadletDisplayManager:
 
         except Exception:
             return ("[red]error[/red]", "")
+
+    def _get_stdio_service_status(self, service_name, all_container_statuses):
+        """Get status for STDIO services (not managed by systemd)"""
+        try:
+            # STDIO services don't use systemd
+            systemd_status = "[green]stdio[/green]"
+
+            # Check if container is running via podman
+            podman_status = ""
+
+            # Try to find the container in podman
+            if all_container_statuses:
+                # Check exact match first
+                if service_name in all_container_statuses:
+                    container_status = all_container_statuses[service_name]
+                    health = self._extract_health_status(container_status)
+                    if health:
+                        podman_status = health
+                    else:
+                        # Container exists but no clear status
+                        podman_status = "[dim](status unknown)[/dim]"
+                else:
+                    # Check for partial matches
+                    for container_name, status in all_container_statuses.items():
+                        if service_name in container_name:
+                            health = self._extract_health_status(status)
+                            if health:
+                                podman_status = health
+                            break
+
+            # If no container found in cache, it's not running
+            if not podman_status:
+                podman_status = "[green]not applicable[/green]"
+
+            return (systemd_status, podman_status)
+
+        except Exception:
+            return ("[green]stdio[/green]", "[green]not applicable[/green]")
 
     def _extract_health_status(self, podman_status):
         """Extract health status from podman status string"""

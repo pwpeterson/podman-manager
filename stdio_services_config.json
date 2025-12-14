@@ -1,0 +1,21 @@
+{
+  "stdio_services": {
+    "mcp-model-proxy-assistant": {
+      "description": "MCP Model Proxy Assistant - STDIO service",
+      "container_name": "mcp-model-proxy-assistant",
+      "image": "localhost/mcp-model-proxy-assistant:latest",
+      "managed_by": "stdio",
+      "stack": "mcp-services-stack",
+      "run_command": "podman run --rm -i --network=host -e MODEL_PROXY_URL=http://localhost:8002 localhost/mcp-model-proxy-assistant:latest",
+      "notes": "Runs via podman with --rm flag, not managed by systemd"
+    }
+  },
+  "detection_patterns": {
+    "container_name_patterns": [
+      "^mcp-.*-assistant$"
+    ],
+    "image_patterns": [
+      "localhost/mcp-.*-assistant:.*"
+    ]
+  }
+}
