@@ -7,7 +7,6 @@
       "managed_by": "stdio",
       "stack": "mcp-services-stack",
       "run_command": "podman run --rm -i --network=host -e MODEL_PROXY_URL=http://localhost:8002 localhost/mcp-model-proxy-assistant:latest",
-      "dockerfile_path": "/home/pwp/srv/coding_agent/mcp/mcp-model-proxy-assistant/Dockerfile.mcp-model-proxy-assistant",
       "notes": "Runs via podman with --rm flag, not managed by systemd"
     },
     "mcp-git-tools": {
@@ -17,7 +16,6 @@
       "managed_by": "stdio",
       "stack": "mcp-services-stack",
       "run_command": "/home/pwp/srv/coding_agent/mcp/mcp-git-tools",
-      "dockerfile_path": "/home/pwp/srv/coding_agent/mcp/mcp-git-tools/Dockerfile.mcp-git-tools",
       "notes": "Direct executable STDIO service, not containerized"
     }
   },
