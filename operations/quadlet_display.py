@@ -211,6 +211,16 @@ class QuadletDisplayManager:
             # Get the clean service name (remove color formatting)
             clean_service_name = self._extract_clean_service_name(service_name)
 
+            # Check if this is a STDIO service with a dockerfile_path
+            if (
+                hasattr(self.manager, "stdio_services")
+                and clean_service_name in self.manager.stdio_services
+            ):
+                stdio_config = self.manager.stdio_services[clean_service_name]
+                dockerfile_path = stdio_config.get("dockerfile_path")
+                if dockerfile_path:
+                    return Path(dockerfile_path).exists()
+
             # Check in the quadlets source directory structure
             quadlets_source_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
 
