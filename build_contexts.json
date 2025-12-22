@@ -1,5 +1,11 @@
 {
   "build_contexts": {
+    "crawl4ai-test": {
+      "build_dir": "/home/pwp/srv/sys-services/crawl4ai",
+      "dockerfile": "Dockerfile.crawl4ai-test",
+      "context": "/home/pwp/srv/sys-services/crawl4ai",
+      "image_name": "localhost/crawl4ai-test:latest"
+    },
     "mcp-crawl4ai-rag": {
       "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-crawl4ai-rag",
       "dockerfile": "Dockerfile.mcp-crawl4ai-rag",
@@ -23,12 +29,20 @@
       "dockerfile": "Dockerfile.mcp-model-proxy-assistant",
       "context": "/home/pwp/srv/sys-services/model-proxy",
       "image_name": "localhost/mcp-model-proxy-assistant:latest"
+    },
+    "mcp-git-tools": {
+      "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-git-tools",
+      "dockerfile": "Dockerfile.mcp-git-tools",
+      "context": "/home/pwp/srv/coding_agent/mcp/mcp-git-tools",
+      "image_name": "localhost/mcp-git-tools:latest"
     }
   },
   "podman_build_services": [
     "mcp-crawl4ai-rag",
     "mcp-model-toolbox",
     "sys-services-model-proxy",
-    "mcp-model-proxy-assistant"
+    "mcp-model-proxy-assistant",
+    "mcp-git-tools",
+    "crawl4ai-test"
   ]
 }

@@ -282,7 +282,7 @@ class ContainerBuilder:
             podman_services = self._build_configs.get("podman_build_services", [])
             if target in podman_services:
                 console.print(f"[green]Using podman build for {target}[/green]")
-                return self.build_service_podman(target)
+                return self.build_service_podman_original(target)
 
             # Dynamically determine stack name from directory structure
             stack_name = self._find_stack_for_service(target)
@@ -652,17 +652,31 @@ class ContainerBuilder:
             console.print(f"[red]Error in quadlet build for {target}: {e}[/red]")
             return False
 
+    def build_service_podman_original(self, target: str) -> bool:
+        """Original build_service_podman method (before build_context.json enhancement)"""
+        return self.build_service_podman(target)
+
     def build_service_podman(self, target: str) -> bool:
         """Build images using regular podman build (not specialized rebuild)"""
         try:
             # Load build context configurations from JSON file
+            verbose_print(
+                f"[cyan]exec: Checking build_context.json for {target}[/cyan]"
+            )
             build_contexts = self._build_configs.get("build_contexts", {})
 
             if target in build_contexts:
+                verbose_print(f"[cyan]exec: Found config for {target}[/cyan]")
                 config = build_contexts[target]
-                build_dir = config["build_dir"]
-                dockerfile = config["dockerfile"]
-                context_dir = config["context"]
+                build_dir = config.get("build_dir")
+                dockerfile = config.get("dockerfile")
+                context_dir = config.get("context")
+
+                if not build_dir or not dockerfile:
+                    console.print(
+                        f"[red]Missing build_dir or dockerfile in config for {target}[/red]"
+                    )
+                    return False
 
                 if not Path(build_dir).exists():
                     console.print(f"[red]Build directory not found: {build_dir}[/red]")
@@ -672,25 +686,87 @@ class ContainerBuilder:
                 try:
                     os.chdir(build_dir)
 
-                    if not Path(dockerfile).exists():
-                        console.print(f"[red]Dockerfile not found: {dockerfile}[/red]")
+                    # Use full path to dockerfile
+                    full_dockerfile_path = Path(build_dir) / dockerfile
+                    if not full_dockerfile_path.exists():
+                        console.print(
+                            f"[red]Dockerfile not found: {full_dockerfile_path}[/red]"
+                        )
                         return False
 
                     # Determine image name from config or use default
                     image_name = config.get("image_name", f"localhost/{target}:latest")
 
-                    # Build command with configurable context directory
+                    # Check for running containers with both "test" and target name
+                    verbose_print(
+                        "[cyan]exec: podman ps --filter name=test --format '{{.Image}}'[/cyan]"
+                    )
+                    test_result = subprocess.run(
+                        [
+                            "podman",
+                            "ps",
+                            "--filter",
+                            "name=test",
+                            "--format",
+                            "{{.Image}}",
+                        ],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if test_result.returncode == 0 and test_result.stdout.strip():
+                        verbose_print(
+                            f"    [cyan]Found image for test: {test_result.stdout.strip()}[/cyan]"
+                        )
+                    else:
+                        verbose_print(
+                            "    [cyan]No running container found for test[/cyan]"
+                        )
+
+                    verbose_print(
+                        f"[cyan]exec: podman ps --filter name={target} --format '{{{{.Image}}}}'[/cyan]"
+                    )
+                    target_result = subprocess.run(
+                        [
+                            "podman",
+                            "ps",
+                            "--filter",
+                            f"name={target}",
+                            "--format",
+                            "{{.Image}}",
+                        ],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if target_result.returncode == 0 and target_result.stdout.strip():
+                        verbose_print(
+                            f"    [cyan]Found image for {target}: {target_result.stdout.strip()}[/cyan]"
+                        )
+                    else:
+                        verbose_print(
+                            f"    [cyan]No running container found for {target}[/cyan]"
+                        )
+
+                    # Remove image
+                    verbose_print(f"[cyan]exec: podman rmi {image_name}[/cyan]")
+                    subprocess.run(
+                        ["podman", "rmi", image_name], capture_output=True, text=True
+                    )
+                    verbose_print(
+                        f"    [cyan]No running container found, tried to remove expected image: {image_name}[/cyan]"
+                    )
+
+                    # Build command with full path to dockerfile and context as "."
                     build_cmd = [
                         "podman",
                         "build",
                         "--no-cache",
                         "-f",
-                        dockerfile,
+                        str(full_dockerfile_path),
                         "-t",
                         image_name,
-                        context_dir,
+                        ".",
                     ]
-                    console.print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
+                    verbose_print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
 
                     from core.config import _verbose_enabled
 
@@ -767,14 +843,15 @@ class ContainerBuilder:
                                 build_output = result.stdout.strip()
 
                         # Store build context for AI analysis
-                        self._store_build_context(
-                            target,
-                            dockerfile_path=str(Path(build_dir) / dockerfile),
-                            build_dir=build_dir,
-                            image_name=image_name,
-                            service_type="podman_container",
-                            context_dir=context_dir,
-                        )
+                        if build_dir is not None:
+                            self._store_build_context(
+                                target,
+                                dockerfile_path=str(Path(build_dir) / dockerfile),
+                                build_dir=build_dir,
+                                image_name=image_name,
+                                service_type="podman_container",
+                                context_dir=context_dir,
+                            )
 
                         # Trigger AI analysis for build failure
                         self._trigger_build_ai_analysis(
@@ -790,10 +867,128 @@ class ContainerBuilder:
                 finally:
                     os.chdir(original_cwd)
             else:
-                console.print(
-                    f"[yellow]No podman build configuration for {target}[/yellow]"
+                # Fallback logic when build_context config not found
+                stack_name = self._find_stack_for_service(target)
+                quadlets_dir = f"/home/pwp/srv/local-ai-packaged/quadlets/{stack_name}/"
+
+                verbose_print(f"[cyan]exec: Checking directory {quadlets_dir}[/cyan]")
+
+                dockerfile_name = f"Dockerfile.{target}"
+                dockerfile_path: Union[Path, None] = None
+                build_dir: Union[Path, None] = None
+
+                source_path = Path(quadlets_dir)
+                if source_path.exists():
+                    for dockerfile in source_path.rglob(dockerfile_name):
+                        dockerfile_path = dockerfile
+                        build_dir = dockerfile.parent
+                        verbose_print(
+                            f"[cyan]exec: Found {dockerfile_name} at {dockerfile_path}[/cyan]"
+                        )
+                        break
+
+                if not dockerfile_path or not dockerfile_path.exists():
+                    console.print()
+                    console.print(
+                        f"[yellow]Build stopped: Missing Dockerfile.{target}[/yellow]"
+                    )
+                    console.print()
+                    return False
+
+                # Get container image and cleanup
+                actual_image_name = self._get_container_image(target)
+                if not actual_image_name:
+                    actual_image_name = self._get_container_image("test")
+
+                target_image_name = f"localhost/{target}:latest"
+
+                # Check for running containers
+                verbose_print(
+                    "[cyan]exec: podman ps --filter name=test --format '{{.Image}}'[/cyan]"
                 )
-                return False  # Return False so caller can try alternative approach
+                test_result = subprocess.run(
+                    ["podman", "ps", "--filter", "name=test", "--format", "{{.Image}}"],
+                    capture_output=True,
+                    text=True,
+                )
+                if test_result.returncode == 0 and test_result.stdout.strip():
+                    verbose_print(
+                        f"    [cyan]Found image for test: {test_result.stdout.strip()}[/cyan]"
+                    )
+                else:
+                    verbose_print(
+                        "    [cyan]No running container found for test[/cyan]"
+                    )
+
+                verbose_print(
+                    f"[cyan]exec: podman ps --filter name={target} --format '{{{{.Image}}}}'[/cyan]"
+                )
+                target_result = subprocess.run(
+                    [
+                        "podman",
+                        "ps",
+                        "--filter",
+                        f"name={target}",
+                        "--format",
+                        "{{.Image}}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if target_result.returncode == 0 and target_result.stdout.strip():
+                    verbose_print(
+                        f"    [cyan]Found image for {target}: {target_result.stdout.strip()}[/cyan]"
+                    )
+                else:
+                    verbose_print(
+                        f"    [cyan]No running container found for {target}[/cyan]"
+                    )
+
+                # Remove image
+                verbose_print(f"[cyan]exec: podman rmi {target_image_name}[/cyan]")
+                subprocess.run(
+                    ["podman", "rmi", target_image_name], capture_output=True, text=True
+                )
+                verbose_print(
+                    f"    [cyan]No running container found, tried to remove expected image: {target_image_name}[/cyan]"
+                )
+
+                # Build the image
+                if build_dir is None:
+                    console.print(f"[red]Build directory not found for {target}[/red]")
+                    return False
+
+                original_cwd = os.getcwd()
+                try:
+                    os.chdir(build_dir)
+
+                    build_cmd = [
+                        "podman",
+                        "build",
+                        "--no-cache",
+                        "-f",
+                        dockerfile_name,
+                        "-t",
+                        target_image_name,
+                        ".",
+                    ]
+                    verbose_print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
+
+                    result = subprocess.run(build_cmd, capture_output=True, text=True)
+
+                    if result.returncode == 0:
+                        console.print(
+                            f"[green]Image {target_image_name} built successfully[/green]"
+                        )
+                        console.print()
+                        return True
+                    else:
+                        console.print(f"[red]Failed to build {target} image.[/red]")
+                        if result.stderr:
+                            console.print(f"[red]{result.stderr.strip()}[/red]")
+                        return False
+                finally:
+                    os.chdir(original_cwd)
 
         except Exception as e:
             console.print(f"[red]Error in podman build for {target}: {e}[/red]")
