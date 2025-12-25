@@ -224,16 +224,18 @@ class ServiceDiscovery:
         return False
 
     def get_stack_files(self, stack_name: str) -> List[str]:
-        """Get quadlet files for a stack."""
+        """Get all quadlet files for a stack (network, volume, container)."""
         stack_dir = self.quadlets_source_dir / stack_name
         if not stack_dir.exists():
             return []
 
         files = []
-        for file in stack_dir.glob("*.container"):
-            if not file.name.endswith(".disabled"):
-                files.append(file.name)
-        return sorted(files)
+        # Include network, volume, and container files in dependency order
+        for extension in [".network", ".volume", ".container"]:
+            for file in stack_dir.glob(f"*{extension}"):
+                if not file.name.endswith(".disabled"):
+                    files.append(file.name)
+        return files  # Return in discovery order (network -> volume -> container)
 
     def get_service_names(self, stack_name: str) -> List[str]:
         """Get service names from quadlet files."""
