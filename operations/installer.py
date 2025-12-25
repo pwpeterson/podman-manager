@@ -1277,12 +1277,14 @@ class FileManager:
         target_dir: Path,
         use_sudo: bool = False,
     ):
-        """Copy quadlet files to target directory."""
+        """Copy quadlet files to target directory in dependency order."""
 
         # Copy startup wrapper files first
         self._copy_startup_wrapper_files(stack_dir, target_dir, use_sudo)
 
-        # Group files by type for better organization - only process container files and other files
+        # Group files by type - process in dependency order: network -> volume -> container
+        network_files = [f for f in files if f.endswith(".network")]
+        volume_files = [f for f in files if f.endswith(".volume")]
         container_files = [f for f in files if f.endswith(".container")]
         other_files = [
             f
@@ -1290,14 +1292,26 @@ class FileManager:
             if not any(f.endswith(ext) for ext in [".container", ".network", ".volume"])
         ]
 
-        # Process files in order: containers first, then other files (excluding network and volume files)
-        all_files_ordered = container_files + other_files
+        # Process files in correct dependency order: networks first, then volumes, then containers, then other files
+        all_files_ordered = network_files + volume_files + container_files + other_files
 
         for file in all_files_ordered:
-            if file.endswith(".container"):
+            if file.endswith(".network"):
+                network_name = file.replace(".network", "")
+                console.print(
+                    f"[green]Copying {network_name}.network to systemd[/green]"
+                )
+                if not is_verbose():
+                    console.print()
+            elif file.endswith(".volume"):
+                volume_name = file.replace(".volume", "")
+                console.print(f"[green]Copying {volume_name}.volume to systemd[/green]")
+                if not is_verbose():
+                    console.print()
+            elif file.endswith(".container"):
                 service_name = file.replace(".container", "")
                 console.print(
-                    f"[green]Copying & validating master {service_name}.container to systemd[/green]"
+                    f"[green]Copying & validating {service_name}.container to systemd[/green]"
                 )
                 if not is_verbose():
                     console.print()

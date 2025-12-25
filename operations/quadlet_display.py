@@ -16,6 +16,7 @@ class QuadletDisplayManager:
 
     def __init__(self, manager):
         self.manager = manager
+        self._supabase_order_cache = None
 
     def show_status(self, target=None, verbose=False):
         """Show projects and services in table format with systemd and podman status columns"""
@@ -99,8 +100,22 @@ class QuadletDisplayManager:
 
             services = project_info.get("services", {})
             if services:
-                # Sort services alphabetically
-                for service_name in sorted(services.keys()):
+                # Sort services - for supabase-stack, sort by startup order first, then alphabetically
+                if project_name == "supabase-stack":
+
+                    def sort_key(item):
+                        service_name = item[0]
+                        clean_name = self._extract_clean_service_name(service_name)
+                        order = self._get_supabase_startup_order(clean_name)
+                        # Sort by order number (0 means no order, put at end), then alphabetically
+                        return (order if order > 0 else 999, clean_name)
+
+                    sorted_services = sorted(services.items(), key=sort_key)
+                else:
+                    # For other stacks, sort alphabetically
+                    sorted_services = sorted(services.items())
+
+                for service_name, service_info in sorted_services:
                     # Get the clean service name (remove color formatting)
                     clean_service_name = self._extract_clean_service_name(service_name)
 
@@ -112,6 +127,13 @@ class QuadletDisplayManager:
                     # Check if service has a Dockerfile and add buildable indicator
                     has_dockerfile = self._has_dockerfile(service_name)
                     buildable_indicator = " 🔨" if has_dockerfile else ""
+
+                    # Get startup order for supabase services
+                    startup_order_prefix = ""
+                    if project_name == "supabase-stack":
+                        order_num = self._get_supabase_startup_order(clean_service_name)
+                        if order_num:
+                            startup_order_prefix = f"[cyan]({order_num})[/cyan] "
 
                     # Color code service name based on systemd status
                     # Check if this is a STDIO service first
@@ -126,8 +148,8 @@ class QuadletDisplayManager:
                     else:
                         service_color = "white"
 
-                    # Format service name with color and indicator
-                    service_display = f"  [{service_color}]{clean_service_name}[/{service_color}]{buildable_indicator}"
+                    # Format service name with startup order prefix, color, and buildable indicator
+                    service_display = f"  {startup_order_prefix}[{service_color}]{clean_service_name}[/{service_color}]{buildable_indicator}"
 
                     table.add_row(service_display, systemd_status, podman_status)
             else:
@@ -1223,3 +1245,22 @@ class QuadletDisplayManager:
 
         except Exception:
             return "[dim](verbose info unavailable)[/dim]"
+
+    def _get_supabase_startup_order(self, service_name: str) -> int:
+        """Get startup order number for a Supabase service"""
+        # Build order cache if not already built
+        if self._supabase_order_cache is None:
+            self._supabase_order_cache = {}
+
+            # Import here to avoid circular dependency
+            from managers.supabase_stack_manager import SupabaseStackManager
+
+            # Create temporary instance just to access startup_order
+            temp_manager = SupabaseStackManager(self.manager)
+
+            # Build mapping of service name to startup order
+            for order, layer in enumerate(temp_manager.startup_order, start=1):
+                for service in layer["services"]:
+                    self._supabase_order_cache[service] = order
+
+        return self._supabase_order_cache.get(service_name, 0)

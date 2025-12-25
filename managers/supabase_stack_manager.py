@@ -15,54 +15,74 @@ class SupabaseStackManager:
     def __init__(self, manager):
         self.manager = manager
 
-        # Define the Supabase startup order based on docs/supabase-stack-startup-order.md
+        # Define the Supabase startup order based on official docker-compose dependencies
+        # Network is created automatically by systemd/podman
         self.startup_order = [
             {
-                "layer": "Vector Extension Layer",
+                "layer": "1. Vector Layer (Log Aggregation)",
                 "services": ["supabase-vector"],
-                "wait_time": 10,
-                "description": "Vector extension service - required by database",
-            },
-            {
-                "layer": "Database Layer (Core Data)",
-                "services": ["supabase-db"],
-                "wait_time": 15,
-                "description": "PostgreSQL database - everything depends on this",
-            },
-            {
-                "layer": "Core Services Layer (Authentication & API)",
-                "services": ["supabase-auth", "supabase-rest", "supabase-meta"],
                 "wait_time": 5,
-                "description": "Authentication, REST API, and Meta services",
+                "description": "Vector log aggregation - no dependencies",
             },
             {
-                "layer": "Supporting Services Layer",
-                "services": [
-                    "supabase-analytics",
-                    "supabase-storage",
-                    "supabase-realtime",
-                    "supabase-edge-functions",
-                ],
-                "wait_time": 10,
-                "description": "Analytics, Storage, Real-time, and Edge Functions",
+                "layer": "2. Database Layer (PostgreSQL)",
+                "services": ["supabase-db"],
+                "wait_time": 30,  # Critical: Wait for full initialization and schema creation
+                "description": "PostgreSQL database - everything depends on this (depends on vector)",
             },
             {
-                "layer": "Gateway Layer (Traffic Routing)",
+                "layer": "3. Analytics Layer (Logflare)",
+                "services": ["supabase-analytics"],
+                "wait_time": 5,  # Critical: Wait for analytics to be healthy
+                "description": "Logflare analytics - required by most services (depends on db + vector)",
+            },
+            {
+                "layer": "4. Authentication & API Layer",
+                "services": ["supabase-auth", "supabase-rest"],
+                "wait_time": 3,
+                "description": "GoTrue auth and PostgREST API (both depend on db + analytics)",
+            },
+            {
+                "layer": "5. Image Processing Layer",
+                "services": ["supabase-imgproxy"],
+                "wait_time": 3,
+                "description": "Image transformation service - minimal dependencies",
+            },
+            {
+                "layer": "6. Storage Layer",
+                "services": ["supabase-storage"],
+                "wait_time": 3,
+                "description": "Object storage (depends on db + rest + imgproxy)",
+            },
+            {
+                "layer": "7. Real-time & Metadata Layer",
+                "services": ["supabase-realtime", "supabase-meta"],
+                "wait_time": 3,
+                "description": "Realtime subscriptions and DB metadata API (both depend on db + analytics)",
+            },
+            {
+                "layer": "8. Connection Pooler Layer",
+                "services": ["supabase-pooler"],
+                "wait_time": 3,
+                "description": "PgBouncer connection pooler (depends on db + analytics)",
+            },
+            {
+                "layer": "9. Edge Functions Layer",
+                "services": ["supabase-edge-functions"],
+                "wait_time": 3,
+                "description": "Deno edge runtime (depends on analytics)",
+            },
+            {
+                "layer": "10. Gateway Layer (Kong)",
                 "services": ["supabase-kong"],
-                "wait_time": 15,
-                "description": "Kong API Gateway - routes all API traffic",
+                "wait_time": 5,
+                "description": "Kong API Gateway - routes all traffic (depends on analytics + all backend services)",
             },
             {
-                "layer": "Frontend Layer (User Interface)",
+                "layer": "11. Studio UI Layer",
                 "services": ["supabase-studio"],
-                "wait_time": 15,
-                "description": "Studio Web Interface - depends on all backend services",
-            },
-            {
-                "layer": "Additional Services Layer",
-                "services": ["supabase-imgproxy", "supabase-pooler"],
-                "wait_time": 8,
-                "description": "Image processing and connection pooler services",
+                "wait_time": 5,
+                "description": "Studio Web Interface - frontend for all services (depends on analytics + kong)",
             },
         ]
 
