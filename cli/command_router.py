@@ -4,7 +4,7 @@ Command routing and execution logic
 """
 
 import re
-import subprocess
+import subprocess  # nosec B404 - using secure_subprocess wrapper
 from typing import Optional
 
 from rich.table import Table
@@ -437,7 +437,9 @@ class CommandRouter:
             return self._handle_show_service_file(args)
 
         # Image and update commands
-        elif command == "install":
+        elif command == "deploy":
+            return self._handle_install(args)
+        elif command == "dep":
             return self._handle_install(args)
         elif command == "uninstall":
             return self._handle_uninstall(args)

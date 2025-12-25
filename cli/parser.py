@@ -593,15 +593,30 @@ def _add_lifecycle_commands(subparsers):
 
 def _add_image_commands(subparsers):
     """Add image and update commands"""
-    # Install command
-    install_parser = subparsers.add_parser(
-        "install", help="Install/build quadlet stack using universal script"
+    # Deploy command
+    deploy_parser = subparsers.add_parser(
+        "deploy", help="Deploy/install quadlet stack using universal script"
     )
-    install_parser.add_argument(
+    deploy_parser.add_argument(
         "target",
         help="Stack or service name (e.g., vllm, local-ai, local-ai-neo4j, supabase)",
     )
-    install_parser.add_argument(
+    deploy_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show detailed command execution (exec lines)",
+    )
+
+    # Dep command (alias for deploy)
+    dep_parser = subparsers.add_parser(
+        "dep", help="Deploy/install quadlet stack (alias for deploy)"
+    )
+    dep_parser.add_argument(
+        "target",
+        help="Stack or service name (e.g., vllm, local-ai, local-ai-neo4j, supabase)",
+    )
+    dep_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
