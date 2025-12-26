@@ -1,6 +1,6 @@
 """Rich UI display components for quadlet services."""
 
-import subprocess
+import subprocess  # nosec B404 - Only used for TimeoutExpired exception handling
 from pathlib import Path
 from typing import Optional
 
@@ -915,7 +915,7 @@ class QuadletDisplayManager:
                 elif "failed (systemd)" in systemd_status:
                     return f"{systemd_status} | [dim](not running)[/dim]"
                 elif "active (systemd)" in systemd_status:
-                    return f"{systemd_status} | [dim](not available)[/dim]"
+                    return f"{systemd_status} | [dim](no healthcheck)[/dim]"
                 return systemd_status
             else:
                 # No systemd status - service not found
@@ -1051,8 +1051,8 @@ class QuadletDisplayManager:
                     health_colored = "[yellow](starting)[/yellow]"
                 elif "(running)" in podman_health:
                     health_colored = "[green](running)[/green]"
-                elif "(not available)" in podman_health:
-                    health_colored = "[dim](not available)[/dim]"
+                elif "(no healthcheck)" in podman_health:
+                    health_colored = "[dim](no healthcheck)[/dim]"
                 else:
                     health_colored = podman_health
 
@@ -1069,9 +1069,9 @@ class QuadletDisplayManager:
                         podman_column = "[dim](not running)[/dim]"
                 elif "active" in systemd_status:
                     if uptime_colored:
-                        podman_column = f"{uptime_colored} [dim](not available)[/dim]"
+                        podman_column = f"{uptime_colored} [dim](no healthcheck)[/dim]"
                     else:
-                        podman_column = "[dim](not available)[/dim]"
+                        podman_column = "[dim](no healthcheck)[/dim]"
             elif uptime_colored:
                 # Just uptime, no status
                 podman_column = uptime_colored
@@ -1139,7 +1139,7 @@ class QuadletDisplayManager:
             return "(running)"
         elif "up" in status_lower:
             # Container is running but has no health status indicator
-            return "(not available)"
+            return "(no healthcheck)"
         return None
 
     def _format_status(self, status):
