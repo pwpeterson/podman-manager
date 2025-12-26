@@ -1,6 +1,6 @@
 """Supabase-specific stack management with proper startup order."""
 
-import subprocess
+import subprocess  # nosec B404 - using hardcoded system commands with validated inputs
 import time
 from typing import Dict, List, Optional
 
@@ -37,49 +37,61 @@ class SupabaseStackManager:
                 "description": "Logflare analytics - required by most services (depends on db + vector)",
             },
             {
-                "layer": "4. Authentication & API Layer",
-                "services": ["supabase-auth", "supabase-rest"],
+                "layer": "4. Authentication Layer",
+                "services": ["supabase-auth"],
                 "wait_time": 3,
-                "description": "GoTrue auth and PostgREST API (both depend on db + analytics)",
+                "description": "GoTrue authentication (depends on db + analytics)",
             },
             {
-                "layer": "5. Image Processing Layer",
+                "layer": "5. REST API Layer",
+                "services": ["supabase-rest"],
+                "wait_time": 3,
+                "description": "PostgREST API (depends on db + analytics)",
+            },
+            {
+                "layer": "6. Image Processing Layer",
                 "services": ["supabase-imgproxy"],
                 "wait_time": 3,
                 "description": "Image transformation service - minimal dependencies",
             },
             {
-                "layer": "6. Storage Layer",
+                "layer": "7. Storage Layer",
                 "services": ["supabase-storage"],
                 "wait_time": 3,
                 "description": "Object storage (depends on db + rest + imgproxy)",
             },
             {
-                "layer": "7. Real-time & Metadata Layer",
-                "services": ["supabase-realtime", "supabase-meta"],
+                "layer": "8. Real-time Layer",
+                "services": ["supabase-realtime"],
                 "wait_time": 3,
-                "description": "Realtime subscriptions and DB metadata API (both depend on db + analytics)",
+                "description": "Realtime subscriptions (depends on db + analytics)",
             },
             {
-                "layer": "8. Connection Pooler Layer",
+                "layer": "9. Metadata Layer",
+                "services": ["supabase-meta"],
+                "wait_time": 3,
+                "description": "Database metadata API (depends on db + analytics)",
+            },
+            {
+                "layer": "10. Connection Pooler Layer",
                 "services": ["supabase-pooler"],
                 "wait_time": 3,
                 "description": "PgBouncer connection pooler (depends on db + analytics)",
             },
             {
-                "layer": "9. Edge Functions Layer",
+                "layer": "11. Edge Functions Layer",
                 "services": ["supabase-edge-functions"],
                 "wait_time": 3,
                 "description": "Deno edge runtime (depends on analytics)",
             },
             {
-                "layer": "10. Gateway Layer (Kong)",
+                "layer": "12. Gateway Layer (Kong)",
                 "services": ["supabase-kong"],
                 "wait_time": 5,
                 "description": "Kong API Gateway - routes all traffic (depends on analytics + all backend services)",
             },
             {
-                "layer": "11. Studio UI Layer",
+                "layer": "13. Studio UI Layer",
                 "services": ["supabase-studio"],
                 "wait_time": 5,
                 "description": "Studio Web Interface - frontend for all services (depends on analytics + kong)",
@@ -295,7 +307,9 @@ class SupabaseStackManager:
 
         # Check if service is active
         status_cmd = ["systemctl", "--user", "is-active", resolved_service]
-        status_result = subprocess.run(status_cmd, capture_output=True, text=True)
+        status_result = subprocess.run(
+            status_cmd, capture_output=True, text=True
+        )  # nosec B603
 
         if status_result.returncode != 0:
             verbose_print(f"    [red]Service {service_name} is not active[/red]")
@@ -315,7 +329,7 @@ class SupabaseStackManager:
         ]
 
         try:
-            logs_result = subprocess.run(
+            logs_result = subprocess.run(  # nosec B603
                 logs_cmd, capture_output=True, text=True, timeout=5
             )
             if logs_result.returncode == 0 and logs_result.stdout:
@@ -391,7 +405,9 @@ class SupabaseStackManager:
 
             # Check if service is active
             status_cmd = ["systemctl", "--user", "is-active", resolved_service]
-            result = subprocess.run(status_cmd, capture_output=True, text=True)
+            result = subprocess.run(
+                status_cmd, capture_output=True, text=True
+            )  # nosec B603
             health_status[service] = result.returncode == 0
 
         return health_status
@@ -429,7 +445,7 @@ class SupabaseStackManager:
                     ]
                     verbose_print(f"    [cyan]exec: {' '.join(pg_ready_cmd)}[/cyan]")
 
-                    pg_ready_result = subprocess.run(
+                    pg_ready_result = subprocess.run(  # nosec B603
                         pg_ready_cmd, capture_output=True, text=True, timeout=10
                     )
 
@@ -454,7 +470,7 @@ class SupabaseStackManager:
                         "    [cyan]exec: podman exec supabase-db psql ... -c 'SELECT 1'[/cyan]"
                     )
 
-                    db_test_result = subprocess.run(
+                    db_test_result = subprocess.run(  # nosec B603
                         db_test_cmd, capture_output=True, text=True, timeout=10
                     )
 
