@@ -1,10 +1,10 @@
 {
   "build_contexts": {
-    "crawl4ai-test": {
+    "sys-services-crawl4ai": {
       "build_dir": "/home/pwp/srv/sys-services/crawl4ai",
-      "dockerfile": "Dockerfile.crawl4ai-test",
+      "dockerfile": "Dockerfile.sys-services-crawl4ai",
       "context": "/home/pwp/srv/sys-services/crawl4ai",
-      "image_name": "localhost/crawl4ai-test:latest"
+      "image_name": "localhost/sys-services-crawl4ai:latest"
     },
     "mcp-crawl4ai-rag": {
       "build_dir": "/home/pwp/srv/mcps/mcp-crawl4ai-rag",
@@ -13,9 +13,9 @@
       "image_name": "localhost/mcp-crawl4ai-rag:latest"
     },
     "mcp-model-toolbox": {
-      "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-model-toolbox",
+      "build_dir": "/home/pwp/srv/mcps/mcp-model-toolbox",
       "dockerfile": "Dockerfile.mcp-model-toolbox",
-      "context": "/home/pwp/srv/coding_agent/mcp/mcp-model-toolbox",
+      "context": "/home/pwp/srv/mcps/mcp-model-toolbox",
       "image_name": "localhost/mcp-model-toolbox:latest"
     },
     "sys-services-model-proxy": {
@@ -31,9 +31,9 @@
       "image_name": "localhost/mcp-model-proxy-assistant:latest"
     },
     "mcp-git-tools": {
-      "build_dir": "/home/pwp/srv/coding_agent/mcp/mcp-git-tools",
+      "build_dir": "/home/pwp/srv/mcps/mcp-git-tools",
       "dockerfile": "Dockerfile.mcp-git-tools",
-      "context": "/home/pwp/srv/coding_agent/mcp/mcp-git-tools",
+      "context": "/home/pwp/srv/mcps/mcp-git-tools",
       "image_name": "localhost/mcp-git-tools:latest"
     }
   },
@@ -43,6 +43,6 @@
     "sys-services-model-proxy",
     "mcp-model-proxy-assistant",
     "mcp-git-tools",
-    "crawl4ai-test"
+    "sys-services-crawl4ai"
   ]
 }
