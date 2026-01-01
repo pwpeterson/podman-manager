@@ -822,7 +822,6 @@ class ContainerBuilder:
                         console.print(
                             f"[green]Podman build completed for {target}[/green]"
                         )
-                        console.print()
                         return True
                     else:
                         console.print(f"[red]Podman build failed for {target}[/red]")

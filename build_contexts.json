@@ -35,7 +35,19 @@
       "dockerfile": "Dockerfile.mcp-git-tools",
       "context": "/home/pwp/srv/mcps/mcp-git-tools",
       "image_name": "localhost/mcp-git-tools:latest"
-    }
+    },
+    "taskflow-ai": {
+      "build_dir": "/home/pwp/srv/apps/taskflow-ai",
+      "dockerfile": "Dockerfile.taskflow-ai",
+      "context": "/home/pwp/srv/apps/taskflow-ai",
+      "image_name": "localhost/taskflow-ai:latest"
+    },
+    "taskflow-ai-web": {
+      "build_dir": "/home/pwp/srv/apps/taskflow-ai",
+      "dockerfile": "Dockerfile.taskflow-ai-web",
+      "context": "/home/pwp/srv/apps/taskflow-ai",
+      "image_name": "localhost/taskflow-ai-web:latest"
+    }   
   },
   "podman_build_services": [
     "mcp-crawl4ai-rag",
@@ -43,6 +55,8 @@
     "sys-services-model-proxy",
     "mcp-model-proxy-assistant",
     "mcp-git-tools",
-    "sys-services-crawl4ai"
+    "sys-services-crawl4ai",
+    "taskflow-ai",
+    "taskflow-ai-web"
   ]
 }
