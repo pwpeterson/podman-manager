@@ -1,5 +1,6 @@
 """Rich UI display components for quadlet services."""
 
+import json
 import subprocess  # nosec B404 - Only used for TimeoutExpired exception handling
 from pathlib import Path
 from typing import Optional
@@ -17,6 +18,7 @@ class QuadletDisplayManager:
     def __init__(self, manager):
         self.manager = manager
         self._supabase_order_cache = None
+        self._build_contexts_cache = None
 
     def show_status(self, target=None, verbose=False):
         """Show projects and services in table format with systemd and podman status columns"""
@@ -243,6 +245,21 @@ class QuadletDisplayManager:
                 if dockerfile_path:
                     return Path(dockerfile_path).exists()
 
+            # Check build_contexts.json for services with build configurations
+            if self._build_contexts_cache is None:
+                self._load_build_contexts()
+
+            if self._build_contexts_cache:
+                build_contexts = self._build_contexts_cache.get("build_contexts", {})
+                if clean_service_name in build_contexts:
+                    config = build_contexts[clean_service_name]
+                    dockerfile = config.get("dockerfile")
+                    build_dir = config.get("build_dir")
+                    if dockerfile and build_dir:
+                        dockerfile_path = Path(build_dir) / dockerfile
+                        if dockerfile_path.exists():
+                            return True
+
             # Check in the quadlets source directory structure
             quadlets_source_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
 
@@ -278,6 +295,18 @@ class QuadletDisplayManager:
             return False
         except Exception:
             return False
+
+    def _load_build_contexts(self):
+        """Load build configurations from build_contexts.json"""
+        try:
+            config_file = Path(__file__).parent.parent / "build_contexts.json"
+            if config_file.exists():
+                with open(config_file) as f:
+                    self._build_contexts_cache = json.load(f)
+            else:
+                self._build_contexts_cache = {}
+        except Exception:
+            self._build_contexts_cache = {}
 
     def _show_stack_status(self, stack_status):
         """Show detailed stack status"""

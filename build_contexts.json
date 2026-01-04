@@ -18,17 +18,11 @@
       "context": "/home/pwp/srv/mcps/mcp-model-toolbox",
       "image_name": "localhost/mcp-model-toolbox:latest"
     },
-    "sys-services-model-proxy": {
-      "build_dir": "/home/pwp/srv/sys-services/model-proxy",
-      "dockerfile": "Dockerfile.sys-services-model-proxy",
-      "context": "/home/pwp/srv/sys-services/model-proxy",
-      "image_name": "localhost/sys-services-model-proxy:latest"
-    },
-    "mcp-model-proxy-assistant": {
-      "build_dir": "/home/pwp/srv/sys-services/model-proxy",
-      "dockerfile": "Dockerfile.mcp-model-proxy-assistant",
-      "context": "/home/pwp/srv/sys-services/model-proxy",
-      "image_name": "localhost/mcp-model-proxy-assistant:latest"
+    "model-proxy": {
+      "build_dir": "/home/pwp/srv/apps/model-proxy",
+      "dockerfile": "Dockerfile.model-proxy",
+      "context": "/home/pwp/srv/apps/model-proxy",
+      "image_name": "localhost/model-proxy:latest"
     },
     "mcp-git-tools": {
       "build_dir": "/home/pwp/srv/mcps/mcp-git-tools",
@@ -41,22 +35,14 @@
       "dockerfile": "Dockerfile.taskflow-ai",
       "context": "/home/pwp/srv/apps/taskflow-ai",
       "image_name": "localhost/taskflow-ai:latest"
-    },
-    "taskflow-ai-web": {
-      "build_dir": "/home/pwp/srv/apps/taskflow-ai",
-      "dockerfile": "Dockerfile.taskflow-ai-web",
-      "context": "/home/pwp/srv/apps/taskflow-ai",
-      "image_name": "localhost/taskflow-ai-web:latest"
-    }   
+    }
   },
   "podman_build_services": [
     "mcp-crawl4ai-rag",
     "mcp-model-toolbox",
-    "sys-services-model-proxy",
-    "mcp-model-proxy-assistant",
+    "model-proxy",
     "mcp-git-tools",
     "sys-services-crawl4ai",
-    "taskflow-ai",
-    "taskflow-ai-web"
+    "taskflow-ai"
   ]
 }
