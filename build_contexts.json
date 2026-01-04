@@ -12,11 +12,11 @@
       "context": "/home/pwp/srv/mcps/mcp-crawl4ai-rag",
       "image_name": "localhost/mcp-crawl4ai-rag:latest"
     },
-    "mcp-model-toolbox": {
-      "build_dir": "/home/pwp/srv/mcps/mcp-model-toolbox",
-      "dockerfile": "Dockerfile.mcp-model-toolbox",
-      "context": "/home/pwp/srv/mcps/mcp-model-toolbox",
-      "image_name": "localhost/mcp-model-toolbox:latest"
+    "mcp-toolbox": {
+      "build_dir": "/home/pwp/srv/mcps/mcp-toolbox",
+      "dockerfile": "Dockerfile.mcp-toolbox",
+      "context": "/home/pwp/srv/mcps/mcp-toolbox",
+      "image_name": "localhost/mcp-toolbox:latest"
     },
     "model-proxy": {
       "build_dir": "/home/pwp/srv/apps/model-proxy",
@@ -39,7 +39,7 @@
   },
   "podman_build_services": [
     "mcp-crawl4ai-rag",
-    "mcp-model-toolbox",
+    "mcp-toolbox",
     "model-proxy",
     "mcp-git-tools",
     "crawl4ai",
