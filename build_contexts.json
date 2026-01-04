@@ -1,10 +1,10 @@
 {
   "build_contexts": {
-    "sys-services-crawl4ai": {
+    "crawl4ai": {
       "build_dir": "/home/pwp/srv/sys-services/crawl4ai",
-      "dockerfile": "Dockerfile.sys-services-crawl4ai",
+      "dockerfile": "Dockerfile.crawl4ai",
       "context": "/home/pwp/srv/sys-services/crawl4ai",
-      "image_name": "localhost/sys-services-crawl4ai:latest"
+      "image_name": "localhost/crawl4ai:latest"
     },
     "mcp-crawl4ai-rag": {
       "build_dir": "/home/pwp/srv/mcps/mcp-crawl4ai-rag",
@@ -42,7 +42,7 @@
     "mcp-model-toolbox",
     "model-proxy",
     "mcp-git-tools",
-    "sys-services-crawl4ai",
+    "crawl4ai",
     "taskflow-ai"
   ]
 }
