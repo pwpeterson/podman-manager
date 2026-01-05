@@ -494,7 +494,7 @@ class AIAnalyzer:
     def _get_unavailability_reason(self, agent) -> str:
         """Get a detailed reason why an agent is unavailable"""
         try:
-            if agent.config.agent_type == "local_vllm":
+            if agent.config.agent_type == "local-vllm":
                 if not agent.config.endpoint:
                     return "No endpoint configured"
                 # Try to determine if it's a network issue or service down

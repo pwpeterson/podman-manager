@@ -36,7 +36,9 @@ class AIAgentConfig:
 
     name: str
     display_name: str
-    agent_type: str  # 'local_vllm', 'claude', 'openai'
+    # Canonical values used in code paths: 'local-vllm', 'claude', 'openai'
+    # Note: no backwards-compatible aliases are supported; config must use canonical values.
+    agent_type: str
     endpoint: Optional[str] = None
     model_name: Optional[str] = None
     api_key_env: Optional[str] = None
@@ -232,6 +234,17 @@ class OpenAIAgent(AIAgent):
             return None
 
 
+def _normalize_agent_type(agent_type: Optional[str]) -> str:
+    """Normalize agent_type values from config to canonical internal values.
+
+    Canonical values: 'local-vllm', 'claude', 'openai'.
+    """
+    if not agent_type:
+        return ""
+
+    return agent_type.strip().lower()
+
+
 class AIAgentManager:
     """Manages AI agents and provides selection interface"""
 
@@ -265,7 +278,7 @@ class AIAgentManager:
                 config = AIAgentConfig(
                     name=agent_data["name"],
                     display_name=agent_data["display_name"],
-                    agent_type=agent_data["agent_type"],
+                    agent_type=_normalize_agent_type(agent_data["agent_type"]),
                     endpoint=agent_data.get("endpoint"),
                     model_name=agent_data.get("model_name"),
                     api_key_env=agent_data.get("api_key_env"),
@@ -346,7 +359,7 @@ class AIAgentManager:
                 AIAgentConfig(
                     name="vllm-qwen25",
                     display_name="Qwen2.5 Coder 32B (Local)",
-                    agent_type="local_vllm",
+                    agent_type="local-vllm",
                     endpoint="http://localhost:8002",
                     model_name="vllm-qwen25-coder-32b-instruct-awq",
                     description="Local Qwen2.5 Coder 32B model via vllm-proxy",
@@ -354,7 +367,7 @@ class AIAgentManager:
                 AIAgentConfig(
                     name="vllm-glm46",
                     display_name="GLM-4-6B (Local)",
-                    agent_type="local_vllm",
+                    agent_type="local-vllm",
                     endpoint="http://localhost:8003",  # Assuming different port
                     model_name="vllm-glm46",
                     description="Local GLM-4-6B model",
@@ -399,11 +412,14 @@ class AIAgentManager:
 
         # Create agent instances
         for config in default_configs:
-            if config.agent_type == "local_vllm":
+            agent_type = _normalize_agent_type(config.agent_type)
+            config.agent_type = agent_type  # keep stored value canonical
+
+            if agent_type == "local-vllm":
                 self.agents[config.name] = LocalVLLMAgent(config)
-            elif config.agent_type == "claude":
+            elif agent_type == "claude":
                 self.agents[config.name] = ClaudeAgent(config)
-            elif config.agent_type == "openai":
+            elif agent_type == "openai":
                 self.agents[config.name] = OpenAIAgent(config)
 
         # Set default agent (first available local, then first available cloud)
@@ -432,7 +448,7 @@ class AIAgentManager:
         local_agents = [
             name
             for name, agent in self.agents.items()
-            if agent.config.agent_type == "local_vllm" and agent.is_available()
+            if agent.config.agent_type == "local-vllm" and agent.is_available()
         ]
         if local_agents:
             return local_agents[0]
@@ -548,7 +564,7 @@ class AIAgentManager:
         local_agents = [
             (name, agent)
             for name, agent in self.agents.items()
-            if agent.config.agent_type == "local_vllm"
+            if agent.config.agent_type == "local-vllm"
         ]
         cloud_agents = [
             (name, agent)
@@ -667,11 +683,14 @@ class AIAgentManager:
             return False  # Agent already exists
 
         # Create agent instance
-        if config.agent_type == "local_vllm":
+        agent_type = _normalize_agent_type(config.agent_type)
+        config.agent_type = agent_type  # keep stored value canonical
+
+        if agent_type == "local-vllm":
             self.agents[config.name] = LocalVLLMAgent(config)
-        elif config.agent_type == "claude":
+        elif agent_type == "claude":
             self.agents[config.name] = ClaudeAgent(config)
-        elif config.agent_type == "openai":
+        elif agent_type == "openai":
             self.agents[config.name] = OpenAIAgent(config)
         else:
             return False  # Unknown agent type
@@ -699,11 +718,14 @@ class AIAgentManager:
             return False
 
         # Create new agent instance with updated config
-        if config.agent_type == "local_vllm":
+        agent_type = _normalize_agent_type(config.agent_type)
+        config.agent_type = agent_type  # keep stored value canonical
+
+        if agent_type == "local-vllm":
             self.agents[agent_name] = LocalVLLMAgent(config)
-        elif config.agent_type == "claude":
+        elif agent_type == "claude":
             self.agents[agent_name] = ClaudeAgent(config)
-        elif config.agent_type == "openai":
+        elif agent_type == "openai":
             self.agents[agent_name] = OpenAIAgent(config)
         else:
             return False
@@ -828,7 +850,7 @@ class AIAgentManager:
     def _get_agent_unavailability_reason(self, agent: AIAgent) -> str:
         """Get a detailed reason why an agent is unavailable"""
         try:
-            if agent.config.agent_type == "local_vllm":
+            if agent.config.agent_type == "local-vllm":
                 if not agent.config.endpoint:
                     return "No endpoint configured"
                 # Try to determine if it's a network issue or service down

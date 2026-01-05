@@ -13,11 +13,11 @@ Shows all configured agents with availability status:
 ```
 🤖 Available AI Agents for Log Analysis
 
-✅ vllm-qwen25 (local_vllm) - Available
+✅ vllm-qwen25 (local-vllm) - Available
    Local Qwen2.5-Coder model via vLLM proxy
    Endpoint: http://localhost:8002
 
-❌ vllm-glm46 (local_vllm) - Unavailable
+❌ vllm-glm46 (local-vllm) - Unavailable
    Local GLM-4-9B model via vLLM proxy
    Endpoint: http://localhost:8003
 

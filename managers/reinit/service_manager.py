@@ -65,7 +65,7 @@ class ServiceManager:
 
             # Check if service_name matches any model_name in the agents list
             for agent in config.get("agents", []):
-                if agent.get("agent_type") == "local_model":
+                if agent.get("agent_type") == "local-vllm":
                     model_name = agent.get("model_name", "")
                     # Handle both exact match and hyphen/underscore variations
                     model_name_normalized = model_name.replace("_", "-")

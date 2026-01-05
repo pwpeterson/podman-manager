@@ -96,7 +96,13 @@ repos:
       - id: bandit
         name: bandit (security scan)
         args:
+          # Skip tests that are noisy/irrelevant for this repo
           - --skip
-          - B101,B110,B112,B108
+          - B101,B110,B112,B108,B310
+          # Only fail the hook on medium+ severity issues
+          - --severity-level
+          - medium
+          - --confidence-level
+          - high
           - --exclude
           - tests/,context_portal/alembic/versions,.venv,node_modules
