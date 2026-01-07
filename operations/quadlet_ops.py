@@ -127,10 +127,10 @@ class QuadletOperations:
         lines: int = 50,
         vllm_url: str = "http://localhost:8002",
         verbose: bool = False,
-        ai_agent: Optional[str] = None,
+        ai_model: Optional[str] = None,
     ) -> None:
         """AI-powered analysis of service logs for root causes and solutions"""
-        self.ai_diagnostics.ai_analyze_logs(target, lines, vllm_url, verbose, ai_agent)
+        self.ai_diagnostics.ai_analyze_logs(target, lines, vllm_url, verbose, ai_model)
 
     # Container Building Operations
     def build_only(self, target: str) -> bool:

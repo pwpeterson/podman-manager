@@ -1,0 +1,133 @@
+{
+  "default_agent": "vllm-qwen3-coder-30b-a3b-instruct",
+  "agent_preferences": {
+    "prefer_local": true,
+    "fallback_order": [
+      "vllm-qwen3-coder-30b-a3b-instruct",
+      "claude-sonnet-4-5",
+      "gpt-5.2"
+    ]
+  },
+  "agents": [
+    {
+      "name": "vllm-qwen3-coder-30b-a3b-instruct",
+      "display_name": "Qwen3-Coder-30B-A3B-Instruct",
+      "agent_type": "local-vllm",
+      "endpoint": "http://localhost:8002",
+      "provider": "local",
+      "base_url": "http://localhost:8005/v1",
+      "model_id": "vllm-qwen3-coder-30b-a3b-instruct",
+      "model": {
+        "id": "vllm-qwen3-coder-30b-a3b-instruct",
+        "context_length": 132000,
+        "max_output_tokens": 0,
+        "supports_streaming": true,
+        "supports_images": false,
+        "supports_computer_use": false,
+        "supports_prompt_caching": false,
+        "reasoning_effort_supported": false,
+        "recommended_for": [
+          "local-coding",
+          "offline-dev",
+          "cost-free"
+        ],
+        "default_tier": "standard",
+        "pricing_tiers": {
+          "standard": {
+            "cost_per_1M_input_$": "0.0",
+            "cost_per_1M_output_$": "0.0",
+            "cost_per_1M_cache_read_$": "0.0",
+            "cost_per_1M_cache_write_$": "0.0"
+          }
+        }
+      },
+      "api_key_env": null,
+      "max_tokens": 2048,
+      "temperature": 0.1,
+      "timeout": 60,
+      "enabled": true,
+      "description": "Local Qwen3-Coder-30B-A3B-Instruct"
+    },
+    {
+      "name": "claude-sonnet-4-5",
+      "display_name": "claude-sonnet-4-5",
+      "agent_type": "claude",
+      "endpoint": "http://localhost:8002",
+      "provider": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "model_id": "claude-sonnet-4-5",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "context_length": 200000,
+        "max_output_tokens": 64000,
+        "supports_streaming": true,
+        "supports_images": true,
+        "supports_computer_use": true,
+        "supports_prompt_caching": true,
+        "reasoning_effort_supported": true,
+        "recommended_for": [
+          "balanced-reasoning",
+          "tool-use"
+        ],
+        "default_tier": "standard",
+        "pricing_tiers": {
+          "standard": {
+            "cost_per_1M_input_$": "3.0",
+            "cost_per_1M_output_$": "15.0",
+            "cost_per_1M_cache_read_$": "0.3",
+            "cost_per_1M_cache_write_$": "3.75"
+          }
+        }
+      },
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "max_tokens": 2048,
+      "temperature": 0.1,
+      "timeout": 60,
+      "enabled": true,
+      "description": "Anthropic claude-sonnet-4-5"
+    },
+    {
+      "name": "gpt-5.2",
+      "display_name": "GPT-5.2",
+      "agent_type": "openai",
+      "endpoint": "http://localhost:8002",
+      "provider": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "model_id": "gpt-5.2",
+      "model": {
+        "id": "gpt-5.2",
+        "context_length": 400000,
+        "max_output_tokens": 128000,
+        "supports_streaming": true,
+        "supports_images": true,
+        "supports_computer_use": false,
+        "supports_prompt_caching": true,
+        "reasoning_effort_supported": true,
+        "recommended_for": [
+          "cheap-chat",
+          "high-throughput",
+          "reasoning-lite"
+        ],
+        "default_tier": "standard",
+        "pricing_tiers": {
+          "standard": {
+            "cost_per_1M_input_$": "1.50",
+            "cost_per_1M_output_$": "12.0",
+            "cost_per_1M_cache_read_$": "0.13"
+          },
+          "priority": {
+            "cost_per_1M_input_$": "3.00",
+            "cost_per_1M_output_$": "24.0",
+            "cost_per_1M_cache_read_$": "0.25"
+          }
+        }
+      },
+      "api_key_env": "OPENAI_API_KEY",
+      "max_tokens": 2048,
+      "temperature": 0.3,
+      "timeout": 60,
+      "enabled": true,
+      "description": "OpenAI GPT-5.2"
+    }
+  ]
+}

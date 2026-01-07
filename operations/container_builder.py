@@ -143,11 +143,9 @@ class ContainerBuilder:
     ) -> None:
         """Trigger automatic AI analysis for build failures"""
         try:
-            from ai_analyzer import ai_analyzer
+            from ai_analyzer import get_ai_analyzer
 
-            # Initialize AI analyzer with manager if not already done
-            if ai_analyzer.manager is None:
-                ai_analyzer.manager = self.manager
+            analyzer = get_ai_analyzer(self.manager)
 
             # Get build context for this target
             build_context = self._build_context.get(target, {})
@@ -160,12 +158,12 @@ class ContainerBuilder:
                 "target": target,
             }
 
-            # Run AI analysis with default agent
-            result = ai_analyzer.ai_analyze(
+            # Run AI analysis (model-proxy). Use configured assistant model.
+            result = analyzer.ai_analyze(
                 analysis_type="build_failure",
                 target=target,
                 context_data=context_data,
-                ai_agent=None,  # Always use default agent
+                ai_model=None,
                 verbose=verbose,
             )
 

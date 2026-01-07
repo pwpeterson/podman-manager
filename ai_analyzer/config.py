@@ -1,7 +1,7 @@
 """Configuration management for AI analyzer"""
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 
 @dataclass
@@ -29,9 +29,10 @@ class AnalysisConfig:
     enable_interactive: bool = True
     show_spinner: bool = True
 
-    # AI agent settings
-    default_ai_agent: Optional[str] = None
-    agent_timeout: int = 60
+    # Model-proxy / model selection settings
+    # (If set, callers may use this as a default model id for analysis runs.)
+    default_ai_model: Optional[str] = None
+    model_timeout: int = 60
 
 
 @dataclass
@@ -66,47 +67,16 @@ class DataCollectionConfig:
             ]
 
 
-@dataclass
-class AgentMappingConfig:
-    """Configuration for AI agent name mappings"""
-
-    agent_mapping: Optional[Dict[str, str]] = None
-
-    def __post_init__(self):
-        if self.agent_mapping is None:
-            self.agent_mapping = {
-                "qwen25": "vllm-qwen25",
-                "glm46": "vllm-glm46",
-                "claude": "claude-sonnet",
-                "gpt4": "gpt-4",
-                "gpt-4": "gpt-4",
-                "claude-sonnet": "claude-sonnet",
-                "vllm-qwen25": "vllm-qwen25",
-                "vllm-glm46": "vllm-glm46",
-            }
-
-
 class AIAnalyzerConfig:
     """Main configuration class for AI analyzer"""
 
     def __init__(self):
         self.analysis = AnalysisConfig()
         self.data_collection = DataCollectionConfig()
-        self.agent_mapping = AgentMappingConfig()
 
-    def resolve_agent_name(self, short_name: Optional[str]) -> Optional[str]:
-        """Convert short AI agent names to full names"""
-        if not short_name or short_name is True:
-            return self.analysis.default_ai_agent
-
-        if self.agent_mapping.agent_mapping is None:
-            return short_name
-
-        return self.agent_mapping.agent_mapping.get(short_name.lower(), short_name)
-
-    def set_default_agent(self, agent_name: str) -> None:
-        """Set the default AI agent"""
-        self.analysis.default_ai_agent = agent_name
+    def set_default_model(self, model_name: str) -> None:
+        """Set the default model id to use for AI analysis."""
+        self.analysis.default_ai_model = model_name
 
     def get_quadlet_patterns(self, service_name: str) -> List[str]:
         """Get container file patterns for a service name"""

@@ -29,8 +29,8 @@ def show_rich_help():
         "-v, --verbose", "Show detailed command execution (exec lines)"
     )
     options_table.add_row(
-        "-ai, --ai-agent [qwen25|glm46|claude|gpt4]",
-        "AI agent for analysis (default: qwen25)",
+        "--ai-model <model-id>",
+        "Model-proxy model id to use for analysis (optional; sets assistant model for the run)",
     )
     options_table.add_row("-b, --build", "Build images before starting/restarting")
     options_table.add_row("-h, --help", "Show this help message")
@@ -233,27 +233,17 @@ def show_rich_help():
         "  💡 [light_blue]Provides root cause analysis and step-by-step solutions[/light_blue]"
     )
     console.print()
-    console.print("[bold]Available AI Agents:[/bold]")
-    ai_table = Table(show_header=False, box=None, padding=(0, 2))
-    ai_table.add_column("Agent", style="green", width=15)
-    ai_table.add_column("Description", style="white", width=35)
-    ai_table.add_column("Trigger", style="dim", width=30)
-    ai_table.add_row(
-        "qwen25", "Local Qwen2.5-Coder-32B (default)", "Automatic on errors"
-    )
-    ai_table.add_row("glm46", "Local GLM-4-6B-Chat", "Automatic on errors")
-    ai_table.add_row("claude", "Claude 3.5 Sonnet", "Automatic on errors")
-    ai_table.add_row("gpt4", "GPT-4", "Automatic on errors")
-    console.print(ai_table)
-
-    console.print()
-    console.print("[bold]AI AGENT SELECTION:[/bold]")
+    console.print("[bold]AI MODEL SELECTION (model-proxy):[/bold]")
     console.print(
-        "  Use [cyan]-ai[/cyan] or [cyan]--ai-agent[/cyan] to select AI agent:"
+        "  When AI analysis runs, PM will use the local model-proxy (OpenAI-compatible)."
     )
-    console.print("  [dim]pm reinit supabase-analytics -ai claude[/dim]")
-    console.print("  [dim]pm logs vllm-qwen25 -ai glm46[/dim]")
-    console.print("  [dim]pm build vllm-delegator -ai qwen25[/dim]")
+    console.print(
+        "  You may be prompted to select a troubleshooting model from the model-proxy model list."
+    )
+    console.print()
+    console.print("  Optional override:")
+    console.print("  [dim]pm diag vllm-qwen25 --ai-model <model-id>[/dim]")
+    console.print("  [dim]pm logs vllm-qwen25 --ai-model <model-id>[/dim]")
 
     console.print()
     console.print("[bold]TIPS:[/bold]")

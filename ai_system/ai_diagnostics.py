@@ -1,6 +1,6 @@
 """AI-powered diagnostics and log analysis operations."""
 
-from ai_analyzer import ai_analyzer
+from ai_analyzer import get_ai_analyzer
 
 
 class AIDiagnostics:
@@ -15,21 +15,19 @@ class AIDiagnostics:
         lines: int = 50,
         vllm_url: str = "http://localhost:8002",
         verbose: bool = False,
-        ai_agent: str | None = None,
+        ai_model: str | None = None,
     ) -> None:
         """AI-powered analysis of service logs using unified AI analyzer"""
-        # Initialize ai_analyzer with manager if not already done
-        if ai_analyzer.manager is None:
-            ai_analyzer.manager = self.manager
+        analyzer = get_ai_analyzer(self.manager)
 
         # Prepare context data for log analysis
         context_data = {"lines": lines}
 
-        # Use unified AI analyzer
-        ai_analyzer.ai_analyze(
+        # Use unified AI analyzer (model-proxy)
+        analyzer.ai_analyze(
             analysis_type="logs",
             target=target,
             context_data=context_data,
-            ai_agent=ai_agent,
+            ai_model=ai_model,
             verbose=verbose,
         )

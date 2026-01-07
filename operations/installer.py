@@ -965,107 +965,66 @@ class ValidationManager:
     def _get_ai_analysis(
         self, errors: str, stack_name: str, container_files: List[str]
     ) -> Optional[str]:
-        """Get AI analysis of validation errors from local vLLM."""
+        """Get AI analysis of validation errors via model-proxy.
+
+        Uses the local model-proxy (OpenAI-compatible) so the user can select which
+        model to troubleshoot with. This triggers an interactive \"AI agent event\"
+        that shows available models and which model is currently set as assistant.
+        """
         if requests is None:
             verbose_print("  [cyan]exec: requests library not available[/cyan]")
             return None
 
-        verbose_print(
-            "  [cyan]exec: Checking vLLM health at curl -X GET http://localhost:8002/health[/cyan]"
-        )
-        try:
-            # Check if vLLM is available
-            health_response = requests.get("http://localhost:8002/health", timeout=5)
-            verbose_print(
-                f"  [cyan]exec: Health check response: status={health_response.status_code}[/cyan]"
-            )
-            if health_response.status_code != 200:
-                verbose_print(
-                    f"  [cyan]exec: Health check failed with status {health_response.status_code}[/cyan]"
-                )
-                return None
-            verbose_print("  [cyan]exec: vLLM health check passed[/cyan]")
-
-        except requests.RequestException as e:
-            verbose_print(f"  [cyan]exec: Health check request failed: {e}[/cyan]")
-            return None
-
-        # Prepare the analysis prompt
         prompt = self._build_analysis_prompt(errors, stack_name, container_files)
 
-        verbose_print(
-            "  [cyan]exec: Sending AI analysis request to curl -X POST http://localhost:8002/v1/chat/completions \\[/cyan]"
-        )
-        verbose_print("  [cyan]    -H 'Content-Type: application/json' \\[/cyan]")
-        verbose_print("  [cyan]    -d '{[/cyan]")
-        verbose_print(
-            '  [cyan]      "model": "vllm-qwen25-coder-32b-instruct-awq",[/cyan]'
-        )
-        verbose_print('  [cyan]      "messages": [{{[/cyan]')
-        verbose_print('  [cyan]        "role": "user",[/cyan]')
-        verbose_print('  [cyan]        "content": "[/cyan]')
-
-        # Display content with proper line breaks
-        content_lines = prompt.replace("\\n\\n", "\n").split("\n")
-        for line in content_lines:
-            if line.strip():
-                verbose_print(f"  [cyan]          {line.strip()}[/cyan]")
-            else:
-                verbose_print("  [cyan][/cyan]")
-
-        verbose_print('  [cyan]        "[/cyan]')
-        verbose_print("  [cyan]      }}],[/cyan]")
-        verbose_print('  [cyan]      "max_tokens": 1000,[/cyan]')
-        verbose_print('  [cyan]      "temperature": 0.1[/cyan]')
-        verbose_print("  [cyan]    }'[/cyan]")
         try:
-            response = requests.post(
-                "http://localhost:8002/v1/chat/completions",
-                json={
-                    "model": "vllm-qwen25-coder-32b-instruct-awq",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 1000,
-                    "temperature": 0.1,
-                    "stop": ["\n\n---", "\n\nUser:", "\n\nHuman:"],
-                },
-                headers={"Content-Type": "application/json"},
-                timeout=30,
+            from ai_system.model_proxy_client import ModelProxyClient, ModelProxyError
+            from ai_system.model_selection_event import run_model_selection_event
+
+            mp = ModelProxyClient()
+
+            selection = run_model_selection_event(
+                client=mp,
+                title=f"AI agent event: validation_errors ({stack_name})",
+                prompt_text="Select a model to troubleshoot quadlet validation errors",
+            )
+            model_id = selection.selected_model
+            if not model_id:
+                verbose_print(
+                    "  [cyan]exec: No assistant model configured/selected; skipping AI validation analysis[/cyan]"
+                )
+                return None
+
+            # Best-effort health check
+            try:
+                mp.health()
+            except Exception:
+                pass
+
+            if is_verbose():
+                verbose_print(
+                    f"  [cyan]exec: Sending model-proxy validation analysis request (model={model_id})[/cyan]"
+                )
+
+            return mp.chat_completion_text(
+                model=model_id,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a system administration expert specializing in Podman Quadlet troubleshooting.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=1000,
+                temperature=0.1,
+                extra={"stop": ["\n\n---", "\n\nUser:", "\n\nHuman:"]},
             )
 
+        except (ModelProxyError, Exception) as e:
             verbose_print(
-                f"  [cyan]exec: AI analysis response: status={response.status_code}[/cyan]"
+                f"  [cyan]exec: model-proxy validation analysis failed: {e}[/cyan]"
             )
-            if response.status_code == 200:
-                result = response.json()
-                verbose_print(
-                    f"  [cyan]exec: Response JSON keys: {list(result.keys()) if result else 'None'}[/cyan]"
-                )
-                if "choices" in result and len(result["choices"]) > 0:
-                    verbose_print(
-                        "  [cyan]exec: AI analysis successful, returning response[/cyan]"
-                    )
-                    # Handle both completions and chat completions response formats
-                    choice = result["choices"][0]
-                    if "message" in choice:
-                        return choice["message"]["content"].strip()
-                    elif "text" in choice:
-                        return choice["text"].strip()
-                else:
-                    verbose_print(
-                        "  [cyan]exec: No choices in response or empty choices[/cyan]"
-                    )
-            else:
-                verbose_print(
-                    f"  [cyan]exec: AI analysis request failed with status {response.status_code}[/cyan]"
-                )
-                verbose_print(
-                    f"  [cyan]exec: Response text: {response.text[:200]}...[/cyan]"
-                )
-
-        except requests.RequestException as e:
-            verbose_print(f"  [cyan]exec: AI analysis request failed: {e}[/cyan]")
-
-        return None
+            return None
 
     def _build_analysis_prompt(
         self, errors: str, stack_name: str, container_files: List[str]

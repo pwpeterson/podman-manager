@@ -45,46 +45,32 @@ class ServiceManager:
                 return False
 
     def is_model_service(self, service_name: str) -> bool:
-        """Check if a service is a model service (vLLM or llama.cpp) by looking in ai_agents_config.json"""
+        """Check if a service is a model service (vLLM or llama.cpp).
+
+        Legacy behavior used a local agent config file to detect model services. That
+        approach has been removed in favor of model-proxy, so we use a simple name-based
+        heuristic.
+        """
         try:
-            import json
+            name = (service_name or "").strip().lower().replace("_", "-")
 
-            config_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                "ai_agents_config.json",
+            is_model = False
+
+            # vLLM model services (e.g., vllm-qwen25, vllm-glm46)
+            if name.startswith("vllm-"):
+                is_model = True
+
+            # llama.cpp style services (be permissive)
+            if "llama" in name and ("cpp" in name or "llama-cpp" in name):
+                is_model = True
+
+            verbose_print(
+                f"[cyan]Is {service_name} a model service: {str(is_model).lower()}[/cyan]"
             )
-
-            if not os.path.exists(config_path):
-                verbose_print(
-                    f"[cyan]ai_agents_config.json not found at {config_path}[/cyan]"
-                )
-                return False
-
-            with open(config_path, "r") as f:
-                config = json.load(f)
-
-            # Check if service_name matches any model_name in the agents list
-            for agent in config.get("agents", []):
-                if agent.get("agent_type") == "local-vllm":
-                    model_name = agent.get("model_name", "")
-                    # Handle both exact match and hyphen/underscore variations
-                    model_name_normalized = model_name.replace("_", "-")
-                    service_name_normalized = service_name.replace("_", "-")
-
-                    if (
-                        model_name == service_name
-                        or model_name_normalized == service_name_normalized
-                    ):
-                        verbose_print(
-                            f"[cyan]Is {service_name} a model service: true[/cyan]"
-                        )
-                        return True
-
-            verbose_print(f"[cyan]Is {service_name} a model service: false[/cyan]")
-            return False
+            return is_model
 
         except Exception as e:
-            verbose_print(f"[cyan]Error checking ai_agents_config.json: {e}[/cyan]")
+            verbose_print(f"[cyan]Error determining model service: {e}[/cyan]")
             return False
 
     def start_service(

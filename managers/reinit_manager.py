@@ -196,7 +196,7 @@ class ReinitManager:
                 f"\n[green]{timestamp} | Reinitializing {display_name}...[/green]\n"
             )
 
-        # Determine if this is a model service by checking ai_agents_config.json
+        # Determine if this is a model service using name-based heuristics (legacy config removed)
         is_model_service = self.service_manager.is_model_service(display_name)
 
         # Route to appropriate reinit method based on service type

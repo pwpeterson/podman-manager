@@ -5,15 +5,13 @@ Supports both vLLM and llama.cpp models with direct internal health checks:
 - Proxy services start AFTER model is confirmed ready
 """
 
-import json
 import time
-from pathlib import Path
 from typing import Dict
 
 import requests
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from core.config import console, verbose_print
+from core.config import console
 
 
 class ModelStartupMonitor:
@@ -25,27 +23,12 @@ class ModelStartupMonitor:
         self.direct_model_port = 8005  # All models use port 8005 internally
 
     def _load_model_configs(self) -> Dict[str, Dict]:
-        """Load model configurations from ai_agents_config.json."""
-        try:
-            config_path = Path("ai_agents_config.json")
-            if config_path.exists():
-                with open(config_path, "r") as f:
-                    config = json.load(f)
+        """Load model configurations.
 
-                # Create a mapping of model names to their configurations
-                model_configs = {}
-                for agent in config.get("agents", []):
-                    model_name = agent.get("model_name", agent.get("name", ""))
-                    model_configs[model_name] = {
-                        "model_type": self._detect_model_type(model_name),
-                        "description": agent.get("description", ""),
-                    }
-
-                return model_configs
-        except Exception as e:
-            verbose_print(f"[cyan]Error loading model configs: {e}[/cyan]")
-
-        # Fallback configuration
+        Legacy behavior loaded model metadata from a local agent config file. That approach
+        has been removed in favor of model-proxy, so we avoid any file-based configuration
+        here and infer model type from container naming conventions.
+        """
         return {}
 
     def _detect_model_type(self, model_name: str) -> str:

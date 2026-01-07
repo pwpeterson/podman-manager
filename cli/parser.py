@@ -151,11 +151,8 @@ def create_argument_parser():
         help="Show detailed command execution (exec lines)",
     )
     parser.add_argument(
-        "--ai-agent",
-        "-ai",
-        choices=["qwen25", "glm46", "claude", "gpt4"],
-        default="qwen25",
-        help="AI agent for analysis (default: qwen25)",
+        "--ai-model",
+        help="Model-proxy model id to use for analysis (optional; sets assistant model for the run)",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -259,42 +256,6 @@ def _add_status_commands(subparsers):
         "targets", help="Show available quadlet targets"
     )
     targets_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show detailed command execution (exec lines)",
-    )
-
-    # AI Agents command
-    ai_agents_parser = subparsers.add_parser(
-        "ai-agents", help="Show available AI agents for log analysis"
-    )
-    ai_agents_parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show detailed command execution (exec lines)",
-    )
-
-    # Set Default AI Agent command
-    set_default_ai_parser = subparsers.add_parser(
-        "set-default-ai", help="Set the default AI agent for analysis"
-    )
-    set_default_ai_parser.add_argument(
-        "agent_name",
-        choices=[
-            "qwen25",
-            "glm46",
-            "claude",
-            "gpt4",
-            "vllm-qwen25",
-            "vllm-glm46",
-            "claude-sonnet",
-            "gpt-4",
-        ],
-        help="AI agent name to set as default",
-    )
-    set_default_ai_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -764,11 +725,8 @@ def _add_resource_commands(subparsers):
         help="Show detailed command execution and comprehensive diagnostic data collection",
     )
     logs_parser.add_argument(
-        "--ai-agent",
-        "-ai",
-        choices=["qwen25", "glm46", "claude", "gpt4"],
-        default="qwen25",
-        help="AI agent for analysis (default: qwen25)",
+        "--ai-model",
+        help="Model-proxy model id to use for analysis (optional; sets assistant model for the run)",
     )
 
     # Diag command (renamed from diagnose)
@@ -783,10 +741,8 @@ def _add_resource_commands(subparsers):
         help="Show detailed command execution (exec lines)",
     )
     diag_parser.add_argument(
-        "--ai-agent",
-        "-ai",
-        choices=["qwen25", "glm46", "claude", "gpt4"],
-        help="AI agent for analysis (optional, triggers AI analysis)",
+        "--ai-model",
+        help="Model-proxy model id to use for analysis (optional; triggers AI analysis)",
     )
 
     # Exec command

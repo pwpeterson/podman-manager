@@ -9,7 +9,7 @@ from typing import Optional
 
 from rich.table import Table
 
-from ai_analyzer import ai_analyzer
+from ai_analyzer import get_ai_analyzer
 from core.config import console, set_verbose
 from operations.common_actions import CommonActionsFormatter
 from utils.secure_subprocess import SecureSubprocessError, secure_run
@@ -27,7 +27,7 @@ class CommandRouter:
         self.display = display
         self.selected_mode = "quadlet"  # Always quadlet mode
         self.detector = detector  # Keep for compatibility but not used
-        self.ai_agent = None  # Store AI agent selection
+        self.ai_model = None  # Store AI model selection (model-proxy model id override)
         self.common_actions = (
             CommonActionsFormatter()
         )  # Initialize common actions formatter
@@ -36,25 +36,6 @@ class CommandRouter:
         """Handle command-specific verbose flags"""
         if hasattr(args, "verbose") and args.verbose:
             set_verbose(True)
-
-    def _resolve_ai_agent_name(self, short_name):
-        """Convert short AI agent names to full names"""
-        if not short_name or short_name is True:
-            return None
-
-        # Mapping of short names to full agent names
-        agent_mapping = {
-            "qwen25": "vllm-qwen25",
-            "glm46": "vllm-glm46",
-            "claude": "claude-sonnet",
-            "gpt4": "gpt-4",
-            "gpt-4": "gpt-4",  # Allow both formats
-            "claude-sonnet": "claude-sonnet",  # Allow full names too
-            "vllm-qwen25": "vllm-qwen25",
-            "vllm-glm46": "vllm-glm46",
-        }
-
-        return agent_mapping.get(short_name.lower(), short_name)
 
     def _detect_podman_error(
         self, result, command_type: str, target: str | None = None
@@ -111,7 +92,7 @@ class CommandRouter:
         command_type: str,
         target: str,
         error_context: dict | None = None,
-        ai_agent: str | None = None,
+        ai_model: str | None = None,
     ):
         """Automatically trigger AI analysis when Podman errors are detected"""
         from core.config import _verbose_enabled
@@ -121,9 +102,7 @@ class CommandRouter:
             console.print(f"\n[red]Error found in {command_type} command[/red]\n")
             console.print("[green]Starting AI analysis and diagnostics...[/green]")
 
-            # Initialize AI analyzer with manager if not already done
-            if ai_analyzer.manager is None:
-                ai_analyzer.manager = self.manager
+            analyzer = get_ai_analyzer(self.manager)
 
             # Determine analysis type based on command
             analysis_type_mapping = {
@@ -142,17 +121,15 @@ class CommandRouter:
             if command_type in ["reinit", "start", "restart"]:
                 context_data["start_error"] = "Service failed to start/restart"
 
-            # Resolve AI agent name if provided
-            resolved_ai_agent = (
-                self._resolve_ai_agent_name(ai_agent) if ai_agent else None
-            )
+            # Optional model override (interpreted as a model-proxy model id)
+            resolved_ai_model = ai_model
 
             # Run AI analysis with verbose mode from global config
-            result = ai_analyzer.ai_analyze(
+            result = analyzer.ai_analyze(
                 analysis_type=analysis_type,
                 target=target or "unknown",
                 context_data=context_data,
-                ai_agent=resolved_ai_agent,
+                ai_model=resolved_ai_model,
                 verbose=_verbose_enabled,  # Use global verbose setting
             )
 
@@ -327,7 +304,7 @@ class CommandRouter:
                         "args": operation_args,
                         "kwargs": operation_kwargs,
                     },
-                    ai_agent=self.ai_agent,
+                    ai_model=self.ai_model,
                 )
             elif result is True or (
                 hasattr(result, "returncode") and result.returncode == 0
@@ -352,7 +329,7 @@ class CommandRouter:
                     "args": operation_args,
                     "kwargs": operation_kwargs,
                 },
-                ai_agent=self.ai_agent,
+                ai_model=self.ai_model,
             )
 
             return False
@@ -361,8 +338,11 @@ class CommandRouter:
         """Route command to appropriate handler"""
         command = args.command
 
-        # Store AI agent selection for use in error analysis
-        self.ai_agent = getattr(args, "ai_agent", None)
+        # Store AI model selection for use in error analysis
+        # Back-compat: accept legacy args.ai_agent until cli/parser.py is updated.
+        self.ai_model = getattr(args, "ai_model", None) or getattr(
+            args, "ai_agent", None
+        )
 
         # Status and information commands
         if command == "list":
@@ -379,10 +359,6 @@ class CommandRouter:
             return self._handle_stats(args)
         elif command == "targets":
             return self._handle_targets(args)
-        elif command == "ai-agents":
-            return self._handle_ai_agents(args)
-        elif command == "set-default-ai":
-            return self._handle_set_default_ai(args)
         elif command == "colors":
             return self._handle_colors(args)
 
@@ -534,7 +510,7 @@ class CommandRouter:
                         "error": result.stderr,
                         "returncode": result.returncode,
                     },
-                    ai_agent=self.ai_agent,
+                    ai_model=self.ai_model,
                 )
 
                 return False
@@ -546,7 +522,7 @@ class CommandRouter:
                 "ps",
                 "system",
                 {"operation": "podman_ps", "error": "Command timeout", "timeout": 10},
-                ai_agent=self.ai_agent,
+                ai_model=self.ai_model,
             )
 
             return False
@@ -561,7 +537,7 @@ class CommandRouter:
                     "operation": "podman_ps",
                     "error": "Podman command not found - installation issue",
                 },
-                ai_agent=self.ai_agent,
+                ai_model=self.ai_model,
             )
 
             return False
@@ -573,7 +549,7 @@ class CommandRouter:
                 "ps",
                 "system",
                 {"operation": "podman_ps", "exception": str(e)},
-                ai_agent=self.ai_agent,
+                ai_model=self.ai_model,
             )
 
             return False
@@ -771,8 +747,12 @@ class CommandRouter:
     def _handle_diag(self, args):
         # Perform comprehensive diagnostic analysis with optional AI assistance
         try:
-            # Store AI agent from command-specific argument if provided, otherwise use global
-            ai_agent = getattr(args, "ai_agent", None) or self.ai_agent
+            # Store AI model from command-specific argument if provided, otherwise use global
+            ai_model = (
+                getattr(args, "ai_model", None)
+                or getattr(args, "ai_agent", None)
+                or self.ai_model
+            )
 
             # Use fuzzy matching to find container
             from core.simple_fuzzy_matcher import find_container
@@ -789,32 +769,28 @@ class CommandRouter:
             console.print(f"\n[green]Troubleshooting {container_name}...[/green]")
             console.print()
 
-            # Always trigger AI analysis for diagnostics (with optional specific agent)
-            if ai_agent:
+            # Always trigger AI analysis for diagnostics (with optional model override)
+            if ai_model:
                 console.print(
-                    f"[green]Performing AI diagnostic analysis with {ai_agent}...[/green]"
+                    f"[green]Performing AI diagnostic analysis with model {ai_model}...[/green]"
                 )
             else:
                 console.print("[green]Performing AI diagnostic analysis...[/green]")
             console.print()
 
-            # Initialize AI analyzer with manager if not already done
-            if ai_analyzer.manager is None:
-                ai_analyzer.manager = self.manager
+            analyzer = get_ai_analyzer(self.manager)
 
-            # Resolve AI agent name (use default if none specified)
-            resolved_ai_agent = (
-                self._resolve_ai_agent_name(ai_agent) if ai_agent else None
-            )
+            # Optional model override (interpreted as a model-proxy model id)
+            resolved_ai_model = ai_model
 
             # Trigger AI analysis for diagnostics
             from core.config import _verbose_enabled
 
-            result = ai_analyzer.ai_analyze(
+            result = analyzer.ai_analyze(
                 analysis_type="logs",
                 target=args.target,
                 context_data={"lines": 100},  # Use 100 lines for analysis
-                ai_agent=resolved_ai_agent,
+                ai_model=resolved_ai_model,
                 verbose=_verbose_enabled or getattr(args, "verbose", False),
             )
 
@@ -835,8 +811,12 @@ class CommandRouter:
         except Exception as e:
             console.print(f"[red]Error in diagnostic command: {e}[/red]")
 
-            # Use command-specific AI agent if provided, otherwise fall back to global
-            ai_agent = getattr(args, "ai_agent", None) or self.ai_agent
+            # Use command-specific AI model if provided, otherwise fall back to global
+            ai_model = (
+                getattr(args, "ai_model", None)
+                or getattr(args, "ai_agent", None)
+                or self.ai_model
+            )
 
             # Trigger automatic AI analysis for diagnostic errors
             self._trigger_automatic_ai_analysis(
@@ -847,7 +827,7 @@ class CommandRouter:
                     "exception": str(e),
                     "follow": getattr(args, "follow", False),
                 },
-                ai_agent=ai_agent,
+                ai_model=ai_model,
             )
 
             return False
@@ -1070,59 +1050,6 @@ class CommandRouter:
     def _handle_fix_supabase_env(self, args):
         # Fix Supabase environment variable issues
         return fix_supabase_environment_variables()
-
-    def _handle_ai_agents(self, args):
-        """Show available AI agents for log analysis"""
-        self.handle_command_verbose(args)
-        try:
-            from ai_system.ai_agents import AIAgentManager
-
-            # Create a fresh instance to avoid any caching issues
-            fresh_manager = AIAgentManager()
-            fresh_manager.show_agents_status()
-            return True
-        except ImportError:
-            console.print("[red]AI agents system not available[/red]")
-            return False
-
-    def _handle_set_default_ai(self, args):
-        """Set the default AI agent"""
-        self.handle_command_verbose(args)
-        try:
-            from ai_analyzer.config import config
-            from ai_system.ai_agents import ai_agent_manager
-
-            # Resolve the agent name
-            resolved_agent = self._resolve_ai_agent_name(args.agent_name)
-
-            if not resolved_agent:
-                console.print(f"[red]✗ Invalid agent name: {args.agent_name}[/red]")
-                console.print("[dim]Run 'pm ai-agents' to see available agents[/dim]")
-                return False
-
-            # Set default in both places
-            success = ai_agent_manager.set_default_agent(resolved_agent, persist=True)
-            if success:
-                config.set_default_agent(resolved_agent)
-                console.print(
-                    f"[green]✓ Default AI agent set to: {resolved_agent}[/green]"
-                )
-                console.print(
-                    f"[dim]Config saved to: {ai_agent_manager.get_config_file_path()}[/dim]"
-                )
-                return True
-            else:
-                console.print(
-                    f"[red]✗ Failed to set default agent: {resolved_agent} not found[/red]"
-                )
-                console.print("[dim]Run 'pm ai-agents' to see available agents[/dim]")
-                return False
-        except ImportError:
-            console.print("[red]AI agents system not available[/red]")
-            return False
-        except Exception as e:
-            console.print(f"[red]Error setting default AI agent: {e}[/red]")
-            return False
 
     def _handle_colors(self, args):
         """Show available Rich text colors and styles"""

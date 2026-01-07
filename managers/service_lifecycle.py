@@ -757,12 +757,10 @@ class ServiceLifecycle:
     ) -> None:
         """Trigger automatic AI analysis when restart fails"""
         try:
-            from ai_analyzer import ai_analyzer
+            from ai_analyzer import get_ai_analyzer
             from core.config import _verbose_enabled
 
-            # Initialize AI analyzer with manager if not already done
-            if ai_analyzer.manager is None:
-                ai_analyzer.manager = self.manager
+            analyzer = get_ai_analyzer(self.manager)
 
             # Prepare context data for restart failure analysis
             context_data = {
@@ -779,11 +777,11 @@ class ServiceLifecycle:
             }
 
             # Run AI analysis with verbose mode from global config
-            ai_analyzer.ai_analyze(
+            analyzer.ai_analyze(
                 analysis_type="reinit_failure",
                 target=target,
                 context_data=context_data,
-                ai_agent=None,  # Use default agent
+                ai_model=None,  # Use configured assistant model
                 verbose=_verbose_enabled,
             )
 

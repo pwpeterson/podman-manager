@@ -3,10 +3,8 @@
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from ai_system.ai_agents import ai_agent_manager
 from core.config import console, verbose_print
 
-from .config import config
 from .data_collectors import (
     ContainerDataCollector,
     LogsDataCollector,
@@ -16,11 +14,11 @@ from .data_collectors import (
     SystemdDataCollector,
     SystemResourceCollector,
 )
-from .display_formatters import (
-    DisplayFormatterFactory,
-)
-from .prompt_generators import PromptGeneratorFactory
+from .display import DisplayFormatterFactory
+from .prompts import PromptGeneratorFactory
 from .spinner_manager import safe_spinner
+
+# Legacy multi-agent config system removed; model selection uses model-proxy
 
 
 class AIAnalyzer:
@@ -51,16 +49,14 @@ class AIAnalyzer:
         self.basic_formatter = (
             DisplayFormatterFactory.create_basic_troubleshooting_formatter()
         )
-        self.interactive_handler = DisplayFormatterFactory.create_interactive_handler(
-            ai_agent_manager
-        )
+        self.interactive_handler = DisplayFormatterFactory.create_interactive_handler()
 
     def ai_analyze(
         self,
         analysis_type: str,
         target: str,
         context_data: Optional[Dict[str, Any]] = None,
-        ai_agent: Optional[str] = None,
+        ai_model: Optional[str] = None,
         verbose: bool = False,
     ) -> Optional[str]:
         """
@@ -76,12 +72,10 @@ class AIAnalyzer:
         Returns:
             AI analysis result or None if failed
         """
-        # Resolve short agent names to full names
-        resolved_agent = config.resolve_agent_name(ai_agent)
-
+        # Model-proxy selection (assistant model)
         if verbose:
             verbose_print(
-                f"  [cyan]exec: ai_analyze(type={analysis_type}, target={target}, agent={resolved_agent or 'default'})[/cyan]"
+                f"  [cyan]exec: ai_analyze(type={analysis_type}, target={target}, model={ai_model or 'assistant'})[/cyan]"
             )
 
         try:
@@ -141,7 +135,31 @@ class AIAnalyzer:
                     )
                     console.print()
 
-            # Get AI analysis using the agent system with fallback logic
+            # AI agent event: choose assistant model for troubleshooting via model-proxy
+            selected_model: Optional[str] = None
+
+            if ai_model:
+                # If user provided a model id, set it as assistant without prompting.
+                try:
+                    from ai_system.model_proxy_client import ModelProxyClient
+
+                    ModelProxyClient().set_assistant_model(ai_model)
+                    selected_model = ai_model
+                except Exception as e:
+                    if verbose:
+                        verbose_print(
+                            f"  [cyan]exec: Failed to set assistant model to {ai_model}: {e}[/cyan]"
+                        )
+            else:
+                from ai_system.model_selection_event import run_model_selection_event
+
+                selection = run_model_selection_event(
+                    title=f"AI agent event: {analysis_type} ({target})",
+                    prompt_text="Select a model to use for troubleshooting",
+                )
+                selected_model = selection.selected_model
+
+            # Get AI analysis using model-proxy
             # Use safe spinner for non-verbose modes (except reinit_failure which handles its own display)
             spinner_text = "Analyzing..." if analysis_type != "reinit_failure" else None
             show_spinner = not verbose and analysis_type != "reinit_failure"
@@ -150,7 +168,10 @@ class AIAnalyzer:
                 spinner_text or "Processing...", console, verbose=not show_spinner
             ):
                 result = self._analyze_with_fallback(
-                    prompt, resolved_agent, verbose=verbose, target=target
+                    prompt,
+                    verbose=verbose,
+                    target=target,
+                    selected_model=selected_model,
                 )
 
             # Pass collected data to formatters so they can use resolved service names
@@ -322,10 +343,7 @@ class AIAnalyzer:
                 )
                 data.update(systemd_data)
 
-                # Get service name for container collection
-                systemd_data = self.collectors["systemd"].collect(
-                    target, manager=self.manager
-                )
+                # Get service name for container collection (reuse systemd_data)
                 service_name = systemd_data.get("service_name", target)
 
                 container_data = self.collectors["container"].collect(
@@ -355,180 +373,49 @@ class AIAnalyzer:
     def _analyze_with_fallback(
         self,
         prompt: str,
-        agent_name: Optional[str] = None,
         verbose: bool = False,
         target: Optional[str] = None,
+        selected_model: Optional[str] = None,
     ) -> Optional[str]:
-        """Analyze with agent fallback logic and user feedback"""
-        # Get the requested agent or default
-        agent = ai_agent_manager.get_agent(agent_name)
-        if not agent:
-            console.print("[red]No AI agents available[/red]")
-            return None
+        """Analyze using model-proxy (OpenAI-compatible).
 
-        # Show which agents we're trying
-        console.print("[cyan]🤖 AI Agent Selection:[/cyan]")
+        We rely on model-proxy for provider routing and credentials. The model to
+        use is either:
+        - the explicitly selected model (preferred), or
+        - the current assistant model configured in model-proxy.
+        """
+        _ = target  # reserved for future prompt tailoring
 
-        # Check if the agent is available before announcing it
-        if not agent.is_available():
-            # Show that the preferred agent is not available
-            if agent_name:
-                console.print(
-                    f"  [red]❌[/red] {agent.config.display_name} - [yellow]Not available (requested)[/yellow]"
-                )
-            else:
-                console.print(
-                    f"  [red]❌[/red] {agent.config.display_name} - [yellow]Not available (default)[/yellow]"
-                )
+        try:
+            from ai_system.model_proxy_client import ModelProxyClient, ModelProxyError
 
-            # Try to find an available fallback agent with detailed logging
-            fallback_agent = self._find_fallback_agent_with_logging(agent.config.name)
-            if fallback_agent:
+            mp = ModelProxyClient()
+            model_id = selected_model or mp.get_assistant_model()
+            if not model_id:
                 console.print(
-                    f"  [green]✅[/green] {fallback_agent.config.display_name} - [green]Selected for analysis[/green]"
+                    "[yellow]No assistant model is configured in model-proxy. Select a model when prompted.[/yellow]"
                 )
-                console.print()
-                agent = fallback_agent
-            else:
-                console.print("[red]No available AI agents found[/red]")
                 return None
-        else:
-            # Show which agent we're using (only if it's available)
-            console.print(
-                f"  [green]✅[/green] {agent.config.display_name} - [green]Selected for analysis[/green]"
-            )
-            console.print()
 
-        # Use the agent (either original or fallback)
-        if verbose:
-            verbose_print(
-                f"  [cyan]exec: Using AI agent: {agent.config.display_name}[/cyan]"
-            )
-
-        try:
-            result = agent.analyze_logs(prompt)
-            return result
-        except Exception as e:
             if verbose:
-                verbose_print(f"  [cyan]exec: Agent analysis failed: {e}[/cyan]")
-            console.print(f"[red]AI analysis failed: {e}[/red]")
+                verbose_print(
+                    f"  [cyan]exec: Using model-proxy model: {model_id}[/cyan]"
+                )
+
+            return mp.chat_completion_text(
+                model=model_id,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert system administrator and DevOps engineer specializing in systemd service log analysis and troubleshooting.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=2048,
+                temperature=0.1,
+            )
+        except (ModelProxyError, Exception) as e:
+            if verbose:
+                verbose_print(f"  [cyan]exec: model-proxy analysis failed: {e}[/cyan]")
+            console.print(f"[red]AI analysis failed (model-proxy): {e}[/red]")
             return None
-
-    def _find_fallback_agent_with_logging(
-        self, failed_agent_name: str
-    ) -> Optional[Any]:
-        """Find an available fallback agent with detailed logging"""
-        # Get fallback order from agent manager config or use configured agents
-        try:
-            # Try to get fallback order from ai_agents_config.json
-            import json
-            from pathlib import Path
-
-            config_file = Path("ai_agents_config.json")
-            if config_file.exists():
-                with open(config_file, "r") as f:
-                    config_data = json.load(f)
-                    fallback_order = config_data.get("agent_preferences", {}).get(
-                        "fallback_order", []
-                    )
-            else:
-                fallback_order = []
-
-            # If no fallback order in config, use all configured agents
-            if not fallback_order:
-                fallback_order = list(ai_agent_manager.agents.keys())
-
-        except Exception:
-            # Fallback to hardcoded list if config reading fails
-            fallback_order = [
-                "vllm-qwen25",
-                "claude-sonnet",
-                "gpt-4",
-                "claude-haiku",
-                "gpt-3.5-turbo",
-            ]
-
-        # Remove the failed agent from fallback order
-        if failed_agent_name in fallback_order:
-            fallback_order.remove(failed_agent_name)
-
-        # Try each agent in fallback order with logging
-        for agent_name in fallback_order:
-            agent = ai_agent_manager.get_agent(agent_name)
-            if agent:
-                if agent.is_available():
-                    console.print(
-                        f"  [green]✅[/green] {agent.config.display_name} - [green]Available (fallback)[/green]"
-                    )
-                    return agent
-                else:
-                    # Show more detailed reason for unavailability
-                    reason = self._get_unavailability_reason(agent)
-                    console.print(
-                        f"  [red]❌[/red] {agent.config.display_name} - [yellow]{reason}[/yellow]"
-                    )
-            else:
-                console.print(
-                    f"  [red]❌[/red] {agent_name} - [yellow]Agent not configured[/yellow]"
-                )
-
-        # If no specific fallback found, try any available agent
-        console.print("  [cyan]Checking all configured agents...[/cyan]")
-        available_agents = ai_agent_manager.list_available_agents()
-        if available_agents:
-            # Filter out the failed agent
-            available_agents = [
-                name for name in available_agents if name != failed_agent_name
-            ]
-            if available_agents:
-                agent = ai_agent_manager.get_agent(available_agents[0])
-                if agent:
-                    console.print(
-                        f"  [green]✅[/green] {agent.config.display_name} - [green]Available (any available)[/green]"
-                    )
-                    return agent
-
-        console.print("  [red]❌[/red] No available AI agents found")
-        return None
-
-    def _get_unavailability_reason(self, agent) -> str:
-        """Get a detailed reason why an agent is unavailable"""
-        try:
-            if agent.config.agent_type == "local-vllm":
-                if not agent.config.endpoint:
-                    return "No endpoint configured"
-                # Try to determine if it's a network issue or service down
-                import requests
-
-                try:
-                    response = requests.get(
-                        f"{agent.config.endpoint}/health", timeout=2
-                    )
-                    if response.status_code != 200:
-                        return f"Service unhealthy (HTTP {response.status_code})"
-                except requests.ConnectionError:
-                    return "Connection refused (service not running)"
-                except requests.Timeout:
-                    return "Connection timeout"
-                except Exception as e:
-                    return f"Network error: {str(e)[:30]}..."
-                return "Service check failed"
-            elif agent.config.agent_type in ["claude", "openai"]:
-                import os
-
-                api_key_env = agent.config.api_key_env or (
-                    "ANTHROPIC_API_KEY"
-                    if agent.config.agent_type == "claude"
-                    else "OPENAI_API_KEY"
-                )
-                if not os.getenv(api_key_env):
-                    return f"Missing {api_key_env} environment variable"
-                return "API key configured but service unavailable"
-            else:
-                return "Unknown agent type"
-        except Exception:
-            return "Not available"
-
-    def _find_fallback_agent(self, failed_agent_name: str) -> Optional[Any]:
-        """Find an available fallback agent (legacy method for compatibility)"""
-        return self._find_fallback_agent_with_logging(failed_agent_name)

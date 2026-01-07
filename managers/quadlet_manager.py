@@ -521,12 +521,10 @@ class QuadletManager:
     ) -> None:
         """Trigger automatic AI analysis for service start failures"""
         try:
-            from ai_analyzer import ai_analyzer
+            from ai_analyzer import get_ai_analyzer
             from core.config import _verbose_enabled
 
-            # Initialize AI analyzer with manager if not already done
-            if ai_analyzer.manager is None:
-                ai_analyzer.manager = self
+            analyzer = get_ai_analyzer(self)
 
             # Collect additional diagnostic information
             context_data = {
@@ -608,12 +606,12 @@ class QuadletManager:
             except Exception:
                 pass  # Ignore resource collection errors
 
-            # Run AI analysis with service start failure type
-            result = ai_analyzer.ai_analyze(
+            # Run AI analysis with service start failure type (model-proxy)
+            result = analyzer.ai_analyze(
                 analysis_type="service_start_failure",
                 target=target,
                 context_data=context_data,
-                ai_agent=None,  # Use default agent
+                ai_model=None,  # Use configured assistant model
                 verbose=_verbose_enabled,
             )
 
