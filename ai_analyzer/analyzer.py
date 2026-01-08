@@ -57,6 +57,7 @@ class AIAnalyzer:
         target: str,
         context_data: Optional[Dict[str, Any]] = None,
         ai_model: Optional[str] = None,
+        ai_agent: Optional[str] = None,
         verbose: bool = False,
     ) -> Optional[str]:
         """
@@ -66,12 +67,17 @@ class AIAnalyzer:
             analysis_type: Type of analysis (e.g., 'logs', 'reinit_failure', 'status', 'build_failure')
             target: Target service/stack name
             context_data: Additional context data specific to the analysis type
-            ai_agent: Specific AI agent to use (optional)
+            ai_model: Model-proxy model id override (optional)
+            ai_agent: Backward-compatible alias for ai_model (optional)
             verbose: Enable verbose output
 
         Returns:
             AI analysis result or None if failed
         """
+        # Backward compatibility: accept legacy ai_agent kwarg (alias for ai_model).
+        if ai_model is None and ai_agent is not None:
+            ai_model = ai_agent
+
         # Model-proxy selection (assistant model)
         if verbose:
             verbose_print(
