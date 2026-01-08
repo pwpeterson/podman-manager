@@ -51,30 +51,37 @@ class MarkdownDisplayFormatter(DisplayFormatter):
         return re.sub(pattern, "", content)
 
     def _render_markdown(self, content: str) -> None:
-        """Render markdown content using Rich formatting."""
+        """Render markdown-ish content using Rich formatting.
+
+        This formatter intentionally keeps output left-justified (no forced leading
+        indentation) to avoid "centered-looking" blocks when the model outputs
+        plain-text section headers like "Step-by-Step Fix".
+        """
         # Clean any Rich markup tags that might be in the AI-generated content
         content = self._clean_rich_markup(content)
         lines = content.split("\n")
         previous_was_header = False
         in_code_block = False
 
-        for i, line in enumerate(lines):
-            line = line.strip()
+        for i, raw_line in enumerate(lines):
+            stripped = raw_line.strip()
 
             # Skip multiple consecutive empty lines
-            if not line:
+            if not stripped:
                 if not previous_was_header and i > 0 and lines[i - 1].strip():
                     console.print()
                 continue
 
             # Handle headers (### Header)
-            if line.startswith("### "):
-                header_text = line[4:].strip()
+            if stripped.startswith("### "):
+                header_text = stripped[4:].strip()
                 console.print(f"[bold cyan]{header_text}[/bold cyan]")
                 previous_was_header = True
                 continue
             else:
                 previous_was_header = False
+
+            line = stripped
 
             # Handle bold text (**text**)
             line = re.sub(r"\*\*([^*]+)\*\*", r"[bold]\1[/bold]", line)
@@ -103,45 +110,39 @@ class MarkdownDisplayFormatter(DisplayFormatter):
                     continue
                 continue
 
-            # Handle content inside code blocks
+            # Handle content inside code blocks (preserve original line content)
             if in_code_block:
-                console.print(f"    {line}", style="cyan")
+                console.print(raw_line, style="cyan")
                 continue
 
-            # Handle numbered lists (1. item)
+            # Handle numbered lists (1. item) - left aligned
             if re.match(r"^\d+\.\s", line):
-                wrapped_lines = textwrap.fill(
-                    line, width=116, initial_indent="    ", subsequent_indent="       "
+                wrapped = textwrap.fill(
+                    line, width=120, initial_indent="", subsequent_indent="   "
                 )
-                console.print(f"[white]{wrapped_lines}[/white]")
+                console.print(f"[white]{wrapped}[/white]")
                 continue
 
-            # Handle bullet points (- item)
+            # Handle bullet points (- item) - left aligned
             if line.startswith("- "):
-                wrapped_lines = textwrap.fill(
-                    line,
-                    width=112,
-                    initial_indent="        ",
-                    subsequent_indent="          ",
+                wrapped = textwrap.fill(
+                    line, width=120, initial_indent="", subsequent_indent="  "
                 )
-                console.print(f"[white]{wrapped_lines}[/white]")
+                console.print(f"[white]{wrapped}[/white]")
                 continue
 
-            # Handle long command lines
+            # Handle long command lines (left aligned)
             if self._is_long_command_line(line):
                 formatted_command = self._format_long_command_line(line)
                 for cmd_line in formatted_command:
-                    console.print(f"    {cmd_line}", style="cyan")
+                    console.print(cmd_line, style="cyan")
                 continue
 
-            # Regular text - wrap at 120 characters with indentation
-            if len(line) > 116:
-                wrapped_lines = textwrap.fill(
-                    line, width=116, initial_indent="    ", subsequent_indent="    "
-                )
-                console.print(wrapped_lines)
+            # Regular text - wrap at 120 characters (no indentation)
+            if len(line) > 120:
+                console.print(textwrap.fill(line, width=120))
             else:
-                console.print(f"    {line}")
+                console.print(line)
 
     def _is_long_command_line(self, line: str) -> bool:
         """Check if a line contains a long command that should be formatted."""
