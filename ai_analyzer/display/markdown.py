@@ -20,12 +20,22 @@ class MarkdownDisplayFormatter(DisplayFormatter):
     def display(
         self, analysis_type: str, target: str, result: str, verbose: bool = False
     ) -> None:
-        """Display AI analysis results with markdown formatting."""
+        """Display AI analysis results with markdown formatting.
+
+        Note: recommended actions are intentionally NOT displayed here. They are
+        shown after interactive follow-ups end, so they don't interrupt the AI
+        analysis/interactive flow.
+        """
         title = self._get_title(analysis_type)
         console.print(f"\n[bold green]{title} for {target}[/bold green]")
         console.print()
 
         self._render_markdown(result)
+
+    def show_recommended_actions(
+        self, analysis_type: str, target: str, verbose: bool = False
+    ) -> None:
+        """Show recommended actions after the analysis/interactive session ends."""
         self._show_analysis_menu(analysis_type, target, verbose)
 
     def set_collected_data(self, data: dict[str, Any]) -> None:

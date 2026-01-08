@@ -191,11 +191,17 @@ class AIAnalyzer:
                 self._original_analysis_result = result
                 self.interactive_handler.set_context(prompt, result)
 
-                # Display the results
+                # Display the results (do not show actions menu yet)
                 self.markdown_formatter.display(analysis_type, target, result, verbose)
 
-                # Start interactive analysis session
+                # Start interactive analysis session (user exits to continue)
                 self.interactive_handler.start_session(analysis_type, target, verbose)
+
+                # Show recommended actions after interactive follow-ups end
+                if hasattr(self.markdown_formatter, "show_recommended_actions"):
+                    self.markdown_formatter.show_recommended_actions(
+                        analysis_type, target, verbose
+                    )
 
                 return result
             else:
