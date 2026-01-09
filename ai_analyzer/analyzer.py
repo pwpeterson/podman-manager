@@ -16,7 +16,7 @@ from .data_collectors import (
 )
 from .display import DisplayFormatterFactory
 from .prompts import PromptGeneratorFactory
-from .spinner_manager import safe_spinner
+from .spinner_manager import SpinnerManager, safe_spinner
 
 # Legacy multi-agent config system removed; model selection uses model-proxy
 
@@ -414,18 +414,26 @@ class AIAnalyzer:
                     f"  [cyan]exec: Using model-proxy model: {model_id}[/cyan]"
                 )
 
-            return mp.chat_completion_text(
-                model=model_id,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert system administrator and DevOps engineer specializing in systemd service log analysis and troubleshooting.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=2048,
-                temperature=0.1,
-            )
+            # If no spinner is active (e.g., verbose mode disables the outer spinner,
+            # or reinit_failure suppresses it), show a spinner here so the user sees
+            # immediate feedback after model selection.
+            show_local_spinner = SpinnerManager._active_spinner is None
+
+            with safe_spinner(
+                "Processing request...", console, verbose=not show_local_spinner
+            ):
+                return mp.chat_completion_text(
+                    model=model_id,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are an expert system administrator and DevOps engineer specializing in systemd service log analysis and troubleshooting.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=2048,
+                    temperature=0.1,
+                )
         except (ModelProxyError, Exception) as e:
             if verbose:
                 verbose_print(f"  [cyan]exec: model-proxy analysis failed: {e}[/cyan]")
