@@ -47,14 +47,28 @@ class EnvironmentManager:
             Path.home() / ".config/containers/systemd/networks.config.json"
         )
 
-    def load_and_clean_env_file(self) -> bool:
-        """Copy .env file directly to systemd containers directory and setup networks."""
+    def load_and_clean_env_file(
+        self,
+        stack_dir: Optional[Path] = None,
+        target_dir: Optional[Path] = None,
+        *,
+        setup_networks: bool = True,
+    ) -> bool:
+        """Copy env file(s) into the systemd containers directory (and optionally setup networks).
+
+        - Always copies the root `.env` into `~/.config/containers/systemd/.env`
+        - If `stack_dir` is provided, also copies any `*.env` files found in that stack
+          directory into `~/.config/containers/systemd/` (same directory as the root `.env`)
+        - If `setup_networks` is True, runs Podman network setup after env copy. For install
+          flows, we typically defer network setup until after quadlet `.network` files are copied
+          so user output reads in a more natural order.
+        """
         if not self.env_file_path.exists():
             self._print_warning(f"Environment file not found: {self.env_file_path}")
             return False
 
         console.print()
-        self._print_success("Copying .env file to systemd containers directory.")
+        self._print_success("Copying .env file(s) to systemd containers directory.")
         if not is_verbose():
             console.print()
         verbose_print(
@@ -63,9 +77,14 @@ class EnvironmentManager:
 
         env_success = self._copy_env_file_directly()
 
-        # Setup networks after copying .env file
-        if env_success:
-            self._setup_networks()
+        # Copy stack-local env files *within the same output block* (no extra header)
+        if env_success and stack_dir is not None:
+            env_success = self.copy_stack_env_files(
+                stack_dir=stack_dir, target_dir=target_dir, show_header=False
+            )
+
+        if env_success and setup_networks:
+            self._setup_networks(target_dir=target_dir)
 
         return env_success
 
@@ -99,6 +118,57 @@ class EnvironmentManager:
             self._print_error(f"Failed to copy environment file: {e}")
             return False
 
+    def copy_stack_env_files(
+        self,
+        stack_dir: Path,
+        target_dir: Optional[Path] = None,
+        *,
+        show_header: bool = True,
+    ) -> bool:
+        """Copy stack-local *.env files into the systemd containers directory.
+
+        This mirrors the root .env behavior (copied to ~/.config/containers/systemd/.env),
+        but applies to env files shipped alongside a specific stack, e.g. `supabase.env`.
+
+        Args:
+            stack_dir: The stack directory under the quadlets source tree.
+            target_dir: Destination directory (defaults to ~/.config/containers/systemd).
+            show_header: If True, prints a heading. If False, only emits per-file exec lines.
+        """
+        if target_dir is None:
+            target_dir = self.system_env_target.parent
+
+        try:
+            env_files = sorted([p for p in stack_dir.glob("*.env") if p.is_file()])
+        except Exception as e:
+            self._print_error(f"Failed to locate stack env files in {stack_dir}: {e}")
+            return False
+
+        if not env_files:
+            return True
+
+        if show_header:
+            console.print()
+            self._print_success(
+                f"Copying {len(env_files)} stack env file(s) to systemd containers directory."
+            )
+            if not is_verbose():
+                console.print()
+
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            for src in env_files:
+                dest = target_dir / src.name
+                verbose_print(f"  [cyan]exec: Copied {src} to {dest}[/cyan]")
+                shutil.copy2(src, dest)
+                dest.chmod(0o644)
+
+            return True
+        except Exception as e:
+            self._print_error(f"Failed to copy stack env files: {e}")
+            return False
+
     def _print_success(self, message: str) -> None:
         console.print(f"[green]{message}[/green]")
 
@@ -108,11 +178,21 @@ class EnvironmentManager:
     def _print_error(self, message: str) -> None:
         console.print(f"[red]{message}[/red]")
 
-    def _setup_networks(self) -> None:
-        """Setup Podman networks from configuration."""
+    def _setup_networks(self, target_dir: Optional[Path] = None) -> None:
+        """Setup Podman networks from configuration (and installed quadlet `.network` files)."""
         try:
+            if target_dir is None:
+                target_dir = self.system_env_target.parent
+
+            # Ensure config file exists first, so any "Copying from ..." output appears
+            # before the "Setting up required podman networks." header.
+            self._ensure_network_config_file()
+
+            # Add spacing between the preceding copy section and this header in verbose mode
+            if is_verbose():
+                console.print()
+
             console.print("[green]Setting up required podman networks.[/green]")
-            console.print()
 
             # Only show detailed output in verbose mode
             if is_verbose():
@@ -121,12 +201,32 @@ class EnvironmentManager:
                 # Validate Podman is available
                 self._validate_podman()
 
-                # Ensure config file exists
-                self._ensure_network_config_file()
-
                 # Load and setup networks
                 config_data = self._load_network_config()
                 networks = config_data.get("networks", [])
+
+                # Also include networks implied by installed quadlet .network unit files.
+                # Important: the Podman network name is typically the unit *stem* (e.g. "mem0"),
+                # but users expect to see the unit filename (e.g. "mem0.network") in output.
+                try:
+                    installed_network_units = sorted(
+                        [p for p in target_dir.glob("*.network") if p.is_file()]
+                    )
+                except Exception:
+                    installed_network_units = []
+
+                existing_names = {
+                    n.get("name")
+                    for n in networks
+                    if isinstance(n, dict) and n.get("name")
+                }
+                for unit_path in installed_network_units:
+                    podman_name = unit_path.stem
+                    if podman_name and podman_name not in existing_names:
+                        networks.append(
+                            {"name": podman_name, "_display_name": unit_path.name}
+                        )
+                        existing_names.add(podman_name)
 
                 if not networks:
                     verbose_print(
@@ -139,26 +239,30 @@ class EnvironmentManager:
 
                 for network_config in networks:
                     name = network_config.get("name", "unknown")
+                    display_name = network_config.get("_display_name", name)
 
                     if self._network_exists(name):
                         console.print(
-                            f"    Network '{name}' already exists, skipping...",
+                            f"    Network '{display_name}' already exists, skipping...",
                             style="cyan",
                         )
                         skipped_count += 1
                     else:
-                        console.print(f"  → Creating network '{name}'...", style="blue")
+                        console.print(
+                            f"  → Creating network '{display_name}'...",
+                            style="blue",
+                        )
                         try:
                             was_created = self._create_network(network_config)
                             if was_created:
                                 created_count += 1
                                 console.print(
-                                    f"  ✓ Network '{name}' created successfully",
+                                    f"  ✓ Network '{display_name}' created successfully",
                                     style="green",
                                 )
                         except Exception as e:
                             console.print(
-                                f"  ✗ Failed to create network '{name}': {e}",
+                                f"  ✗ Failed to create network '{display_name}': {e}",
                                 style="red",
                             )
 
@@ -167,18 +271,37 @@ class EnvironmentManager:
                         f"    Network setup complete! Created: {created_count}, Skipped: {skipped_count}.",
                         style="cyan",
                     )
+
+                # Add spacing before the next major section (daemon reload, etc.)
+                console.print()
             else:
                 # In non-verbose mode, just do the work silently
                 try:
                     # Validate Podman is available
                     self._validate_podman()
 
-                    # Ensure config file exists
-                    self._ensure_network_config_file()
-
                     # Load and setup networks
                     config_data = self._load_network_config()
                     networks = config_data.get("networks", [])
+
+                    # Also include networks implied by installed quadlet .network unit files
+                    try:
+                        installed_network_units = sorted(
+                            [p for p in target_dir.glob("*.network") if p.is_file()]
+                        )
+                    except Exception:
+                        installed_network_units = []
+
+                    existing_names = {
+                        n.get("name")
+                        for n in networks
+                        if isinstance(n, dict) and n.get("name")
+                    }
+                    for unit_path in installed_network_units:
+                        podman_name = unit_path.stem
+                        if podman_name and podman_name not in existing_names:
+                            networks.append({"name": podman_name})
+                            existing_names.add(podman_name)
 
                     if networks:
                         for network_config in networks:
@@ -407,9 +530,15 @@ class SystemdManager:
             console.print()
 
         if use_sudo:
-            return self._reload_system_daemon()
+            ok = self._reload_system_daemon()
         else:
-            return self._reload_user_daemon()
+            ok = self._reload_user_daemon()
+
+        # Match section spacing in verbose mode (blank line between major sections)
+        if is_verbose():
+            console.print()
+
+        return ok
 
     def _reload_system_daemon(self) -> bool:
         """Reload system daemon with sudo."""
@@ -1254,7 +1383,16 @@ class FileManager:
         # Process files in correct dependency order: networks first, then volumes, then containers, then other files
         all_files_ordered = network_files + volume_files + container_files + other_files
 
+        # Verbose output: add blank lines between sections (and after env-copy section)
+        if is_verbose() and all_files_ordered:
+            console.print()
+
+        first_item = True
         for file in all_files_ordered:
+            if is_verbose() and not first_item:
+                console.print()
+            first_item = False
+
             if file.endswith(".network"):
                 network_name = file.replace(".network", "")
                 console.print(
@@ -1721,8 +1859,12 @@ class QuadletInstaller:
             service_file, name, resolved_stack
         )
 
-        # Load environment
-        if not self.env_manager.load_and_clean_env_file():
+        # Load environment (.env) and also copy any stack-local *.env files.
+        # Network setup is deferred until after quadlet .network unit files are copied, so
+        # output order is: copy .network files -> then "Setting up required podman networks."
+        if not self.env_manager.load_and_clean_env_file(
+            stack_dir=stack_dir, target_dir=target_dir, setup_networks=False
+        ):
             return False
 
         # Perform installation
@@ -1787,6 +1929,10 @@ class QuadletInstaller:
             self.file_manager.create_target_directory(target_dir, use_sudo)
             self.file_manager.copy_quadlet_files(files, stack_dir, target_dir, use_sudo)
             # Note: file permissions are now set during copy_quadlet_files
+
+            # Setup Podman networks after quadlet .network unit files are copied so the
+            # user sees network unit copy output before the network setup section.
+            self.env_manager._setup_networks(target_dir=target_dir)
 
             # Note: Validation is now done per-file during copy_quadlet_files
 
