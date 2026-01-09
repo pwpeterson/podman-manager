@@ -463,7 +463,22 @@ class StackManager:
             console.print(f"[red]{e}[/red]")
             return False
 
-        # Check if it's a stack or service first to show correct message
+        # Print the user-facing "Installing ..." header before verbose validation exec lines.
+        # This matches the desired `pm deploy <stack> -v` output ordering.
+        console.print()
+        if stack.endswith((".container", ".service", ".target")):
+            display_name = stack
+            if display_name.endswith(".container"):
+                display_name = display_name[:-10]  # Remove .container suffix
+            elif display_name.endswith(".service"):
+                display_name = display_name[:-8]  # Remove .service suffix
+            elif display_name.endswith(".target"):
+                display_name = display_name[:-7]  # Remove .target suffix
+            console.print(f"[green]Installing {display_name}...[/green]")
+        else:
+            console.print(f"[green]Installing {stack} stack...[/green]")
+
+        # Check if it's a stack or service (may emit verbose exec lines)
         is_valid, resolved_stack, service_file = installer.validate_stack_or_service(
             stack
         )
@@ -473,21 +488,6 @@ class StackManager:
         # Check if user cancelled the selection
         if resolved_stack == "CANCELLED":
             return False
-
-        console.print()
-        if service_file:
-            # Get display name for the resolved service - use the service file name without extension
-            display_name = service_file
-            if display_name.endswith(".container"):
-                display_name = display_name[:-10]  # Remove .container suffix
-            elif display_name.endswith(".service"):
-                display_name = display_name[:-8]  # Remove .service suffix
-            elif display_name.endswith(".target"):
-                display_name = display_name[:-7]  # Remove .target suffix
-            console.print(f"[green]Installing {display_name}...[/green]")
-        else:
-            console.print(f"[green]Installing {resolved_stack} stack...[/green]")
-        console.print()
 
         # Check systemd health
         if not installer.check_systemd_user_session():
