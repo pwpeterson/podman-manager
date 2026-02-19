@@ -477,6 +477,7 @@ class StackManager:
             console.print(f"[green]Installing {display_name}...[/green]")
         else:
             console.print(f"[green]Installing {stack} stack...[/green]")
+        console.print()
 
         # Check if it's a stack or service (may emit verbose exec lines)
         is_valid, resolved_stack, service_file = installer.validate_stack_or_service(

@@ -11,7 +11,7 @@ class SimpleFuzzyMatcher:
     """Simplified fuzzy matcher that returns container objects with name, port, image, and status."""
 
     def __init__(self):
-        self.systemd_dir = Path("/home/pwp/.config/containers/systemd")
+        self.systemd_dir = Path("/etc/containers/systemd")
 
     def find_container(self, partial_name: str) -> Optional[Dict[str, str]]:
         """

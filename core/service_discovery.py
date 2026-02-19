@@ -14,7 +14,7 @@ class ServiceDiscovery:
         # Primary source directory
         self.quadlets_source_dir = Path("/home/pwp/srv/local-ai-packaged/quadlets")
         # Installed directory
-        self.quadlets_dir = Path.home() / ".config" / "containers" / "systemd"
+        self.quadlets_dir = Path("/etc/containers/systemd")
         # STDIO services config (use script directory, not current working directory)
         script_dir = Path(__file__).parent.parent
         self.stdio_config_path = script_dir / "stdio_services_config.json"

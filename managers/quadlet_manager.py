@@ -29,7 +29,7 @@ class QuadletManager:
         self.validation = get_validation_utils()
 
         # Quadlets directory path (standard systemd location only)
-        self.quadlets_dir = Path.home() / ".config" / "containers" / "systemd"
+        self.quadlets_dir = Path("/etc/containers/systemd")
 
         # Stack target for managing all services together
         self.stack_target = "vllm-stack.target"

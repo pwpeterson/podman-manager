@@ -682,8 +682,6 @@ class ContainerBuilder:
 
                 original_cwd = os.getcwd()
                 try:
-                    os.chdir(build_dir)
-
                     # Use full path to dockerfile
                     full_dockerfile_path = Path(build_dir) / dockerfile
                     if not full_dockerfile_path.exists():
@@ -753,7 +751,10 @@ class ContainerBuilder:
                         f"    [cyan]No running container found, tried to remove expected image: {image_name}[/cyan]"
                     )
 
-                    # Build command with full path to dockerfile and context as "."
+                    # Use context from config, or default to build_dir if not specified
+                    build_context = context_dir if context_dir else build_dir
+
+                    # Build command with full path to dockerfile and proper context
                     build_cmd = [
                         "podman",
                         "build",
@@ -762,7 +763,7 @@ class ContainerBuilder:
                         str(full_dockerfile_path),
                         "-t",
                         image_name,
-                        ".",
+                        build_context,
                     ]
                     verbose_print(f"[cyan]exec: {' '.join(build_cmd)}[/cyan]")
 

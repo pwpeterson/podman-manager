@@ -381,8 +381,8 @@ class QuadletDataCollector(DataCollector):
 
         # Common locations for Quadlet .container files
         quadlet_dirs = [
-            Path.home() / ".config" / "containers" / "systemd",
             Path("/etc/containers/systemd"),
+            Path.home() / ".config" / "containers" / "systemd",
             Path("/usr/share/containers/systemd"),
         ]
 

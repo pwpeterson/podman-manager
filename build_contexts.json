@@ -21,7 +21,7 @@
     "model-proxy": {
       "build_dir": "/home/pwp/srv/apps/model-proxy",
       "dockerfile": "Dockerfile.model-proxy",
-      "context": "/home/pwp/srv/apps/model-proxy",
+      "context": "/home/pwp/srv/apps",
       "image_name": "localhost/model-proxy:latest"
     },
     "mcp-git-tools": {
@@ -30,11 +30,17 @@
       "context": "/home/pwp/srv/mcps/mcp-git-tools",
       "image_name": "localhost/mcp-git-tools:latest"
     },
-    "taskflow-ai": {
-      "build_dir": "/home/pwp/srv/apps/taskflow-ai",
-      "dockerfile": "Dockerfile.taskflow-ai",
-      "context": "/home/pwp/srv/apps/taskflow-ai",
-      "image_name": "localhost/taskflow-ai:latest"
+    "mindscape-ai-api": {
+      "build_dir": "/home/pwp/srv/apps/mindscape-ai",
+      "dockerfile": "Dockerfile.mindscape-ai-api",
+      "context": "/home/pwp/srv/apps/mindscape-ai",
+      "image_name": "localhost/mindscape-ai-api:latest"
+    },
+    "mindscape-ai-web": {
+      "build_dir": "/home/pwp/srv/apps/mindscape-ai",
+      "dockerfile": "Dockerfile.mindscape-ai-web",
+      "context": "/home/pwp/srv/apps/mindscape-ai",
+      "image_name": "localhost/mindscape-ai-web:latest"
     }
   },
   "podman_build_services": [
@@ -43,6 +49,7 @@
     "model-proxy",
     "mcp-git-tools",
     "crawl4ai",
-    "taskflow-ai"
+    "mindscape-ai-api",
+    "mindscape-ai-web"
   ]
 }

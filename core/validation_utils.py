@@ -13,7 +13,7 @@ class ValidationUtils:
     """Centralized validation utilities for quadlet services."""
 
     def __init__(self):
-        self.quadlets_dir = Path.home() / ".config" / "containers" / "systemd"
+        self.quadlets_dir = Path("/etc/containers/systemd")
         self.quadlet_generator = "/usr/lib/systemd/user-generators/podman-quadlet"
 
     def validate_prerequisites(self) -> bool:

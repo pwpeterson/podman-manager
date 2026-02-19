@@ -51,8 +51,8 @@ class DataCollectionConfig:
     def __post_init__(self):
         if self.quadlet_dirs is None:
             self.quadlet_dirs = [
-                "~/.config/containers/systemd",
                 "/etc/containers/systemd",
+                "~/.config/containers/systemd",
                 "/usr/share/containers/systemd",
             ]
 

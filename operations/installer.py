@@ -39,13 +39,11 @@ class EnvironmentManager:
 
     def __init__(self):
         self.env_file_path = Path("/home/pwp/srv/local-ai-packaged/.env")
-        self.system_env_target = Path.home() / ".config/containers/systemd/.env"
+        self.system_env_target = Path("/etc/containers/systemd/.env")
         self.source_config = Path(
             "/home/pwp/srv/local-ai-packaged/quadlets/networks.config.json"
         )
-        self.config_file = (
-            Path.home() / ".config/containers/systemd/networks.config.json"
-        )
+        self.config_file = Path("/etc/containers/systemd/networks.config.json")
 
     def load_and_clean_env_file(
         self,
@@ -56,9 +54,9 @@ class EnvironmentManager:
     ) -> bool:
         """Copy env file(s) into the systemd containers directory (and optionally setup networks).
 
-        - Always copies the root `.env` into `~/.config/containers/systemd/.env`
+        - Always copies the root `.env` into `/etc/containers/systemd/.env`
         - If `stack_dir` is provided, also copies any `*.env` files found in that stack
-          directory into `~/.config/containers/systemd/` (same directory as the root `.env`)
+          directory into `/etc/containers/systemd/` (same directory as the root `.env`)
         - If `setup_networks` is True, runs Podman network setup after env copy. For install
           flows, we typically defer network setup until after quadlet `.network` files are copied
           so user output reads in a more natural order.
@@ -71,9 +69,7 @@ class EnvironmentManager:
         self._print_success("Copying .env file(s) to systemd containers directory.")
         if not is_verbose():
             console.print()
-        verbose_print(
-            "  [cyan]exec: Copy .env file to ~/.config/containers/systemd/[/cyan]"
-        )
+        verbose_print("  [cyan]exec: Copy .env file to /etc/containers/systemd/[/cyan]")
 
         env_success = self._copy_env_file_directly()
 
@@ -127,12 +123,12 @@ class EnvironmentManager:
     ) -> bool:
         """Copy stack-local *.env files into the systemd containers directory.
 
-        This mirrors the root .env behavior (copied to ~/.config/containers/systemd/.env),
+        This mirrors the root .env behavior (copied to /etc/containers/systemd/.env),
         but applies to env files shipped alongside a specific stack, e.g. `supabase.env`.
 
         Args:
             stack_dir: The stack directory under the quadlets source tree.
-            target_dir: Destination directory (defaults to ~/.config/containers/systemd).
+            target_dir: Destination directory (defaults to /etc/containers/systemd).
             show_header: If True, prints a heading. If False, only emits per-file exec lines.
         """
         if target_dir is None:
@@ -1337,7 +1333,7 @@ Keep the response brief and actionable."""
             f"[green]     Check quadlet syntax:[/green] [white]podman-quadlet --user --dryrun | grep {container_file}[/white]"
         )
         console.print(
-            "[green]View installed containers:[/green] [white]ls ~/.config/containers/systemd/[/white]"
+            "[green]View installed containers:[/green] [white]ls /etc/containers/systemd/[/white]"
         )
         console.print()
 
@@ -1844,7 +1840,7 @@ class QuadletInstaller:
     ) -> bool:
         """Install stack or service to target directory."""
         if target_dir is None:
-            target_dir = Path.home() / ".config/containers/systemd"
+            target_dir = Path("/etc/containers/systemd")
 
         # Validate and determine if it's a stack or service
         is_valid, resolved_stack, service_file = self.validate_stack_or_service(name)
@@ -2054,7 +2050,7 @@ class QuadletInstaller:
     ) -> bool:
         """Uninstall stack or service from target directory."""
         if target_dir is None:
-            target_dir = Path.home() / ".config/containers/systemd"
+            target_dir = Path("/etc/containers/systemd")
 
         # Validate and determine if it's a stack or service
         is_valid, resolved_stack, service_file = self.validate_stack_or_service(name)

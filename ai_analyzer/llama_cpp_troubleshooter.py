@@ -252,11 +252,9 @@ class LlamaCppTroubleshooter:
 
         # Common locations
         possible_paths = [
-            Path.home() / f".config/containers/systemd/{clean_name}.container",
-            Path.home()
-            / f".config/containers/systemd/{clean_name.replace('-', '_')}.container",
-            Path.home()
-            / f".config/containers/systemd/{clean_name.replace('_', '-')}.container",
+            Path(f"/etc/containers/systemd/{clean_name}.container"),
+            Path(f"/etc/containers/systemd/{clean_name.replace('-', '_')}.container"),
+            Path(f"/etc/containers/systemd/{clean_name.replace('_', '-')}.container"),
         ]
 
         for path in possible_paths:

@@ -57,7 +57,7 @@ def fix_supabase_environment_variables():
     console.print("=" * 50)
 
     # Find Supabase container files
-    systemd_dir = Path.home() / ".config/containers/systemd"
+    systemd_dir = Path("/etc/containers/systemd")
 
     if not systemd_dir.exists():
         console.print(f"[red]Systemd directory not found: {systemd_dir}[/red]")
