@@ -875,7 +875,7 @@ class ContainerBuilder:
                             "chown",
                             "-R",
                             f"{whoami}:{whoami}",
-                            os.path.expanduser("~/srv/apps"),
+                            os.path.expanduser("~/srv"),
                         ]
                         verbose_print(f"[cyan]exec: {' '.join(chown_cmd)}[/cyan]")
 
