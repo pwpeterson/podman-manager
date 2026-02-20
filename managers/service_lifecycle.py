@@ -269,11 +269,9 @@ class ServiceLifecycle:
             console.print(
                 f"[green]Restarting {service_name.replace('.service', '')}...[/green]"
             )
-            verbose_print(
-                f"  [cyan]exec: systemctl --user restart {service_name}[/cyan]"
-            )
+            verbose_print(f"  [cyan]exec: sudo systemctl restart {service_name}[/cyan]")
 
-            cmd = ["systemctl", "--user", "restart", service_name]
+            cmd = ["sudo", "systemctl", "restart", service_name]
             result = self.manager._run_systemctl_command(
                 cmd, f"restart_{target}", suppress_errors=True, quiet=True
             )
@@ -370,7 +368,7 @@ class ServiceLifecycle:
 
         console.print(f"[yellow]Resetting failed state for {target}...[/yellow]")
 
-        cmd = ["systemctl", "--user", "reset-failed", service_name]
+        cmd = ["sudo", "systemctl", "reset-failed", service_name]
         verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
         try:
@@ -413,7 +411,7 @@ class ServiceLifecycle:
 
         console.print(f"[yellow]Showing service file for {target}...[/yellow]")
 
-        cmd = ["systemctl", "--user", "cat", service_name]
+        cmd = ["sudo", "systemctl", "cat", service_name]
         verbose_print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
         try:
@@ -464,7 +462,7 @@ class ServiceLifecycle:
         # Use systemctl status for detailed output
         from core.config import _verbose_enabled
 
-        cmd = ["systemctl", "--user", "status", service_name]
+        cmd = ["sudo", "systemctl", "status", service_name]
         if _verbose_enabled:
             console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
         console.print("\n[green]Service Status:[/green]")
@@ -593,12 +591,12 @@ class ServiceLifecycle:
 
         for service in services:
             console.print(f"[green]Restarting {service}...[/green]")
-            verbose_print(f"  [cyan]exec: systemctl --user restart {service}[/cyan]")
+            verbose_print(f"  [cyan]exec: sudo systemctl restart {service}[/cyan]")
 
             # Get the service name for direct systemctl call to capture errors
             service_name = self.manager._find_service_name(service, "restart")
             if service_name and not service_name.startswith("STACK:"):
-                cmd = ["systemctl", "--user", "restart", service_name]
+                cmd = ["sudo", "systemctl", "restart", service_name]
                 result = self.manager._run_systemctl_command(
                     cmd, f"restart_{service}", suppress_errors=True, quiet=True
                 )
@@ -693,8 +691,8 @@ class ServiceLifecycle:
             service_name = self.manager._find_service_name(service, "status")
             if service_name:
                 cmd = [
+                    "sudo",
                     "systemctl",
-                    "--user",
                     "status",
                     service_name,
                     "--no-pager",
@@ -868,13 +866,13 @@ class ServiceLifecycle:
                 else service_name
             )
 
-        # Use systemctl --user to stop the service (safer for Quadlet services)
+        # Use sudo systemctl to stop the service (safer for Quadlet services)
         # Container removal is handled automatically by systemctl service lifecycle
         try:
             service_name = f"{container_name}.service"
 
-            # Stop the service using systemctl --user
-            stop_cmd = ["systemctl", "--user", "stop", service_name]
+            # Stop the service using sudo systemctl
+            stop_cmd = ["sudo", "systemctl", "stop", service_name]
             verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
             result = systemctl_user(["stop", service_name], timeout=30)
 

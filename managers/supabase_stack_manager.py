@@ -199,7 +199,7 @@ class SupabaseStackManager:
                     continue
 
                 console.print(f"[green]  Stopping {service}...[/green]")
-                verbose_print(f"    [cyan]exec: systemctl --user stop {service}[/cyan]")
+                verbose_print(f"    [cyan]exec: sudo systemctl stop {service}[/cyan]")
                 if self.manager.stop_service(service, quiet=True):
                     console.print(f"[green]    ✓ Stopped {service}[/green]")
                     stopped_services.append(service)
@@ -306,7 +306,7 @@ class SupabaseStackManager:
         time.sleep(2)
 
         # Check if service is active
-        status_cmd = ["systemctl", "--user", "is-active", resolved_service]
+        status_cmd = ["sudo", "systemctl", "is-active", resolved_service]
         status_result = subprocess.run(
             status_cmd, capture_output=True, text=True
         )  # nosec B603
@@ -317,8 +317,8 @@ class SupabaseStackManager:
 
         # Check for critical errors in recent logs
         logs_cmd = [
+            "sudo",
             "journalctl",
-            "--user",
             "-u",
             resolved_service,
             "--since",
@@ -404,7 +404,7 @@ class SupabaseStackManager:
                 continue
 
             # Check if service is active
-            status_cmd = ["systemctl", "--user", "is-active", resolved_service]
+            status_cmd = ["sudo", "systemctl", "is-active", resolved_service]
             result = subprocess.run(
                 status_cmd, capture_output=True, text=True
             )  # nosec B603

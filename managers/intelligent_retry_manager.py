@@ -200,13 +200,13 @@ class IntelligentRetryManager:
                 [
                     {
                         "title": "Clear systemd failed state",
-                        "commands": [f"systemctl --user reset-failed {target}"],
+                        "commands": [f"sudo systemctl reset-failed {target}"],
                         "description": "Reset any failed service state",
                         "risk_level": "low",
                     },
                     {
                         "title": "Reload systemd daemon",
-                        "commands": ["systemctl --user daemon-reload"],
+                        "commands": ["sudo systemctl daemon-reload"],
                         "description": "Reload systemd configuration",
                         "risk_level": "low",
                     },
@@ -220,7 +220,7 @@ class IntelligentRetryManager:
                     {
                         "title": "Stop container service",
                         "commands": [
-                            f"systemctl --user stop {target}.service || true",
+                            f"sudo systemctl stop {target}.service || true",
                         ],
                         "description": "Force remove existing container",
                         "risk_level": "medium",
@@ -427,7 +427,7 @@ class IntelligentRetryManager:
         recommendations = [
             "Check system logs for hardware or kernel issues: `journalctl -p err -n 50`",
             "Verify disk space and system resources: `df -h && free -h`",
-            "Check for conflicting services: `systemctl --user list-units --failed`",
+            "Check for conflicting services: `sudo systemctl list-units --failed`",
             "Review container configuration files for syntax errors",
             "Consider rebuilding the container image from scratch",
             "Check network connectivity and DNS resolution",

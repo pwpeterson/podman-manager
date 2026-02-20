@@ -56,7 +56,7 @@ class StackManager:
             # Try to stop the stack target first (suppress errors since it may not exist)
             service_name = self.manager._find_service_name("vllm-stack")
             if service_name:
-                cmd = ["systemctl", "--user", "stop", service_name]
+                cmd = ["sudo", "systemctl", "stop", service_name]
                 result = self.manager._run_systemctl_command(
                     cmd, "stop_vllm-stack", suppress_errors=True, quiet=True
                 )
@@ -319,7 +319,7 @@ class StackManager:
         # Get the service name for systemd
         service_name = self.manager._find_service_name(service, "logs")
         if service_name and not service_name.startswith("STACK:"):
-            cmd = ["journalctl", "--user", "-u", service_name]
+            cmd = ["sudo", "journalctl", "-u", service_name]
             if follow:
                 cmd.append("-f")
 
@@ -360,8 +360,8 @@ class StackManager:
             service_name = self.manager._find_service_name(service)
             if service_name:
                 cmd = [
+                    "sudo",
                     "systemctl",
-                    "--user",
                     "status",
                     service_name,
                     "--no-pager",
@@ -651,7 +651,7 @@ class StackManager:
             if service_name:
                 if _verbose_enabled:
                     verbose_print(f"[green]  Starting {service}...[/green]")
-                    restart_cmd = ["systemctl", "--user", "restart", service_name]
+                    restart_cmd = ["sudo", "systemctl", "restart", service_name]
                     verbose_print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
                     restart_result = self.manager._run_systemctl_command(
                         restart_cmd,
@@ -698,7 +698,7 @@ class StackManager:
                 else:
                     # Non-verbose mode: simple starting message without spinner
                     console.print(f"[green]Starting {service}...[/green]")
-                    restart_cmd = ["systemctl", "--user", "restart", service_name]
+                    restart_cmd = ["sudo", "systemctl", "restart", service_name]
                     restart_result = systemctl_user(["restart", service_name])
 
                     if restart_result.returncode == 0:

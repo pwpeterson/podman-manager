@@ -447,6 +447,7 @@ class ContainerBuilder:
                 verbose_print(f"[cyan]Context directory: {context_directory}[/cyan]")
 
                 build_cmd = [
+                    "sudo",
                     "podman",
                     "build",
                     "-t",
@@ -458,6 +459,7 @@ class ContainerBuilder:
             else:
                 # Use original build format
                 build_cmd = [
+                    "sudo",
                     "podman",
                     "build",
                     "--no-cache",
@@ -571,6 +573,39 @@ class ContainerBuilder:
                 final_image_name = target_image_name
 
             console.print(f"[green]Image {final_image_name} built successfully[/green]")
+            console.print()
+
+            # Reclaim home directory files
+            console.print("[green]Reclaim your home directory files[/green]")
+            whoami = os.environ.get("USER", os.getlogin())
+            chown_cmd = [
+                "sudo",
+                "chown",
+                "-R",
+                f"{whoami}:{whoami}",
+                os.path.expanduser("~/srv/apps"),
+            ]
+            verbose_print(f"[cyan]exec: {' '.join(chown_cmd)}[/cyan]")
+
+            try:
+                chown_result = subprocess.run(
+                    chown_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if chown_result.returncode == 0:
+                    console.print(
+                        "[green]  Successfully reclaimed home directory files[/green]"
+                    )
+                else:
+                    console.print(
+                        f"[yellow]  Warning: chown command failed: {chown_result.stderr.strip()}[/yellow]"
+                    )
+            except Exception as e:
+                console.print(
+                    f"[yellow]  Warning: Could not reclaim files: {e}[/yellow]"
+                )
             console.print()
 
             return True
@@ -756,6 +791,7 @@ class ContainerBuilder:
 
                     # Build command with full path to dockerfile and proper context
                     build_cmd = [
+                        "sudo",
                         "podman",
                         "build",
                         "--no-cache",
@@ -821,6 +857,42 @@ class ContainerBuilder:
                         console.print(
                             f"[green]Podman build completed for {target}[/green]"
                         )
+                        console.print()
+
+                        # Reclaim home directory files
+                        console.print(
+                            "[green]Reclaim your home directory files[/green]"
+                        )
+                        whoami = os.environ.get("USER", os.getlogin())
+                        chown_cmd = [
+                            "sudo",
+                            "chown",
+                            "-R",
+                            f"{whoami}:{whoami}",
+                            os.path.expanduser("~/srv/apps"),
+                        ]
+                        verbose_print(f"[cyan]exec: {' '.join(chown_cmd)}[/cyan]")
+
+                        try:
+                            chown_result = subprocess.run(
+                                chown_cmd,
+                                capture_output=True,
+                                text=True,
+                                timeout=30,
+                            )
+                            if chown_result.returncode == 0:
+                                console.print(
+                                    "[green]  Successfully reclaimed home directory files[/green]"
+                                )
+                            else:
+                                console.print(
+                                    f"[yellow]  Warning: chown command failed: {chown_result.stderr.strip()}[/yellow]"
+                                )
+                        except Exception as e:
+                            console.print(
+                                f"[yellow]  Warning: Could not reclaim files: {e}[/yellow]"
+                            )
+
                         return True
                     else:
                         console.print(f"[red]Podman build failed for {target}[/red]")
@@ -961,6 +1033,7 @@ class ContainerBuilder:
                     os.chdir(build_dir)
 
                     build_cmd = [
+                        "sudo",
                         "podman",
                         "build",
                         "--no-cache",
@@ -1268,6 +1341,7 @@ class ContainerBuilder:
                 return False
 
             build_cmd = [
+                "sudo",
                 "podman",
                 "build",
                 "--no-cache",
@@ -1370,6 +1444,7 @@ class ContainerBuilder:
                 return False
 
             build_cmd = [
+                "sudo",
                 "podman",
                 "build",
                 "--no-cache",

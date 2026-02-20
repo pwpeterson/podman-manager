@@ -140,7 +140,7 @@ class ModelManger:
             # Stop the current container gracefully
             console.print(f"[green]Stopping {current_container}...[/green]")
             service_name = f"{current_container}.service"
-            stop_cmd = ["systemctl", "--user", "stop", service_name]
+            stop_cmd = ["sudo", "systemctl", "stop", service_name]
             verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
 
             if self._run_command(stop_cmd):
@@ -193,7 +193,7 @@ class ModelManger:
 
             # Stop the current container gracefully
             service_name = f"{container_name}.service"
-            stop_cmd = ["systemctl", "--user", "stop", service_name]
+            stop_cmd = ["sudo", "systemctl", "stop", service_name]
             verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
 
             if self._run_command(stop_cmd):
@@ -240,7 +240,7 @@ class ModelManger:
 
             # Stop the current container gracefully
             service_name = f"{current_container}.service"
-            stop_cmd = ["systemctl", "--user", "stop", service_name]
+            stop_cmd = ["sudo", "systemctl", "stop", service_name]
             verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
 
             if self._run_command(stop_cmd):
@@ -302,7 +302,7 @@ class ModelManger:
 
                 # Stop the container gracefully
                 service_name = f"{current_model_container}.service"
-                stop_cmd = ["systemctl", "--user", "stop", service_name]
+                stop_cmd = ["sudo", "systemctl", "stop", service_name]
                 verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
                 self._run_command(stop_cmd, suppress_errors=True)
 
@@ -394,7 +394,7 @@ class ModelManger:
         console.print(f"[green]Starting {container_name}...[/green]")
 
         service_name = f"{container_name}.service"
-        start_cmd = ["systemctl", "--user", "start", service_name]
+        start_cmd = ["sudo", "systemctl", "start", service_name]
         verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
 
         if not self._run_command(start_cmd):
@@ -491,32 +491,28 @@ class ModelManger:
             )
         console.print()
 
-        # Start new proxy with updated MODEL_VLLM
-        console.print(f"[green]Starting {self.proxy_container}...[/green]")
-        vllm_url = f"http://{backend_container}:{self.model_port}"
+        # Enable the proxy service
+        console.print(f"[green]Enabling {self.proxy_container}...[/green]")
+        enable_cmd = ["sudo", "systemctl", "enable", f"{self.proxy_container}.service"]
+        verbose_print(f"[cyan]exec: {' '.join(enable_cmd)}[/cyan]")
+        self._run_command(enable_cmd, suppress_errors=True)
+        console.print()
 
-        run_proxy_cmd = [
-            "podman",
-            "run",
-            "-d",
-            "--name",
-            self.proxy_container,
-            "--network",
-            self.network_name,
-            "-e",
-            f"MODEL_VLLM={vllm_url}",
-            "-p",
-            f"{self.proxy_port}:{self.proxy_port}",
-            proxy_image or self.proxy_image,
+        # Restart the proxy service
+        console.print(f"[green]Restarting {self.proxy_container}...[/green]")
+        restart_cmd = [
+            "sudo",
+            "systemctl",
+            "restart",
+            f"{self.proxy_container}.service",
         ]
+        verbose_print(f"[cyan]exec: {' '.join(restart_cmd)}[/cyan]")
 
-        verbose_print(f"[cyan]exec: {' '.join(run_proxy_cmd)}[/cyan]")
-
-        if not self._run_command(run_proxy_cmd):
-            console.print(f"[red]  Failed to start {self.proxy_container}[/red]")
+        if not self._run_command(restart_cmd):
+            console.print(f"[red]  Failed to restart {self.proxy_container}[/red]")
             return False
 
-        console.print(f"[green]  Started {self.proxy_container}.[/green]")
+        console.print(f"[green]  Restarted {self.proxy_container}.[/green]")
         console.print()
 
         # Restart mcp-model-delegator after proxy is started
@@ -558,7 +554,7 @@ class ModelManger:
         # Use the standard container start command for mcp-model-delegator
         # This assumes the container is already configured and just needs to be started
         service_name = f"{mcp_container}.service"
-        start_cmd = ["systemctl", "--user", "start", service_name]
+        start_cmd = ["sudo", "systemctl", "start", service_name]
         verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
 
         if self._run_command(start_cmd):
@@ -599,7 +595,7 @@ class ModelManger:
     def _stop_container(self, container_name: str) -> bool:
         """Stop a container"""
         service_name = f"{container_name}.service"
-        stop_cmd = ["systemctl", "--user", "stop", service_name]
+        stop_cmd = ["sudo", "systemctl", "stop", service_name]
         verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
         return self._run_command(stop_cmd, suppress_errors=True)
 

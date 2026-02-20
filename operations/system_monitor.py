@@ -20,7 +20,7 @@ class SystemMonitor:
         console.print("[yellow]Checking auto-update status...[/yellow]")
 
         # Check if auto-update timer is enabled
-        timer_cmd = ["systemctl", "--user", "is-enabled", "podman-auto-update.timer"]
+        timer_cmd = ["sudo", "systemctl", "is-enabled", "podman-auto-update.timer"]
         console.print(f"[cyan]exec: {' '.join(timer_cmd)}[/cyan]")
 
         result = systemctl_user(["is-enabled", "podman-auto-update.timer"])
@@ -35,14 +35,14 @@ class SystemMonitor:
         else:
             console.print("[yellow]Podman auto-update timer is not enabled[/yellow]")
             console.print(
-                "[dim]Enable with: systemctl --user enable --now podman-auto-update.timer[/dim]"
+                "[dim]Enable with: sudo systemctl enable --now podman-auto-update.timer[/dim]"
             )
 
     def enable_auto_update(self) -> bool:
         """Enable podman auto-update timer"""
         console.print("[yellow]Enabling podman auto-update timer...[/yellow]")
 
-        cmd = ["systemctl", "--user", "enable", "--now", "podman-auto-update.timer"]
+        cmd = ["sudo", "systemctl", "enable", "--now", "podman-auto-update.timer"]
         console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
         result = systemctl_user(["enable", "--now", "podman-auto-update.timer"])
@@ -60,7 +60,7 @@ class SystemMonitor:
         """Manually trigger podman auto-update"""
         console.print("[yellow]Triggering manual auto-update...[/yellow]")
 
-        cmd = ["systemctl", "--user", "start", "podman-auto-update.service"]
+        cmd = ["sudo", "systemctl", "start", "podman-auto-update.service"]
         console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
         result = systemctl_user(["start", "podman-auto-update.service"])
@@ -80,6 +80,7 @@ class SystemMonitor:
 
         # Get containers that might be managed by our quadlets
         cmd = [
+            "sudo",
             "podman",
             "ps",
             "-a",
@@ -145,7 +146,7 @@ class SystemMonitor:
             # Use the short name as container name
             container_name = target
 
-        cmd = ["podman", "exec", "-it", container_name] + command
+        cmd = ["sudo", "podman", "exec", "-it", container_name] + command
         console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
         try:
@@ -230,7 +231,7 @@ class SystemMonitor:
 
     def show_system_df(self) -> None:
         """Show system disk usage"""
-        df_cmd = ["podman", "system", "df"]
+        df_cmd = ["sudo", "podman", "system", "df"]
         console.print(f"[cyan]exec: {' '.join(df_cmd)}[/cyan]")
 
         result = podman_cmd(["system", "df"], timeout=30)
@@ -393,8 +394,8 @@ class SystemMonitor:
         # Check recent logs for errors
         logs_result = secure_run(
             [
+                "sudo",
                 "journalctl",
-                "--user",
                 "-u",
                 service_name,
                 "--since",

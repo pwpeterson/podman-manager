@@ -24,14 +24,14 @@ class CommonActionsFormatter:
                 "commands": [
                     (
                         "Check service status",
-                        "systemctl --user status {container_name} --no-pager -l",
+                        "sudo systemctl status {container_name} --no-pager -l",
                     ),
-                    ("View service file", "systemctl --user cat {container_name}"),
+                    ("View service file", "sudo systemctl cat {container_name}"),
                     (
                         "Check if enabled",
-                        "systemctl --user is-enabled {container_name}",
+                        "sudo systemctl is-enabled {container_name}",
                     ),
-                    ("Check if active", "systemctl --user is-active {container_name}"),
+                    ("Check if active", "sudo systemctl is-active {container_name}"),
                 ],
             },
             # Logs & Diagnostics
@@ -40,16 +40,16 @@ class CommonActionsFormatter:
                 "commands": [
                     (
                         "View service logs",
-                        "journalctl --user -u {container_name} -n 100 --no-pager",
+                        "sudo journalctl -u {container_name} -n 100 --no-pager",
                     ),
-                    ("Follow live logs", "journalctl --user -u {container_name} -f"),
+                    ("Follow live logs", "sudo journalctl -u {container_name} -f"),
                     (
                         "View recent logs",
-                        "journalctl --user -u {container_name} --since '1 hour ago' --no-pager",
+                        "sudo journalctl -u {container_name} --since '1 hour ago' --no-pager",
                     ),
                     (
                         "Search for errors",
-                        "journalctl --user -u {container_name} -n 200 --no-pager | grep -i error",
+                        "sudo journalctl -u {container_name} -n 200 --no-pager | grep -i error",
                     ),
                 ],
             },
@@ -59,20 +59,20 @@ class CommonActionsFormatter:
                 "commands": [
                     (
                         "List all containers",
-                        "podman ps -a --format '{{.ID}} {{.Names}} {{.Status}} {{.Image}}'",
+                        "sudo podman ps -a --format '{{.ID}} {{.Names}} {{.Status}} {{.Image}}'",
                     ),
                     (
                         "View container logs",
-                        "podman logs {container_name} --since 2h --timestamps --tail 100",
+                        "sudo podman logs {container_name} --since 2h --timestamps --tail 100",
                     ),
-                    ("Inspect container", "podman inspect {container_name}"),
+                    ("Inspect container", "sudo podman inspect {container_name}"),
                     (
                         "Container resource usage",
-                        "podman stats {container_name} --no-stream",
+                        "sudo podman stats {container_name} --no-stream",
                     ),
                     (
                         "Execute into container",
-                        "podman exec -it {container_name} /bin/bash",
+                        "sudo podman exec -it {container_name} /bin/bash",
                     ),
                 ],
             },
@@ -81,8 +81,8 @@ class CommonActionsFormatter:
                 "label": "System Resources",
                 "commands": [
                     ("Check disk space", "df -h /"),
-                    ("Podman system info", "podman system info"),
-                    ("Podman disk usage", "podman system df"),
+                    ("Podman system info", "sudo podman system info"),
+                    ("Podman disk usage", "sudo podman system df"),
                     ("Check memory usage", "free -h"),
                     ("Check running processes", "ps aux | grep {container_name}"),
                 ],
@@ -91,7 +91,7 @@ class CommonActionsFormatter:
             "network_connectivity": {
                 "label": "Network & Connectivity",
                 "commands": [
-                    ("List networks", "podman network ls"),
+                    ("List networks", "sudo podman network ls"),
                     ("Check port usage", "ss -tulpen -H"),
                     ("Check specific port", "ss -tulpen | grep :{port}"),
                     (
@@ -105,12 +105,15 @@ class CommonActionsFormatter:
             "volume_management": {
                 "label": "Volume Management",
                 "commands": [
-                    ("List volumes", "podman volume ls"),
-                    ("Inspect volume", "podman volume inspect {container_name}-volume"),
-                    ("Volume usage", "podman system df -v"),
+                    ("List volumes", "sudo podman volume ls"),
+                    (
+                        "Inspect volume",
+                        "sudo podman volume inspect {container_name}-volume",
+                    ),
+                    ("Volume usage", "sudo podman system df -v"),
                     (
                         "Check volume mounts",
-                        "podman inspect {container_name} | grep -A 10 'Mounts'",
+                        "sudo podman inspect {container_name} | grep -A 10 'Mounts'",
                     ),
                 ],
             },
@@ -118,14 +121,14 @@ class CommonActionsFormatter:
             "service_management": {
                 "label": "Service Management",
                 "commands": [
-                    ("Start service", "systemctl --user start {container_name}"),
-                    ("Stop service", "systemctl --user stop {container_name}"),
-                    ("Restart service", "systemctl --user restart {container_name}"),
-                    ("Enable auto-start", "systemctl --user enable {container_name}"),
-                    ("Disable auto-start", "systemctl --user disable {container_name}"),
+                    ("Start service", "sudo systemctl start {container_name}"),
+                    ("Stop service", "sudo systemctl stop {container_name}"),
+                    ("Restart service", "sudo systemctl restart {container_name}"),
+                    ("Enable auto-start", "sudo systemctl enable {container_name}"),
+                    ("Disable auto-start", "sudo systemctl disable {container_name}"),
                     (
                         "Reset failed state",
-                        "systemctl --user reset-failed {container_name}",
+                        "sudo systemctl reset-failed {container_name}",
                     ),
                 ],
             },
@@ -144,11 +147,11 @@ class CommonActionsFormatter:
             "troubleshooting": {
                 "label": "Troubleshooting",
                 "commands": [
-                    ("Check systemd session", "systemctl --user status"),
-                    ("Reload systemd daemon", "systemctl --user daemon-reload"),
-                    ("Check failed services", "systemctl --user --failed"),
-                    ("  View system journal", "journalctl --user -n 50 --no-pager"),
-                    (" Check podman service", "systemctl --user status podman.service"),
+                    ("Check systemd session", "sudo systemctl status"),
+                    ("Reload systemd daemon", "sudo systemctl daemon-reload"),
+                    ("Check failed services", "sudo systemctl --failed"),
+                    ("  View system journal", "sudo journalctl -n 50 --no-pager"),
+                    (" Check podman service", "sudo systemctl status podman.service"),
                 ],
             },
         }

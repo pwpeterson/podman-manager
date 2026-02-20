@@ -93,6 +93,7 @@ class EnhancedPruner:
         try:
             # Get all containers with their image information
             cmd = [
+                "sudo",
                 "podman",
                 "ps",
                 "-a",
@@ -141,6 +142,7 @@ class EnhancedPruner:
         try:
             # Get detailed image information
             cmd = [
+                "sudo",
                 "podman",
                 "images",
                 "--format",
@@ -443,7 +445,7 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
 
         try:
             # Use podman rmi with force to remove images
-            cmd = ["podman", "rmi", "-f"] + image_ids
+            cmd = ["sudo", "podman", "rmi", "-f"] + image_ids
             self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
             result = podman_cmd(["rmi", "-f"] + image_ids, timeout=120)
 
@@ -467,7 +469,7 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
         self.console.print("\n[bold cyan]System Disk Usage:[/bold cyan]")
 
         try:
-            cmd = ["podman", "system", "df"]
+            cmd = ["sudo", "podman", "system", "df"]
             self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
             result = podman_cmd(["system", "df"], timeout=30)
 
@@ -622,7 +624,7 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
             # Prune containers
             task1 = progress.add_task("Pruning unused containers...", total=None)
             try:
-                cmd = ["podman", "container", "prune", "-f"]
+                cmd = ["sudo", "podman", "container", "prune", "-f"]
                 self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
                 result = podman_cmd(["container", "prune", "-f"], timeout=60)
                 if result.returncode != 0:
@@ -637,7 +639,7 @@ Duplicate Images: {self._format_bytes(duplicate_space)}
             # Prune dangling images
             task2 = progress.add_task("Pruning dangling images...", total=None)
             try:
-                cmd = ["podman", "image", "prune", "-f"]
+                cmd = ["sudo", "podman", "image", "prune", "-f"]
                 self.console.print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
                 result = podman_cmd(["image", "prune", "-f"], timeout=60)
                 if result.returncode != 0:

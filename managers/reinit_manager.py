@@ -1,8 +1,9 @@
 """Refactored reinit operations with specialized components for better maintainability."""
 
+import subprocess
 from datetime import datetime
 
-from core.config import console
+from core.config import console, verbose_print
 
 from .reinit import (
     ContainerManager,
@@ -230,9 +231,7 @@ class ReinitManager:
         # Step 1: Stop the service
         stop_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(f"[green]{stop_timestamp} | Stopping {display_name}...[/green]")
-        from core.config import verbose_print
-
-        verbose_print(f"[cyan]exec: systemctl --user stop {service_name}[/cyan]")
+        verbose_print(f"[cyan]exec: sudo systemctl stop {service_name}[/cyan]")
         stop_result = self.service_manager.stop_service(
             service_name, target, quiet=True
         )
@@ -257,14 +256,30 @@ class ReinitManager:
             return False
         console.print()
 
-        # Step 4: Start the service
+        # Step 4: Restart the service
         start_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(
             f"[green]{start_timestamp} | Restarting {display_name}...[/green]"
         )
-        start_result = self.service_manager.start_service(
-            service_name, target, quiet=False
-        )
+
+        start_cmd = ["sudo", "systemctl", "restart", service_name]
+        verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
+
+        try:
+            start_result = subprocess.run(
+                start_cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            start_result = subprocess.CompletedProcess(
+                start_cmd, 124, "", "Service start timed out after 30 seconds"
+            )
+        except Exception as e:
+            start_result = subprocess.CompletedProcess(
+                start_cmd, 1, "", f"Service start failed: {str(e)}"
+            )
 
         started_timestamp = datetime.now().strftime("%H:%M:%S")
         if start_result.returncode == 0:

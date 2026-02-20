@@ -28,7 +28,6 @@ from core.validation_utils import get_validation_utils
 from utils.secure_subprocess import (
     SecureSubprocessError,
     secure_run,
-    systemctl_user,
 )
 
 # Network setup functionality integrated directly
@@ -175,7 +174,7 @@ class EnvironmentManager:
         console.print(f"[red]{message}[/red]")
 
     def _setup_networks(self, target_dir: Optional[Path] = None) -> None:
-        """Setup Podman networks from configuration (and installed quadlet `.network` files)."""
+        """Setup Podman networks from networks.config.json and remove any undefined networks."""
         try:
             if target_dir is None:
                 target_dir = self.system_env_target.parent
@@ -184,11 +183,8 @@ class EnvironmentManager:
             # before the "Setting up required podman networks." header.
             self._ensure_network_config_file()
 
-            # Add spacing between the preceding copy section and this header in verbose mode
-            if is_verbose():
-                console.print()
-
             console.print("[green]Setting up required podman networks.[/green]")
+            console.print()
 
             # Only show detailed output in verbose mode
             if is_verbose():
@@ -197,32 +193,17 @@ class EnvironmentManager:
                 # Validate Podman is available
                 self._validate_podman()
 
-                # Load and setup networks
+                # Load networks from config file (single source of truth)
                 config_data = self._load_network_config()
                 networks = config_data.get("networks", [])
 
-                # Also include networks implied by installed quadlet .network unit files.
-                # Important: the Podman network name is typically the unit *stem* (e.g. "mem0"),
-                # but users expect to see the unit filename (e.g. "mem0.network") in output.
-                try:
-                    installed_network_units = sorted(
-                        [p for p in target_dir.glob("*.network") if p.is_file()]
-                    )
-                except Exception:
-                    installed_network_units = []
-
-                existing_names = {
-                    n.get("name")
-                    for n in networks
-                    if isinstance(n, dict) and n.get("name")
+                # Get list of network names that should exist
+                expected_network_names = {
+                    n.get("name") for n in networks if n.get("name")
                 }
-                for unit_path in installed_network_units:
-                    podman_name = unit_path.stem
-                    if podman_name and podman_name not in existing_names:
-                        networks.append(
-                            {"name": podman_name, "_display_name": unit_path.name}
-                        )
-                        existing_names.add(podman_name)
+
+                # Clean up networks not in config (AFTER loading expected networks)
+                self._cleanup_undefined_networks(expected_network_names)
 
                 if not networks:
                     verbose_print(
@@ -276,28 +257,17 @@ class EnvironmentManager:
                     # Validate Podman is available
                     self._validate_podman()
 
-                    # Load and setup networks
+                    # Load networks from config file (single source of truth)
                     config_data = self._load_network_config()
                     networks = config_data.get("networks", [])
 
-                    # Also include networks implied by installed quadlet .network unit files
-                    try:
-                        installed_network_units = sorted(
-                            [p for p in target_dir.glob("*.network") if p.is_file()]
-                        )
-                    except Exception:
-                        installed_network_units = []
-
-                    existing_names = {
-                        n.get("name")
-                        for n in networks
-                        if isinstance(n, dict) and n.get("name")
+                    # Get list of network names that should exist
+                    expected_network_names = {
+                        n.get("name") for n in networks if n.get("name")
                     }
-                    for unit_path in installed_network_units:
-                        podman_name = unit_path.stem
-                        if podman_name and podman_name not in existing_names:
-                            networks.append({"name": podman_name})
-                            existing_names.add(podman_name)
+
+                    # Clean up networks not in config (AFTER loading expected networks)
+                    self._cleanup_undefined_networks(expected_network_names)
 
                     if networks:
                         for network_config in networks:
@@ -313,36 +283,99 @@ class EnvironmentManager:
                 console.print(f"[yellow]Warning: Network setup failed: {e}[/yellow]")
                 verbose_print(f"  [cyan]exec: Network setup error details: {e}[/cyan]")
 
+    def _cleanup_undefined_networks(self, expected_network_names: set) -> None:
+        """Remove Podman networks that are not defined in networks.config.json."""
+        try:
+            # Get list of all existing Podman networks
+            result = secure_run(
+                ["sudo", "podman", "network", "ls", "--format", "{{.Name}}"], timeout=10
+            )
+            if result.returncode != 0:
+                return
+
+            existing_networks = [
+                name.strip()
+                for name in result.stdout.strip().split("\n")
+                if name.strip()
+            ]
+
+            # Filter out system networks that should never be deleted
+            system_networks = {"podman", "bridge", "host", "none", "slirp4netns"}
+
+            removed_count = 0
+            for network_name in existing_networks:
+                # Skip system networks and networks that should exist
+                if (
+                    network_name in system_networks
+                    or network_name in expected_network_names
+                ):
+                    continue
+
+                # Remove undefined network
+                if is_verbose():
+                    console.print(
+                        f"  → Removing undefined network '{network_name}'...",
+                        style="yellow",
+                    )
+
+                try:
+                    rm_result = secure_run(
+                        ["sudo", "podman", "network", "rm", network_name], timeout=30
+                    )
+                    if rm_result.returncode == 0:
+                        removed_count += 1
+                        if is_verbose():
+                            console.print(
+                                f"  ✓ Network '{network_name}' removed", style="green"
+                            )
+                except Exception as e:
+                    if is_verbose():
+                        console.print(
+                            f"  ✗ Failed to remove network '{network_name}': {e}",
+                            style="red",
+                        )
+
+            if removed_count > 0 and is_verbose():
+                console.print(
+                    f"    Removed {removed_count} undefined network(s).", style="cyan"
+                )
+
+        except Exception as e:
+            if is_verbose():
+                console.print(f"[yellow]Warning: Network cleanup failed: {e}[/yellow]")
+
     def _validate_podman(self) -> None:
         """Check if Podman is available."""
         try:
-            result = secure_run(["podman", "--version"], timeout=10)
+            result = secure_run(["sudo", "podman", "--version"], timeout=10)
             if result.returncode != 0:
                 raise Exception("Podman is required but not found in PATH")
         except (SecureSubprocessError, FileNotFoundError):
             raise Exception("Podman is required but not found in PATH")
 
     def _ensure_network_config_file(self) -> None:
-        """Ensure config file exists, copying from source if needed."""
-        if not self.config_file.exists():
-            if self.source_config.exists():
-                console.print(
-                    f"[yellow]Config file not found at {self.config_file}[/yellow]"
-                )
-                console.print(f"[blue]Copying from {self.source_config}...[/blue]")
+        """Always copy fresh config file from source to ensure it's up to date."""
+        if not self.source_config.exists():
+            raise Exception(f"Source config file not found at {self.source_config}")
 
-                # Create destination directory if it doesn't exist
-                self.config_file.parent.mkdir(parents=True, exist_ok=True)
+        console.print(
+            "[green]Copying & validating networks.config.json to systemd[/green]"
+        )
+        if not is_verbose():
+            console.print()
 
-                try:
-                    shutil.copy2(self.source_config, self.config_file)
-                    console.print("[green]✓ Config file copied successfully[/green]")
-                except Exception as e:
-                    raise Exception(f"Failed to copy config file: {e}")
-            else:
-                raise Exception(
-                    f"Config file not found at {self.config_file} and source file not found at {self.source_config}"
-                )
+        verbose_print(
+            "  [cyan]exec: cp .../local-ai-packaged/quadlets/networks.config.json /etc/containers/systemd/networks.config.json[/cyan]"
+        )
+
+        # Create destination directory if it doesn't exist
+        self.config_file.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            shutil.copy2(self.source_config, self.config_file)
+            verbose_print("  [cyan]exec: Config file copied successfully[/cyan]")
+        except Exception as e:
+            raise Exception(f"Failed to copy config file: {e}")
 
     def _load_network_config(self) -> Dict:
         """Load and validate the JSON configuration file."""
@@ -366,7 +399,9 @@ class EnvironmentManager:
     def _network_exists(self, name: str) -> bool:
         """Check if a Podman network already exists."""
         try:
-            result = secure_run(["podman", "network", "exists", name], timeout=10)
+            result = secure_run(
+                ["sudo", "podman", "network", "exists", name], timeout=10
+            )
             return result.returncode == 0
         except (SecureSubprocessError, Exception):
             return False
@@ -395,7 +430,7 @@ class EnvironmentManager:
 
     def _build_create_command(self, network_config: Dict) -> List[str]:
         """Build the podman network create command from network configuration."""
-        cmd = ["podman", "network", "create"]
+        cmd = ["sudo", "podman", "network", "create"]
 
         # Add driver
         if "driver" in network_config:
@@ -473,9 +508,9 @@ class SystemdManager:
 
         try:
             # Check if systemd user session is running
-            cmd = ["systemctl", "--user", "status"]
+            cmd = ["sudo", "systemctl", "status"]
             verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
-            result = systemctl_user(["status"], timeout=10)
+            result = secure_run(cmd, timeout=10)
 
             if result.returncode != 0:
                 console.print(
@@ -489,8 +524,8 @@ class SystemdManager:
 
             # Check if we can communicate with systemd
             cmd = [
+                "sudo",
                 "systemctl",
-                "--user",
                 "list-units",
                 "--type=service",
                 "--state=loaded",
@@ -522,17 +557,11 @@ class SystemdManager:
     def reload_daemon(self, use_sudo: bool = False) -> bool:
         """Reload systemd daemon."""
         console.print("[green]Reloading systemd daemon...[/green]")
-        if not is_verbose():
-            console.print()
 
         if use_sudo:
             ok = self._reload_system_daemon()
         else:
             ok = self._reload_user_daemon()
-
-        # Match section spacing in verbose mode (blank line between major sections)
-        if is_verbose():
-            console.print()
 
         return ok
 
@@ -554,10 +583,10 @@ class SystemdManager:
 
     def _reload_user_daemon(self) -> bool:
         """Reload user daemon with retry logic."""
-        cmd = ["systemctl", "--user", "daemon-reload"]
+        cmd = ["sudo", "systemctl", "daemon-reload"]
         verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
         try:
-            result = systemctl_user(["daemon-reload"], timeout=30)
+            result = secure_run(cmd, timeout=30)
             if result.returncode != 0:
                 console.print(
                     "[yellow]Failed to reload user daemon (systemd connection issue)[/yellow]"
@@ -573,18 +602,18 @@ class SystemdManager:
 
     def _retry_user_daemon_reload(self) -> bool:
         """Retry user daemon reload after resetting failed units."""
-        reset_cmd = ["systemctl", "--user", "reset-failed"]
+        reset_cmd = ["sudo", "systemctl", "reset-failed"]
         verbose_print(f"  [cyan]exec: {' '.join(reset_cmd)}[/cyan]")
         try:
-            reset_result = systemctl_user(["reset-failed"], timeout=30)
+            reset_result = secure_run(reset_cmd, timeout=30)
 
             if reset_result.returncode == 0:
                 console.print(
                     "[blue]Reset failed units, retrying daemon-reload...[/blue]"
                 )
-                retry_cmd = ["systemctl", "--user", "daemon-reload"]
+                retry_cmd = ["sudo", "systemctl", "daemon-reload"]
                 verbose_print(f"  [cyan]exec: {' '.join(retry_cmd)}[/cyan]")
-                retry_result = systemctl_user(["daemon-reload"], timeout=30)
+                retry_result = secure_run(retry_cmd, timeout=30)
 
                 if retry_result.returncode == 0:
                     console.print(
@@ -608,7 +637,7 @@ class SystemdManager:
         console.print(
             "[yellow]Daemon reload still failing. Manual intervention may be required.[/yellow]"
         )
-        console.print("[blue]Try: systemctl --user daemon-reload[/blue]")
+        console.print("[blue]Try: sudo systemctl daemon-reload[/blue]")
         console.print(
             f"[blue]Or restart user session: loginctl terminate-user {os.getenv('USER')}[/blue]"
         )
@@ -661,9 +690,7 @@ class ValidationManager:
         for container_file in container_files:
 
             # Build command with grep filtering
-            quadlet_cmd = [self.quadlet_generator, "--user", "--dryrun"]
-            if use_sudo:
-                quadlet_cmd = [self.quadlet_generator, "--dryrun"]
+            quadlet_cmd = [self.quadlet_generator, "--dryrun"]
 
             grep_cmd = ["grep", container_file]
             full_cmd = " | ".join([" ".join(quadlet_cmd), " ".join(grep_cmd)])
@@ -854,9 +881,15 @@ class ValidationManager:
         self, container_files: List[str], use_sudo: bool
     ) -> bool:
         """Check journalctl for quadlet-related errors."""
-        journal_cmd = ["journalctl", "-b", "--grep=quadlet", "-o", "cat", "--no-pager"]
-        if not use_sudo:
-            journal_cmd.insert(1, "--user")
+        journal_cmd = [
+            "sudo",
+            "journalctl",
+            "-b",
+            "--grep=quadlet",
+            "-o",
+            "cat",
+            "--no-pager",
+        ]
 
         verbose_print(f"  [cyan]exec: {' '.join(journal_cmd)}[/cyan]")
 
@@ -880,7 +913,7 @@ class ValidationManager:
                     for error in relevant_errors:
                         console.print(f"  [dim]{error}[/dim]")
                     console.print(
-                        "[yellow]Run 'journalctl --user -b | grep -i quadlet' for full details[/yellow]"
+                        "[yellow]Run 'sudo journalctl -b | grep -i quadlet' for full details[/yellow]"
                     )
                     return False
                 else:
@@ -1049,9 +1082,7 @@ class ValidationManager:
 
         for container_file in container_files:
             # Build command with grep filtering
-            quadlet_cmd = [self.quadlet_generator, "--user", "--dryrun"]
-            if use_sudo:
-                quadlet_cmd = [self.quadlet_generator, "--dryrun"]
+            quadlet_cmd = [self.quadlet_generator, "--dryrun"]
 
             grep_cmd = ["grep", container_file]
 
@@ -1330,7 +1361,7 @@ Keep the response brief and actionable."""
             f"[green]       Retry installation:[/green] [white]pm install {container_file} -v[/white]"
         )
         console.print(
-            f"[green]     Check quadlet syntax:[/green] [white]podman-quadlet --user --dryrun | grep {container_file}[/white]"
+            f"[green]     Check quadlet syntax:[/green] [white]podman-quadlet --dryrun | grep {container_file}[/white]"
         )
         console.print(
             "[green]View installed containers:[/green] [white]ls /etc/containers/systemd/[/white]"
@@ -1366,8 +1397,8 @@ class FileManager:
         # Copy startup wrapper files first
         self._copy_startup_wrapper_files(stack_dir, target_dir, use_sudo)
 
-        # Group files by type - process in dependency order: network -> volume -> container
-        network_files = [f for f in files if f.endswith(".network")]
+        # Group files by type - process in dependency order: volume -> container
+        # NOTE: .network files are NOT copied - networks are managed via networks.config.json
         volume_files = [f for f in files if f.endswith(".volume")]
         container_files = [f for f in files if f.endswith(".container")]
         other_files = [
@@ -1376,8 +1407,8 @@ class FileManager:
             if not any(f.endswith(ext) for ext in [".container", ".network", ".volume"])
         ]
 
-        # Process files in correct dependency order: networks first, then volumes, then containers, then other files
-        all_files_ordered = network_files + volume_files + container_files + other_files
+        # Process files in correct dependency order: volumes first, then containers, then other files
+        all_files_ordered = volume_files + container_files + other_files
 
         # Verbose output: add blank lines between sections (and after env-copy section)
         if is_verbose() and all_files_ordered:
@@ -1450,9 +1481,7 @@ class FileManager:
             return
 
         # Build command with grep filtering
-        quadlet_cmd = [quadlet_generator, "--user", "--dryrun"]
-        if use_sudo:
-            quadlet_cmd = [quadlet_generator, "--dryrun"]
+        quadlet_cmd = [quadlet_generator, "--dryrun"]
 
         grep_cmd = ["grep", container_file]
         full_cmd = " | ".join([" ".join(quadlet_cmd), " ".join(grep_cmd)])
@@ -1949,21 +1978,9 @@ class QuadletInstaller:
             return False
 
     def _refresh_pm_discovery(self, display_name: str) -> None:
-        """Restart podman service to load changes (refresh functionality removed)."""
-        console.print("[green]Restarting podman service to load changes...[/green]")
-        try:
-            restart_cmd = ["systemctl", "--user", "restart", "podman.service"]
-            verbose_print(f"  [cyan]exec: {' '.join(restart_cmd)}[/cyan]")
-            restart_result = subprocess.run(
-                restart_cmd, capture_output=True, text=True, timeout=30
-            )
-
-            if restart_result.returncode != 0:
-                console.print(
-                    "[yellow]Failed to restart podman service - you may need to run: systemctl --user restart podman.service[/yellow]"
-                )
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
-            console.print(f"[yellow]Failed to restart podman service: {e}[/yellow]")
+        """Refresh PM discovery (podman service restart removed)."""
+        # Podman service restart removed - not needed for quadlet deployment
+        pass
 
     def _show_next_steps(
         self,
@@ -1986,13 +2003,13 @@ class QuadletInstaller:
         console.print()
         console.print("[bold green]Next steps:[/bold green]")
         console.print(
-            f"[green]  Start service:[/green] [white]systemctl --user start {service_name}.service[/white]"
+            f"[green]  Start service:[/green] [white]sudo systemctl start {service_name}.service[/white]"
         )
         console.print(
-            f"[green]   Check status:[/green] [white]systemctl --user status {service_name}.service[/white]"
+            f"[green]   Check status:[/green] [white]sudo systemctl status {service_name}.service[/white]"
         )
         console.print(
-            f"[green]      View logs:[/green] [white]journalctl --user -u {service_name}.service -f[/white]"
+            f"[green]      View logs:[/green] [white]sudo journalctl -u {service_name}.service -f[/white]"
         )
         console.print(
             f"[green]   PM shortcuts:[/green] [white]pm start {service_name} | pm logs {service_name} | pm diag {service_name}[/white]"
@@ -2110,24 +2127,18 @@ class QuadletInstaller:
                 stop_cmd = ["sudo", "systemctl", "stop", f"{service}.service"]
                 disable_cmd = ["sudo", "systemctl", "disable", f"{service}.service"]
             else:
-                stop_cmd = ["systemctl", "--user", "stop", f"{service}.service"]
-                disable_cmd = ["systemctl", "--user", "disable", f"{service}.service"]
+                stop_cmd = ["sudo", "systemctl", "stop", f"{service}.service"]
+                disable_cmd = ["sudo", "systemctl", "disable", f"{service}.service"]
 
             verbose_print(f"  [cyan]exec: {' '.join(stop_cmd)}[/cyan]")
             try:
-                if use_sudo:
-                    secure_run(stop_cmd, timeout=30)
-                else:
-                    systemctl_user(["stop", f"{service}.service"], timeout=30)
+                secure_run(stop_cmd, timeout=30)
             except SecureSubprocessError:
                 pass  # Ignore errors when stopping services
 
             verbose_print(f"  [cyan]exec: {' '.join(disable_cmd)}[/cyan]")
             try:
-                if use_sudo:
-                    secure_run(disable_cmd, timeout=30)
-                else:
-                    systemctl_user(["disable", f"{service}.service"], timeout=30)
+                secure_run(disable_cmd, timeout=30)
             except SecureSubprocessError:
                 pass  # Ignore errors when disabling services
 

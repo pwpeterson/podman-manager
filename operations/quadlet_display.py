@@ -971,8 +971,8 @@ class QuadletDisplayManager:
             try:
                 status_result = secure_run(
                     [
+                        "sudo",
                         "systemctl",
-                        "--user",
                         "status",
                         f"{service_name}.service",
                         "--no-pager",

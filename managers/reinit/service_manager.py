@@ -77,7 +77,22 @@ class ServiceManager:
         self, service_name: str, target: str, quiet: bool = False
     ) -> subprocess.CompletedProcess:
         """Start a systemd service with timeout handling"""
-        start_cmd = ["systemctl", "--user", "restart", service_name]
+        # Enable the service first
+        enable_cmd = ["sudo", "systemctl", "enable", service_name]
+        if not quiet:
+            verbose_print(f"[cyan]exec: {' '.join(enable_cmd)}[/cyan]")
+
+        try:
+            subprocess.run(
+                enable_cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except Exception:
+            pass  # Continue even if enable fails
+
+        start_cmd = ["sudo", "systemctl", "restart", service_name]
 
         if not quiet:
             verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
@@ -107,7 +122,7 @@ class ServiceManager:
         self, service_name: str, target: str, quiet: bool = True
     ) -> subprocess.CompletedProcess:
         """Stop a systemd service with timeout handling"""
-        stop_cmd = ["systemctl", "--user", "stop", service_name]
+        stop_cmd = ["sudo", "systemctl", "stop", service_name]
 
         if not quiet:
             verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
@@ -137,7 +152,7 @@ class ServiceManager:
         """Reload systemd daemon with timeout handling"""
         console.print("[green]Reloading systemd daemon...[/green]")
 
-        reload_cmd = ["systemctl", "--user", "daemon-reload"]
+        reload_cmd = ["sudo", "systemctl", "daemon-reload"]
         verbose_print(f"[cyan]exec: {' '.join(reload_cmd)}[/cyan]")
 
         try:
@@ -174,7 +189,7 @@ class ServiceManager:
         time.sleep(10)
 
         # Check service status first
-        status_cmd = ["systemctl", "--user", "is-active", service_name]
+        status_cmd = ["sudo", "systemctl", "is-active", service_name]
         status_result = subprocess.run(status_cmd, capture_output=True, text=True)
 
         if status_result.returncode != 0:
@@ -182,8 +197,8 @@ class ServiceManager:
 
         # Get recent logs to check for errors
         logs_cmd = [
+            "sudo",
             "journalctl",
-            "--user",
             "-u",
             service_name,
             "--since",
@@ -279,8 +294,8 @@ class ServiceManager:
 
         # Get recent logs
         logs_cmd = [
+            "sudo",
             "journalctl",
-            "--user",
             "-u",
             service_name,
             "--since",
@@ -323,8 +338,8 @@ class ServiceManager:
             if service_name and not service_name.startswith("STACK:"):
                 result = subprocess.run(
                     [
+                        "sudo",
                         "systemctl",
-                        "--user",
                         "show",
                         service_name,
                         "--property=ActiveState,SubState,ExecMainPID",

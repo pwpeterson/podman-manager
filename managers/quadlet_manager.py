@@ -71,13 +71,15 @@ class QuadletManager:
             logger.error("Required command 'systemctl' not found!")
             return False
 
-        # Check if we can run systemctl --user
+        # Check if we can run sudo systemctl
         result = subprocess.run(
-            ["systemctl", "--user", "--help"], capture_output=True, text=True
+            ["sudo", "systemctl", "--help"], capture_output=True, text=True
         )
         if result.returncode != 0:
-            logger.error("'systemctl --user' is not available!")
-            console.print("[dim]Make sure systemd user services are enabled[/dim]")
+            logger.error("'sudo systemctl' is not available!")
+            console.print(
+                "[dim]Make sure systemd is available and sudo is configured[/dim]"
+            )
             return False
 
         logger.success("Prerequisites validation complete")
@@ -551,8 +553,8 @@ class QuadletManager:
             # Try to get recent logs for context
             try:
                 log_cmd = [
+                    "sudo",
                     "journalctl",
-                    "--user",
                     "-u",
                     service_name,
                     "--lines=20",
@@ -697,7 +699,7 @@ class QuadletManager:
                         console.print(
                             "[yellow]Cannot connect to systemd user session[/yellow]"
                         )
-                        console.print("[dim]Try: systemctl --user daemon-reload[/dim]")
+                        console.print("[dim]Try: sudo systemctl daemon-reload[/dim]")
                         logger.debug(
                             "Bus connection failed (code {}) in {:.2f}s: {}",
                             result.returncode,
@@ -740,8 +742,8 @@ class QuadletManager:
             full_service_name = f"{service_name}.service"
 
         cmd = [
+            "sudo",
             "systemctl",
-            "--user",
             "show",
             full_service_name,
             "--property=ActiveState,SubState,LoadState,UnitFileState",
@@ -816,7 +818,7 @@ class QuadletManager:
         potential_service = f"{target}.service"
 
         # Check if the service exists by trying to get its status
-        cmd = ["systemctl", "--user", "show", potential_service, "--property=LoadState"]
+        cmd = ["sudo", "systemctl", "show", potential_service, "--property=LoadState"]
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode == 0 and "LoadState=loaded" in result.stdout:
@@ -929,7 +931,7 @@ class QuadletManager:
 
         console.print(f"\n[green]Starting {display_name}...[/green]")
 
-        cmd = ["systemctl", "--user", "start", service_name]
+        cmd = ["sudo", "systemctl", "start", service_name]
         result = self._run_systemctl_command(cmd, f"start_{target}")
 
         if result.returncode == 0:
@@ -986,7 +988,7 @@ class QuadletManager:
         )
 
         # First try normal stop
-        cmd = ["systemctl", "--user", "stop", service_name]
+        cmd = ["sudo", "systemctl", "stop", service_name]
 
         if is_9b_thinking and not quiet:
             # Use spinner for 9b-thinking service
@@ -1008,7 +1010,7 @@ class QuadletManager:
         # Check if service and container are actually stopped
         def is_service_stopped():
             # Check systemd service status
-            status_cmd = ["systemctl", "--user", "is-active", service_name]
+            status_cmd = ["sudo", "systemctl", "is-active", service_name]
             status_result = subprocess.run(status_cmd, capture_output=True, text=True)
             service_inactive = status_result.returncode != 0
 
@@ -1067,7 +1069,7 @@ class QuadletManager:
                     console.print(f"[yellow]Force stopping {target}...[/yellow]")
 
                 # Try kill with SIGTERM first
-                kill_cmd = ["systemctl", "--user", "kill", "-s", "TERM", service_name]
+                kill_cmd = ["sudo", "systemctl", "kill", "-s", "TERM", service_name]
                 self._run_systemctl_command(kill_cmd, f"kill_term_{target}", quiet=True)
 
                 # Wait a moment and check
@@ -1092,7 +1094,7 @@ class QuadletManager:
                 # If still running, try SIGKILL
                 if not quiet:
                     console.print("[yellow]Service stubborn, using SIGKILL...[/yellow]")
-                kill_cmd = ["systemctl", "--user", "kill", "-s", "KILL", service_name]
+                kill_cmd = ["sudo", "systemctl", "kill", "-s", "KILL", service_name]
                 self._run_systemctl_command(kill_cmd, f"kill_kill_{target}", quiet=True)
 
                 # Wait and final check
@@ -1155,9 +1157,9 @@ class QuadletManager:
                             f"[yellow]Force stopping service: {actual_container_name}[/yellow]"
                         )
 
-                    # Use systemctl --user stop for safer Quadlet service management
+                    # Use sudo systemctl stop for safer Quadlet service management
                     service_name = f"{actual_container_name}.service"
-                    stop_cmd = ["systemctl", "--user", "stop", service_name]
+                    stop_cmd = ["sudo", "systemctl", "stop", service_name]
                     verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
                     subprocess.run(stop_cmd, capture_output=True, text=True)
 
@@ -1221,7 +1223,7 @@ class QuadletManager:
             stack_name = service_name[6:]  # Remove "STACK:" prefix
             return stack_manager._restart_stack(stack_name.replace("-stack", ""))
 
-        cmd = ["systemctl", "--user", "restart", service_name]
+        cmd = ["sudo", "systemctl", "restart", service_name]
         result = self._run_systemctl_command(
             cmd, f"restart_{target}", suppress_errors=True
         )
@@ -1258,7 +1260,7 @@ class QuadletManager:
             stack_name = service_name[6:]  # Remove "STACK:" prefix
             return stack_manager._enable_stack(stack_name.replace("-stack", ""))
 
-        cmd = ["systemctl", "--user", "enable", service_name]
+        cmd = ["sudo", "systemctl", "enable", service_name]
         result = self._run_systemctl_command(cmd, f"enable_{target}")
 
         if result.returncode == 0:
@@ -1294,7 +1296,7 @@ class QuadletManager:
             stack_name = service_name[6:]  # Remove "STACK:" prefix
             return stack_manager._disable_stack(stack_name.replace("-stack", ""))
 
-        cmd = ["systemctl", "--user", "disable", service_name]
+        cmd = ["sudo", "systemctl", "disable", service_name]
         result = self._run_systemctl_command(cmd, f"disable_{target}")
 
         if result.returncode == 0:
@@ -1306,7 +1308,7 @@ class QuadletManager:
 
     def reload_daemon(self) -> bool:
         """Reload systemd user daemon (after changing unit files)"""
-        cmd = ["systemctl", "--user", "daemon-reload"]
+        cmd = ["sudo", "systemctl", "daemon-reload"]
         result = self._run_systemctl_command(cmd, "daemon_reload")
 
         if result.returncode == 0:
@@ -1347,7 +1349,7 @@ class QuadletManager:
 
         # First show podman logs
         console.print("\n[bold cyan]=== Podman Container Logs ===[/bold cyan]")
-        podman_cmd = ["podman", "logs", container_name]
+        podman_cmd = ["sudo", "podman", "logs", container_name]
         verbose_print(f"[cyan]exec: {' '.join(podman_cmd)}[/cyan]")
 
         try:
@@ -1370,7 +1372,7 @@ class QuadletManager:
 
         # Then show systemd/journalctl logs
         console.print("\n[bold cyan]=== Systemd Service Logs ===[/bold cyan]")
-        cmd = ["journalctl", "--user", "-u", service_name]
+        cmd = ["sudo", "journalctl", "-u", service_name]
         if follow:
             cmd.append("-f")
 

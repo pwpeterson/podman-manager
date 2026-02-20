@@ -127,7 +127,14 @@ def _validate_high_risk_command(cmd: List[str]) -> None:
             raise SecureSubprocessError("sudo requires additional arguments")
 
         sudo_cmd = cmd[1]
-        allowed_sudo_commands = {"mkdir", "cp", "chmod", "systemctl"}
+        allowed_sudo_commands = {
+            "mkdir",
+            "cp",
+            "chmod",
+            "systemctl",
+            "podman",
+            "journalctl",
+        }
         if sudo_cmd not in allowed_sudo_commands:
             raise SecureSubprocessError(f"sudo {sudo_cmd} not allowed")
 
@@ -331,15 +338,15 @@ def get_command_version(command: str, version_flag: str = "--version") -> Option
 
 # Convenience functions for common operations
 def systemctl_user(args: List[str], **kwargs) -> SubprocessResult:
-    """Safely execute systemctl --user commands."""
-    return secure_run(["systemctl", "--user"] + args, **kwargs)
+    """Safely execute sudo systemctl commands."""
+    return secure_run(["sudo", "systemctl"] + args, **kwargs)
 
 
 def podman_cmd(args: List[str], **kwargs) -> SubprocessResult:
     """Safely execute podman commands."""
-    return secure_run(["podman"] + args, **kwargs)
+    return secure_run(["sudo", "podman"] + args, **kwargs)
 
 
 def journalctl_user(args: List[str], **kwargs) -> SubprocessResult:
-    """Safely execute journalctl --user commands."""
-    return secure_run(["journalctl", "--user"] + args, **kwargs)
+    """Safely execute sudo journalctl commands."""
+    return secure_run(["sudo", "journalctl"] + args, **kwargs)

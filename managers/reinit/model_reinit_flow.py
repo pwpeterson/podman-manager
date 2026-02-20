@@ -457,10 +457,22 @@ class ModelReinitFlow:
             return False
         console.print()
 
-        # Start sys-services-model-proxy using systemctl
+        # Enable and start sys-services-model-proxy using systemctl
+        enable_timestamp = datetime.now().strftime("%H:%M:%S")
+        console.print(
+            f"[green]{enable_timestamp} | Enabling sys-services-model-proxy...[/green]"
+        )
+        verbose_print(
+            "[cyan]exec: sudo systemctl enable sys-services-model-proxy.service[/cyan]"
+        )
+        self.service_manager.enable_service(
+            "sys-services-model-proxy.service", "sys-services-model-proxy", quiet=False
+        )
+        console.print()
+
         start_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(
-            f"[green]{start_timestamp} | Starting sys-services-model-proxy...[/green]"
+            f"[green]{start_timestamp} | Restarting sys-services-model-proxy...[/green]"
         )
         start_result = self.service_manager.start_service(
             "sys-services-model-proxy.service", "sys-services-model-proxy", quiet=False
@@ -468,11 +480,11 @@ class ModelReinitFlow:
         started_timestamp = datetime.now().strftime("%H:%M:%S")
         if start_result.returncode == 0:
             console.print(
-                f"[green]{started_timestamp} |   Started sys-services-model-proxy[/green]"
+                f"[green]{started_timestamp} |   Restarted sys-services-model-proxy[/green]"
             )
         else:
             console.print(
-                f"[red]{started_timestamp} |   Failed to start sys-services-model-proxy[/red]"
+                f"[red]{started_timestamp} |   Failed to restart sys-services-model-proxy[/red]"
             )
             return False
         console.print()
@@ -507,10 +519,22 @@ class ModelReinitFlow:
             return False
         console.print()
 
-        # Start mcp-model-delegator using systemctl
+        # Enable and start mcp-model-delegator using systemctl
+        enable_timestamp2 = datetime.now().strftime("%H:%M:%S")
+        console.print(
+            f"[green]{enable_timestamp2} | Enabling mcp-model-delegator...[/green]"
+        )
+        verbose_print(
+            "[cyan]exec: sudo systemctl enable mcp-model-delegator.service[/cyan]"
+        )
+        self.service_manager.enable_service(
+            "mcp-model-delegator.service", "mcp-model-delegator", quiet=False
+        )
+        console.print()
+
         start_timestamp2 = datetime.now().strftime("%H:%M:%S")
         console.print(
-            f"[green]{start_timestamp2} | Starting mcp-model-delegator...[/green]"
+            f"[green]{start_timestamp2} | Restarting mcp-model-delegator...[/green]"
         )
         start_result = self.service_manager.start_service(
             "mcp-model-delegator.service", "mcp-model-delegator", quiet=False
@@ -518,11 +542,11 @@ class ModelReinitFlow:
         started_timestamp2 = datetime.now().strftime("%H:%M:%S")
         if start_result.returncode == 0:
             console.print(
-                f"[green]{started_timestamp2} |   Started mcp-model-delegator[/green]"
+                f"[green]{started_timestamp2} |   Restarted mcp-model-delegator[/green]"
             )
         else:
             console.print(
-                f"[red]{started_timestamp2} |   Failed to start mcp-model-delegator[/red]"
+                f"[red]{started_timestamp2} |   Failed to restart mcp-model-delegator[/red]"
             )
             return False
         console.print()
