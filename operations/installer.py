@@ -89,13 +89,23 @@ class EnvironmentManager:
             # Create the systemd directory if it doesn't exist
             self.system_env_target.parent.mkdir(parents=True, exist_ok=True)
 
-            # Copy the .env file directly to systemd containers directory (no sudo needed!)
-            import shutil
-
-            shutil.copy2(self.env_file_path, self.system_env_target)
+            # Copy the .env file using sudo
+            cmd = ["sudo", "cp", str(self.env_file_path), str(self.system_env_target)]
+            result = secure_run(cmd, timeout=30)
+            if result.returncode != 0:
+                self._print_error(
+                    f"Failed to copy {self.env_file_path} to {self.system_env_target}"
+                )
+                return False
 
             # Set appropriate permissions
-            self.system_env_target.chmod(0o644)
+            chmod_cmd = ["sudo", "chmod", "644", str(self.system_env_target)]
+            result = secure_run(chmod_cmd, timeout=30)
+            if result.returncode != 0:
+                self._print_error(
+                    f"Failed to set permissions on {self.system_env_target}"
+                )
+                return False
 
             verbose_print(
                 f"  [cyan]exec: Copied {self.env_file_path} to {self.system_env_target}[/cyan]"
@@ -120,23 +130,36 @@ class EnvironmentManager:
         *,
         show_header: bool = True,
     ) -> bool:
-        """Copy stack-local *.env files into the systemd containers directory.
+        """Copy stack-local *.env files from ALL stack directories into systemd containers directory.
 
         This mirrors the root .env behavior (copied to /etc/containers/systemd/.env),
-        but applies to env files shipped alongside a specific stack, e.g. `supabase.env`.
+        but applies to env files shipped alongside stacks, e.g. `supabase.env`.
 
         Args:
-            stack_dir: The stack directory under the quadlets source tree.
+            stack_dir: The stack directory under the quadlets source tree (used to find base quadlets dir).
             target_dir: Destination directory (defaults to /etc/containers/systemd).
             show_header: If True, prints a heading. If False, only emits per-file exec lines.
         """
         if target_dir is None:
             target_dir = self.system_env_target.parent
 
+        # Find all .env files across ALL stack directories
+        quadlets_base = stack_dir.parent  # Get the quadlets base directory
+        env_files = []
+
         try:
-            env_files = sorted([p for p in stack_dir.glob("*.env") if p.is_file()])
+            # Iterate through all subdirectories in quadlets base
+            for stack_subdir in quadlets_base.iterdir():
+                if stack_subdir.is_dir():
+                    # Find all .env files in this stack directory
+                    stack_env_files = sorted(
+                        [p for p in stack_subdir.glob("*.env") if p.is_file()]
+                    )
+                    env_files.extend(stack_env_files)
         except Exception as e:
-            self._print_error(f"Failed to locate stack env files in {stack_dir}: {e}")
+            self._print_error(
+                f"Failed to locate stack env files in {quadlets_base}: {e}"
+            )
             return False
 
         if not env_files:
@@ -151,13 +174,30 @@ class EnvironmentManager:
                 console.print()
 
         try:
-            target_dir.mkdir(parents=True, exist_ok=True)
+            # Ensure target directory exists
+            mkdir_cmd = ["sudo", "mkdir", "-p", str(target_dir)]
+            result = secure_run(mkdir_cmd, timeout=30)
+            if result.returncode != 0:
+                self._print_error(f"Failed to create directory {target_dir}")
+                return False
 
             for src in env_files:
                 dest = target_dir / src.name
                 verbose_print(f"  [cyan]exec: Copied {src} to {dest}[/cyan]")
-                shutil.copy2(src, dest)
-                dest.chmod(0o644)
+
+                # Copy using sudo
+                cp_cmd = ["sudo", "cp", str(src), str(dest)]
+                result = secure_run(cp_cmd, timeout=30)
+                if result.returncode != 0:
+                    self._print_error(f"Failed to copy {src} to {dest}")
+                    return False
+
+                # Set permissions using sudo
+                chmod_cmd = ["sudo", "chmod", "644", str(dest)]
+                result = secure_run(chmod_cmd, timeout=30)
+                if result.returncode != 0:
+                    self._print_error(f"Failed to set permissions on {dest}")
+                    return False
 
             return True
         except Exception as e:
