@@ -2,6 +2,16 @@
 
 ---
 ## Decision
+*   [2026-02-21 18:37:18] Fixed supabase-pooler database readiness checks with sudo and correct port
+
+## Rationale
+*   The pooler startup was failing because: 1) podman exec commands lacked sudo for rootless containers, causing 'container not found' errors, and 2) the port was incorrectly set to 5432 instead of 5433 where the database actually listens
+
+## Implementation Details
+*   Updated _ensure_database_ready_for_pooler() in managers/supabase_stack_manager.py: Added 'sudo' prefix to both pg_isready and psql commands, changed port from 5432 to 5433 in both the pg_isready check and the psql connection string
+
+---
+## Decision
 *   [2026-02-19 19:39:59] Container deployment path changed to /etc/containers/systemd/
 
 ## Rationale

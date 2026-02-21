@@ -430,6 +430,7 @@ class SupabaseStackManager:
                 try:
                     # Check 1: Basic pg_isready check
                     pg_ready_cmd = [
+                        "sudo",
                         "podman",
                         "exec",
                         "supabase-db",
@@ -437,7 +438,7 @@ class SupabaseStackManager:
                         "-h",
                         "localhost",
                         "-p",
-                        "5432",
+                        "5433",
                         "-U",
                         "supabase_admin",
                         "-d",
@@ -458,16 +459,17 @@ class SupabaseStackManager:
 
                     # Check 2: Test actual database connection and query
                     db_test_cmd = [
+                        "sudo",
                         "podman",
                         "exec",
                         "supabase-db",
                         "psql",
-                        "postgresql://supabase_admin:Sup4b453_1969@localhost:5432/_supabase",
+                        "postgresql://supabase_admin:Sup4b453_1969@localhost:5433/_supabase",
                         "-c",
                         "SELECT 1",
                     ]
                     verbose_print(
-                        "    [cyan]exec: podman exec supabase-db psql ... -c 'SELECT 1'[/cyan]"
+                        "    [cyan]exec: sudo podman exec supabase-db psql ... -c 'SELECT 1'[/cyan]"
                     )
 
                     db_test_result = subprocess.run(  # nosec B603

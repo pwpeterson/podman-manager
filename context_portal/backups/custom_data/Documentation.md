@@ -76,3 +76,45 @@
   }
 }
 ```
+
+---
+### SUPABASE_POOLER_STARTUP_EXPLANATION
+
+*   [2026-02-21 18:31:55]
+
+```json
+{
+  "title": "How supabase-pooler Starts During pm reinit supabase",
+  "summary": "Explanation of the confusing error messages during pooler startup",
+  "startup_flow": {
+    "layer_2": "supabase-db starts and waits 30 seconds for initialization",
+    "layers_3_9": "Other services start sequentially",
+    "layer_10": "supabase-pooler attempts to start with database readiness check"
+  },
+  "error_explanation": {
+    "what_happens": "_start_service_with_monitoring() calls _ensure_database_ready_for_pooler() which tries to execute: podman exec supabase-db pg_isready",
+    "attempts": "Makes 12 attempts (60 seconds total) with 5-second delays",
+    "error_message": "Each attempt fails with 'no container with name or ID supabase-db found'",
+    "misleading": "The error doesn't mean the container doesn't exist - it means podman exec can't find/access it"
+  },
+  "root_causes": [
+    "Database container hasn't fully started yet despite 30s wait",
+    "Container still initializing PostgreSQL",
+    "Container running but not accepting connections",
+    "Container in restart loop",
+    "Container named differently than expected (e.g., supabase-db.service vs supabase-db)"
+  ],
+  "fix_needed": {
+    "step_1": "First check if container exists: podman ps --filter name=supabase-db --format json",
+    "step_2": "Get the actual container name/ID from running containers",
+    "step_3": "Then run pg_isready using verified container name",
+    "step_4": "Provide clearer error messages distinguishing: container not found, container found but not ready, connection refused"
+  },
+  "current_behavior": "Pooler startup fails gracefully - marks layer as failed but continues with remaining layers (Kong, Studio, etc.)",
+  "code_location": "managers/supabase_stack_manager.py:334 (_ensure_database_ready_for_pooler)",
+  "related_functions": [
+    "_start_service_with_monitoring (line 241)",
+    "start_supabase_stack (line 95)"
+  ]
+}
+```
