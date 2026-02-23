@@ -1,6 +1,7 @@
 """Service management functionality for reinit operations."""
 
 import os
+import re
 import subprocess
 import time
 
@@ -73,10 +74,165 @@ class ServiceManager:
             verbose_print(f"[cyan]Error determining model service: {e}[/cyan]")
             return False
 
+    def _check_for_image_pull(self, service_name: str) -> tuple[bool, str]:
+        """Check if service is currently pulling an image.
+
+        Returns:
+            tuple: (is_pulling, pull_message)
+        """
+        try:
+            # Check recent logs for image pull indicators
+            logs_cmd = [
+                "sudo",
+                "journalctl",
+                "-u",
+                service_name,
+                "--since",
+                "30 seconds ago",
+                "-n",
+                "50",
+                "--no-pager",
+            ]
+
+            result = subprocess.run(logs_cmd, capture_output=True, text=True, timeout=5)
+
+            if result.returncode == 0 and result.stdout:
+                log_content = result.stdout
+
+                # Check for image pull indicators
+                pull_patterns = [
+                    r"Trying to pull",
+                    r"Pulling image",
+                    r"Getting image source signatures",
+                    r"Copying blob",
+                    r"Downloading.*layer",
+                    r"pull timeout to (\d+[ms]+)",
+                ]
+
+                for pattern in pull_patterns:
+                    match = re.search(pattern, log_content, re.IGNORECASE)
+                    if match:
+                        # Extract a relevant message
+                        lines = log_content.split("\n")
+                        for line in lines:
+                            if re.search(pattern, line, re.IGNORECASE):
+                                # Clean up the log line
+                                clean_line = re.sub(
+                                    r"^.*?\d{2}:\d{2}:\d{2}\s+\S+\s+\S+\[\d+\]:\s*",
+                                    "",
+                                    line,
+                                )
+                                return True, clean_line.strip()
+                        return True, "Image pull in progress"
+
+            return False, ""
+
+        except Exception as e:
+            verbose_print(f"[cyan]Error checking for image pull: {e}[/cyan]")
+            return False, ""
+
+    def _monitor_image_pull_progress(
+        self, service_name: str, max_wait: int = 600
+    ) -> bool:
+        """Monitor image pull progress with user feedback.
+
+        Args:
+            service_name: Name of the service
+            max_wait: Maximum time to wait in seconds (default: 10 minutes)
+
+        Returns:
+            bool: True if pull completed successfully, False if timeout or error
+        """
+        start_time = time.time()
+        last_message = ""
+        check_interval = 3  # Check every 3 seconds
+
+        console.print("[cyan]📦 Image pull detected - monitoring progress...[/cyan]")
+        console.print(
+            f"[dim]Will wait up to {max_wait // 60} minutes for pull to complete[/dim]"
+        )
+
+        while time.time() - start_time < max_wait:
+            try:
+                # Get recent logs
+                logs_cmd = [
+                    "sudo",
+                    "journalctl",
+                    "-u",
+                    service_name,
+                    "--since",
+                    "10 seconds ago",
+                    "-n",
+                    "20",
+                    "--no-pager",
+                ]
+
+                result = subprocess.run(
+                    logs_cmd, capture_output=True, text=True, timeout=5
+                )
+
+                if result.returncode == 0 and result.stdout:
+                    log_content = result.stdout
+
+                    # Check for completion indicators
+                    if re.search(
+                        r"Successfully pulled|Pull complete|Image.*ready",
+                        log_content,
+                        re.IGNORECASE,
+                    ):
+                        elapsed = int(time.time() - start_time)
+                        console.print(
+                            f"[green]✅ Image pull completed in {elapsed}s[/green]"
+                        )
+                        return True
+
+                    # Check for error indicators
+                    if re.search(
+                        r"Failed to pull|Pull failed|Error pulling",
+                        log_content,
+                        re.IGNORECASE,
+                    ):
+                        console.print("[red]❌ Image pull failed[/red]")
+                        return False
+
+                    # Extract progress messages
+                    progress_patterns = [
+                        r"Copying blob.*",
+                        r"Downloading.*layer.*",
+                        r"Extracting.*",
+                        r"Getting image source signatures",
+                        r"Pulling image.*",
+                    ]
+
+                    for pattern in progress_patterns:
+                        match = re.search(pattern, log_content, re.IGNORECASE)
+                        if match:
+                            message = match.group(0).strip()
+                            if message != last_message:
+                                elapsed = int(time.time() - start_time)
+                                console.print(f"[dim]{elapsed}s | {message}[/dim]")
+                                last_message = message
+                            break
+
+                time.sleep(check_interval)
+
+            except subprocess.TimeoutExpired:
+                console.print(
+                    "[yellow]⚠️  Log check timed out, continuing to wait...[/yellow]"
+                )
+                time.sleep(check_interval)
+            except Exception as e:
+                verbose_print(f"[cyan]Error monitoring pull progress: {e}[/cyan]")
+                time.sleep(check_interval)
+
+        # Timeout reached
+        console.print(f"[red]❌ Image pull timed out after {max_wait}s[/red]")
+        return False
+
     def start_service(
         self, service_name: str, target: str, quiet: bool = False
     ) -> subprocess.CompletedProcess:
-        """Start a systemd service with timeout handling"""
+        """Start a systemd service with intelligent timeout handling for image pulls"""
         # Enable the service first
         enable_cmd = ["sudo", "systemctl", "enable", service_name]
         if not quiet:
@@ -98,19 +254,65 @@ class ServiceManager:
             verbose_print(f"[cyan]exec: {' '.join(start_cmd)}[/cyan]")
 
         try:
+            # Start the service with initial timeout
             result = subprocess.run(
                 start_cmd,
                 capture_output=True,
                 text=True,
-                timeout=30,  # 30 second timeout for service start
+                timeout=30,  # Initial 30 second timeout
             )
             return result
+
         except subprocess.TimeoutExpired:
-            # Create a mock result for timeout
-            result = subprocess.CompletedProcess(
-                start_cmd, 124, "", "Service start timed out after 30 seconds"
-            )
-            return result
+            # Check if timeout was due to image pull
+            is_pulling, pull_message = self._check_for_image_pull(service_name)
+
+            if is_pulling:
+                console.print(
+                    f"[yellow]⏱️  Service start timed out - {pull_message}[/yellow]"
+                )
+
+                # Monitor the pull progress with extended timeout
+                if self._monitor_image_pull_progress(service_name, max_wait=600):
+                    # Pull completed, wait a bit more for service to fully start
+                    console.print(
+                        "[cyan]Waiting for service to complete startup...[/cyan]"
+                    )
+                    time.sleep(10)
+
+                    # Check if service is now active
+                    status_cmd = ["sudo", "systemctl", "is-active", service_name]
+                    status_result = subprocess.run(
+                        status_cmd, capture_output=True, text=True, timeout=5
+                    )
+
+                    if status_result.returncode == 0:
+                        # Service is active - return success
+                        return subprocess.CompletedProcess(
+                            start_cmd,
+                            0,
+                            "Service started successfully after image pull",
+                            "",
+                        )
+                    else:
+                        # Service failed to start even after pull
+                        return subprocess.CompletedProcess(
+                            start_cmd,
+                            1,
+                            "",
+                            "Service failed to start after image pull completed",
+                        )
+                else:
+                    # Pull failed or timed out
+                    return subprocess.CompletedProcess(
+                        start_cmd, 124, "", "Service start timed out during image pull"
+                    )
+            else:
+                # Regular timeout (not due to image pull)
+                return subprocess.CompletedProcess(
+                    start_cmd, 124, "", "Service start timed out after 30 seconds"
+                )
+
         except Exception as e:
             # Create a mock result for other errors
             result = subprocess.CompletedProcess(
@@ -180,6 +382,34 @@ class ServiceManager:
         except Exception as e:
             console.print(f"[red]  Failed to reload systemd daemon: {str(e)}[/red]")
             return False
+
+    def enable_service(
+        self, service_name: str, target: str, quiet: bool = False
+    ) -> subprocess.CompletedProcess:
+        """Enable a systemd service"""
+        enable_cmd = ["sudo", "systemctl", "enable", service_name]
+
+        if not quiet:
+            verbose_print(f"[cyan]exec: {' '.join(enable_cmd)}[/cyan]")
+
+        try:
+            result = subprocess.run(
+                enable_cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            return result
+        except subprocess.TimeoutExpired:
+            result = subprocess.CompletedProcess(
+                enable_cmd, 124, "", "Service enable timed out after 10 seconds"
+            )
+            return result
+        except Exception as e:
+            result = subprocess.CompletedProcess(
+                enable_cmd, 1, "", f"Service enable failed: {str(e)}"
+            )
+            return result
 
     def monitor_service_startup(
         self, target: str, service_name: str, timeout: int = 10

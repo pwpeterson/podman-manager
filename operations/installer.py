@@ -414,6 +414,7 @@ class EnvironmentManager:
         try:
             shutil.copy2(self.source_config, self.config_file)
             verbose_print("  [cyan]exec: Config file copied successfully[/cyan]")
+            console.print()
         except Exception as e:
             raise Exception(f"Failed to copy config file: {e}")
 
@@ -1495,17 +1496,19 @@ class FileManager:
                 verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
                 subprocess.run(cmd, check=True)
             else:
-                verbose_print(f"  [cyan]exec: cp .../{file} .../systemd/{file}[/cyan]")
-                shutil.copy2(source_file, target_file)
+                cmd = ["sudo", "cp", str(source_file), str(target_file)]
+                verbose_print(f"  [cyan]exec: cp {source_file} {target_file}[/cyan]")
+                subprocess.run(cmd, check=True)
 
             # Set permissions immediately after copying
             if use_sudo:
                 chmod_cmd = ["sudo", "chmod", "644", str(target_file)]
-                verbose_print(f"  [cyan]exec: chmod 644 .../systemd/{file}[/cyan]")
+                verbose_print(f"  [cyan]exec: chmod 644 {target_file}[/cyan]")
                 subprocess.run(chmod_cmd, check=True)
             else:
-                verbose_print(f"  [cyan]exec: chmod 644 .../systemd/{file}[/cyan]")
-                target_file.chmod(0o644)
+                chmod_cmd = ["sudo", "chmod", "644", str(target_file)]
+                verbose_print(f"  [cyan]exec: chmod 644 {target_file}[/cyan]")
+                subprocess.run(chmod_cmd, check=True)
 
             # Run validation immediately after each container file
             if file.endswith(".container"):
