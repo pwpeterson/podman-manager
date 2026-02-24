@@ -54,6 +54,11 @@ class ModelProxyClient:
     - Or pass `timeout=` explicitly (requests supports float or (connect, read) tuple).
     """
 
+    # Provider-specific quirks:
+    # - Moonshot Kimi models currently only accept temperature=1 (fixed sampling setting).
+    #   We normalize requests here so call sites can use a consistent default.
+    _MOONSHOT_FIXED_TEMP_PREFIXES: tuple[str, ...] = ("kimi-", "moonshotai/kimi-")
+
     def __init__(
         self,
         base_url: Optional[str] = None,
@@ -63,6 +68,12 @@ class ModelProxyClient:
             base_url or os.getenv("MODEL_PROXY_URL") or "http://localhost:8002"
         ).rstrip("/")
         self.timeout = timeout if timeout is not None else self._default_timeout()
+
+    def _normalize_temperature(self, *, model: str, temperature: float) -> float:
+        """Normalize temperature for providers/models with strict constraints."""
+        if any(model.startswith(p) for p in self._MOONSHOT_FIXED_TEMP_PREFIXES):
+            return 1.0
+        return temperature
 
     def _ensure_requests(self) -> None:
         if requests is None:
@@ -196,6 +207,8 @@ class ModelProxyClient:
         """Call POST /v1/chat/completions and return the raw JSON response."""
         if not model or not isinstance(model, str):
             raise ValueError("model must be a non-empty string")
+
+        temperature = self._normalize_temperature(model=model, temperature=temperature)
 
         payload: Dict[str, Any] = {
             "model": model,
