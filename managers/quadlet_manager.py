@@ -1309,13 +1309,197 @@ class QuadletManager:
     def reload_daemon(self) -> bool:
         """Reload systemd user daemon (after changing unit files)"""
         cmd = ["sudo", "systemctl", "daemon-reload"]
-        result = self._run_systemctl_command(cmd, "daemon_reload")
 
-        if result.returncode == 0:
-            return True
-        else:
-            console.print("[red]Failed to reload systemd user daemon[/red]")
+        try:
+            result = self._run_systemctl_command(cmd, "daemon_reload")
+
+            if result.returncode == 0:
+                logger.success("Systemd daemon reloaded successfully")
+
+                # Check journalctl for any errors related to services/containers
+                self._check_journalctl_errors_after_reload()
+
+                return True
+            else:
+                # Log detailed error information
+                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                logger.error(f"Failed to reload systemd daemon: {error_msg}")
+
+                # Provide user-friendly error messages based on common issues
+                if "Permission denied" in error_msg or "Access denied" in error_msg:
+                    console.print(
+                        "[red]Failed to reload systemd daemon: Permission denied[/red]"
+                    )
+                    console.print(
+                        "[yellow]Hint: Ensure sudo is configured correctly[/yellow]"
+                    )
+                elif "Failed to connect to bus" in error_msg:
+                    console.print(
+                        "[red]Failed to reload systemd daemon: Cannot connect to systemd[/red]"
+                    )
+                    console.print("[yellow]Hint: Ensure systemd is running[/yellow]")
+                elif result.returncode == 124:  # Timeout
+                    console.print(
+                        "[red]Failed to reload systemd daemon: Command timed out[/red]"
+                    )
+                    console.print(
+                        "[yellow]Hint: System may be under heavy load[/yellow]"
+                    )
+                else:
+                    console.print("[red]Failed to reload systemd daemon[/red]")
+                    if error_msg and error_msg != "Unknown error":
+                        console.print(f"[dim]Error: {error_msg}[/dim]")
+
+                return False
+
+        except subprocess.TimeoutExpired:
+            logger.error("Systemd daemon-reload command timed out")
+            console.print(
+                "[red]Failed to reload systemd daemon: Command timed out[/red]"
+            )
+            console.print(
+                "[yellow]Hint: System may be under heavy load or unresponsive[/yellow]"
+            )
             return False
+        except Exception as e:
+            logger.error(f"Unexpected error during daemon-reload: {e}")
+            console.print(f"[red]Failed to reload systemd daemon: {e}[/red]")
+            return False
+
+    def _check_journalctl_errors_after_reload(self) -> None:
+        """Check journalctl logs for unsupported key errors after daemon-reload"""
+        try:
+            # Check for unsupported key errors in quadlet/systemd configuration
+            journal_cmd = [
+                "sudo",
+                "journalctl",
+                "-b",
+                "--since",
+                "3 min ago",
+                "--no-pager",
+            ]
+            grep_cmd = ["grep", "-iE", "unsupported key"]
+
+            logger.debug(
+                "Checking journalctl for unsupported key errors: %s | %s",
+                " ".join(journal_cmd),
+                " ".join(grep_cmd),
+            )
+            verbose_print(
+                f"  [cyan]exec: {' '.join(journal_cmd)} | {' '.join(grep_cmd)}[/cyan]"
+            )
+
+            # Run journalctl and pipe to grep without using shell=True
+            journal_process = subprocess.Popen(
+                journal_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+
+            grep_process = subprocess.Popen(
+                grep_cmd,
+                stdin=journal_process.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            if journal_process.stdout:
+                journal_process.stdout.close()
+
+            grep_output, _ = grep_process.communicate(timeout=10)
+            journal_process.wait()
+
+            # grep returns 0 if matches found, 1 if no matches, >1 for errors
+            if grep_process.returncode == 0 and grep_output.strip():
+                # Found matching log entries
+                log_lines = grep_output.strip().split("\n")
+
+                # All "unsupported key" messages are configuration errors
+                # Categorize them for display
+                error_lines = []
+                warning_lines = []
+                info_lines = []
+
+                for line in log_lines:
+                    line_lower = line.lower()
+                    # Treat all unsupported key messages as errors
+                    if "unsupported key" in line_lower:
+                        error_lines.append(line)
+                    elif any(
+                        keyword in line_lower
+                        for keyword in ["error", "failed", "critical"]
+                    ):
+                        error_lines.append(line)
+                    elif "warning" in line_lower or "warn" in line_lower:
+                        warning_lines.append(line)
+                    else:
+                        info_lines.append(line)
+
+                # Display results if any errors or warnings found
+                if error_lines or warning_lines:
+                    console.print(
+                        "\n[yellow]⚠ Found unsupported key errors in quadlet configuration:[/yellow]"
+                    )
+                    console.print("[dim]" + "─" * 80 + "[/dim]")
+
+                    # Show errors first
+                    if error_lines:
+                        console.print("[red bold]UNSUPPORTED KEY ERRORS:[/red bold]")
+                        for line in error_lines[:5]:  # Show max 5 error lines
+                            console.print(f"[red]{line}[/red]")
+                        if len(error_lines) > 5:
+                            console.print(
+                                f"[dim]... and {len(error_lines) - 5} more errors[/dim]"
+                            )
+
+                    # Then warnings
+                    if warning_lines:
+                        if error_lines:
+                            console.print()  # Add spacing
+                        console.print("[yellow bold]WARNINGS:[/yellow bold]")
+                        for line in warning_lines[:5]:  # Show max 5 warning lines
+                            console.print(f"[yellow]{line}[/yellow]")
+                        if len(warning_lines) > 5:
+                            console.print(
+                                f"[dim]... and {len(warning_lines) - 5} more warnings[/dim]"
+                            )
+
+                    console.print("[dim]" + "─" * 80 + "[/dim]")
+                    console.print(
+                        "[yellow]Hint: Remove unsupported keys from quadlet files in /etc/containers/systemd/[/yellow]"
+                    )
+                    console.print(
+                        "[yellow]      Check Podman Quadlet documentation for valid keys[/yellow]"
+                    )
+
+                    logger.warning(
+                        f"Found {len(error_lines)} unsupported key errors and {len(warning_lines)} warnings "
+                        "in quadlet configuration"
+                    )
+                elif info_lines:
+                    # Only info messages, log but don't display
+                    logger.debug(
+                        f"Found {len(info_lines)} log entries with 'unsupported key' (no errors)"
+                    )
+                else:
+                    logger.debug("No unsupported key issues found in recent logs")
+            elif grep_process.returncode == 1:
+                # No matches found (grep returns 1 when no matches)
+                logger.debug("No unsupported key errors found in recent logs")
+            else:
+                # Command error
+                logger.debug(
+                    "Journalctl/grep check returned code %s",
+                    grep_process.returncode,
+                )
+
+        except subprocess.TimeoutExpired:
+            logger.debug("Journalctl check timed out (non-critical)")
+        except Exception as e:
+            # Don't fail daemon-reload if journalctl check fails
+            logger.debug(f"Could not check journalctl logs: {e}")
 
     def show_logs(self, target: str, follow: bool = False) -> bool:
         """Show logs for a service"""

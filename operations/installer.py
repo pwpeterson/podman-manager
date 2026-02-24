@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
@@ -224,7 +225,8 @@ class EnvironmentManager:
             self._ensure_network_config_file()
 
             console.print("[green]Setting up required podman networks.[/green]")
-            console.print()
+            if not is_verbose():
+                console.print()
 
             # Only show detailed output in verbose mode
             if is_verbose():
@@ -398,11 +400,12 @@ class EnvironmentManager:
         if not self.source_config.exists():
             raise Exception(f"Source config file not found at {self.source_config}")
 
+        if is_verbose():
+            console.print()
+
         console.print(
             "[green]Copying & validating networks.config.json to systemd[/green]"
         )
-        if not is_verbose():
-            console.print()
 
         verbose_print(
             "  [cyan]exec: cp .../local-ai-packaged/quadlets/networks.config.json /etc/containers/systemd/networks.config.json[/cyan]"
@@ -545,6 +548,8 @@ class SystemdManager:
 
     def check_user_session(self) -> bool:
         """Check systemd user session health."""
+        if is_verbose():
+            console.print()
         console.print("[green]Checking systemd user session health...[/green]")
 
         try:
@@ -598,6 +603,8 @@ class SystemdManager:
     def reload_daemon(self, use_sudo: bool = False) -> bool:
         """Reload systemd daemon."""
         console.print("[green]Reloading systemd daemon...[/green]")
+        if not is_verbose():
+            console.print()
 
         if use_sudo:
             ok = self._reload_system_daemon()
@@ -607,9 +614,10 @@ class SystemdManager:
         return ok
 
     def _reload_system_daemon(self) -> bool:
-        """Reload system daemon with sudo."""
+        """Reload system daemon with sudo and check for configuration errors."""
         cmd = ["sudo", "systemctl", "daemon-reload"]
         verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
+
         try:
             result = secure_run(cmd, timeout=30)
             if result.returncode != 0:
@@ -617,10 +625,79 @@ class SystemdManager:
                     "[red]Failed to reload system daemon. You may need to manually run: sudo systemctl daemon-reload[/red]"
                 )
                 return False
+
+            # Give systemd a moment to process and write to journal
+            time.sleep(0.5)
+
+            # Check journalctl for unsupported key errors after successful reload
+            self._check_journalctl_for_unsupported_keys()
+
             return True
         except SecureSubprocessError as e:
             console.print(f"[red]Failed to reload system daemon: {e}[/red]")
             return False
+
+    def _check_journalctl_for_unsupported_keys(self) -> None:
+        """Check journalctl logs for unsupported key errors after daemon-reload."""
+        if is_verbose():
+            console.print()
+        console.print("[green]Checking journalctl for configuration errors...[/green]")
+
+        try:
+            # Build the command
+            cmd = ["sudo", "journalctl", "-b", "--since", "3 min ago", "--no-pager"]
+
+            verbose_print(
+                f"  [cyan]exec: {' '.join(cmd)} | grep -iE 'unsupported key'[/cyan]"
+            )
+
+            # Run journalctl using secure_run
+            result = secure_run(cmd, timeout=10)
+
+            if result.returncode != 0:
+                console.print("[yellow]Warning: journalctl command failed[/yellow]")
+                console.print()
+                return
+
+            # Filter for unsupported key errors
+            log_lines = []
+            for line in result.stdout.split("\n"):
+                if "unsupported key" in line.lower():
+                    log_lines.append(line.strip())
+
+            if log_lines:
+                # Found matching log entries - display ALL of them
+                console.print()
+                console.print(
+                    "[yellow]⚠ Found unsupported key errors in quadlet configuration:[/yellow]"
+                )
+                console.print("[dim]" + "─" * 80 + "[/dim]")
+                console.print("[red bold]UNSUPPORTED KEY ERRORS:[/red bold]")
+
+                # Display all error lines
+                for line in log_lines:
+                    console.print(f"[red]{line}[/red]")
+
+                console.print("[dim]" + "─" * 80 + "[/dim]")
+                console.print(
+                    "[yellow]Hint: Remove unsupported keys from quadlet files in /etc/containers/systemd/[/yellow]"
+                )
+                console.print(
+                    "[yellow]      Check Podman Quadlet documentation for valid keys[/yellow]"
+                )
+                console.print()
+            else:
+                # No errors found
+                verbose_print(
+                    "  [cyan]No unsupported key errors found in journalctl[/cyan]"
+                )
+
+        except SecureSubprocessError as e:
+            console.print(f"[yellow]Warning: journalctl check failed: {e}[/yellow]")
+            console.print()
+        except Exception as e:
+            console.print(f"[yellow]Warning: journalctl check failed: {e}[/yellow]")
+            console.print()
 
     def _reload_user_daemon(self) -> bool:
         """Reload user daemon with retry logic."""
@@ -636,6 +713,9 @@ class SystemdManager:
                     "[blue]Attempting to restart user systemd session...[/blue]"
                 )
                 return self._retry_user_daemon_reload()
+
+            time.sleep(0.5)
+            self._check_journalctl_for_unsupported_keys()
             return True
         except SecureSubprocessError as e:
             console.print(f"[yellow]Failed to reload user daemon: {e}[/yellow]")
@@ -660,6 +740,8 @@ class SystemdManager:
                     console.print(
                         "[green]Successfully reloaded daemon after reset[/green]"
                     )
+                    time.sleep(0.5)
+                    self._check_journalctl_for_unsupported_keys()
                     return True
                 else:
                     self._show_manual_reload_instructions()
