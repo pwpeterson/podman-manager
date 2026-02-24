@@ -2016,7 +2016,13 @@ class QuadletInstaller:
 
             # Setup Podman networks after quadlet .network unit files are copied so the
             # user sees network unit copy output before the network setup section.
-            self.env_manager._setup_networks(target_dir=target_dir)
+            #
+            # Special case: `pm deploy models -v` should not show (or run) the network setup step.
+            skip_network_setup = (
+                name in {"models", "models-stack"} or resolved_stack == "models-stack"
+            )
+            if not skip_network_setup:
+                self.env_manager._setup_networks(target_dir=target_dir)
 
             # Note: Validation is now done per-file during copy_quadlet_files
 
