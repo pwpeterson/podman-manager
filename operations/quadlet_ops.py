@@ -125,7 +125,7 @@ class QuadletOperations:
         self,
         target: str,
         lines: int = 50,
-        vllm_url: str = "http://localhost:8002",
+        vllm_url: str = "http://localhost:8003",
         verbose: bool = False,
         ai_model: Optional[str] = None,
     ) -> None:

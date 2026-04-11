@@ -704,7 +704,7 @@ class ValidationManager:
     """Handles container file validation using podman-quadlet after deployment."""
 
     def __init__(self):
-        self.quadlet_generator = "/usr/lib/systemd/user-generators/podman-quadlet"
+        self.quadlet_generator = "/usr/lib/systemd/system-generators/podman-quadlet"
 
     def validate_after_deployment(
         self, stack_name: str, files: List[str], use_sudo: bool = False
@@ -1178,9 +1178,9 @@ class ValidationManager:
     def _get_ai_analysis(
         self, errors: str, stack_name: str, container_files: List[str]
     ) -> Optional[str]:
-        """Get AI analysis of validation errors via model-proxy.
+        """Get AI analysis of validation errors via abacus-proxy.
 
-        Uses the local model-proxy (OpenAI-compatible) so the user can select which
+        Uses the local abacus-proxy (OpenAI-compatible) so the user can select which
         model to troubleshoot with. This triggers an interactive \"AI agent event\"
         that shows available models and which model is currently set as assistant.
         """
@@ -1216,7 +1216,7 @@ class ValidationManager:
 
             if is_verbose():
                 verbose_print(
-                    f"  [cyan]exec: Sending model-proxy validation analysis request (model={model_id})[/cyan]"
+                    f"  [cyan]exec: Sending abacus-proxy validation analysis request (model={model_id})[/cyan]"
                 )
 
             return mp.chat_completion_text(
@@ -1235,7 +1235,7 @@ class ValidationManager:
 
         except (ModelProxyError, Exception) as e:
             verbose_print(
-                f"  [cyan]exec: model-proxy validation analysis failed: {e}[/cyan]"
+                f"  [cyan]exec: abacus-proxy validation analysis failed: {e}[/cyan]"
             )
             return None
 
@@ -1534,7 +1534,7 @@ class FileManager:
         self, container_file: str, use_sudo: bool = False
     ):
         """Validate a single container file immediately after copying."""
-        quadlet_generator = "/usr/lib/systemd/user-generators/podman-quadlet"
+        quadlet_generator = "/usr/lib/systemd/system-generators/podman-quadlet"
 
         if not Path(quadlet_generator).exists():
             return

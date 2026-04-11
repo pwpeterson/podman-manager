@@ -145,13 +145,13 @@ class InteractiveAnalysisHandler:
             assistant_model = mp.get_assistant_model()
             if not assistant_model:
                 console.print(
-                    "[yellow]No assistant model is configured in model-proxy. Run the analysis again and select a model.[/yellow]"
+                    "[yellow]No assistant model is configured in abacus-proxy. Run the analysis again and select a model.[/yellow]"
                 )
                 return
 
             if verbose:
                 console.print(
-                    f"[dim]Using model-proxy assistant model for follow-up: {assistant_model}[/dim]"
+                    f"[dim]Using abacus-proxy assistant model for follow-up: {assistant_model}[/dim]"
                 )
 
             result = mp.chat_completion_text(

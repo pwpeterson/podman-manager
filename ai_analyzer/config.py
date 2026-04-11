@@ -52,7 +52,6 @@ class DataCollectionConfig:
         if self.quadlet_dirs is None:
             self.quadlet_dirs = [
                 "/etc/containers/systemd",
-                "~/.config/containers/systemd",
                 "/usr/share/containers/systemd",
             ]
 

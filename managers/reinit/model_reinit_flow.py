@@ -168,7 +168,7 @@ class ModelReinitFlow:
         )
         console.print()
 
-        # Restart sys-services-model-proxy and mcp-model-delegator
+        # Restart sys-services-abacus-proxy and mcp-model-delegator
         success = self.restart_model_support_services(display_name)
         verbose_print(
             f"[cyan]Active model service reinit completed with success={success}[/cyan]"
@@ -232,7 +232,7 @@ class ModelReinitFlow:
         )
         console.print()
 
-        # Restart sys-services-model-proxy and mcp-vllm-delegator
+        # Restart sys-services-abacus-proxy and mcp-vllm-delegator
         success = self.restart_model_support_services(display_name)
         verbose_print(
             f"[cyan]Model service reinit without current model completed with success={success}[/cyan]"
@@ -412,43 +412,45 @@ class ModelReinitFlow:
             return "reinit_failure"
 
     def restart_model_support_services(self, display_name: str) -> bool:
-        """Restart sys-services-model-proxy and mcp-model-delegator services
+        """Restart sys-services-abacus-proxy and mcp-model-delegator services
 
-        New sequence: model_proxy.py detects the model on port 8005 automatically,
-        so we just need to start model-proxy first, then mcp-model-delegator.
+        New sequence: abacus_proxy.py detects the model on port 8005 automatically,
+        so we just need to start abacus-proxy first, then mcp-model-delegator.
         """
         verbose_print(
             f"[cyan]restart_model_support_services called for {display_name}[/cyan]"
         )
 
-        # Stop sys-services-model-proxy using systemctl
+        # Stop sys-services-abacus-proxy using systemctl
         stop_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(
-            f"[green]{stop_timestamp} | Stopping sys-services-model-proxy...[/green]"
+            f"[green]{stop_timestamp} | Stopping sys-services-abacus-proxy...[/green]"
         )
         stop_result = self.service_manager.stop_service(
-            "sys-services-model-proxy.service", "sys-services-model-proxy", quiet=False
+            "sys-services-abacus-proxy.service",
+            "sys-services-abacus-proxy",
+            quiet=False,
         )
         stopped_timestamp = datetime.now().strftime("%H:%M:%S")
         if stop_result.returncode == 0:
             console.print(
-                f"[green]{stopped_timestamp} |   Stopped sys-services-model-proxy[/green]"
+                f"[green]{stopped_timestamp} |   Stopped sys-services-abacus-proxy[/green]"
             )
         else:
             console.print(
-                f"[yellow]{stopped_timestamp} |   sys-services-model-proxy was not running or failed to stop[/yellow]"
+                f"[yellow]{stopped_timestamp} |   sys-services-abacus-proxy was not running or failed to stop[/yellow]"
             )
         console.print()
 
-        # Since model_proxy.py now detects the model automatically, we don't need to update MODEL_VLLM
+        # Since abacus_proxy.py now detects the model automatically, we don't need to update MODEL_VLLM
         console.print(
-            f"[cyan]model_proxy.py will auto-detect {display_name} on port 8005[/cyan]"
+            f"[cyan]abacus_proxy.py will auto-detect {display_name} on port 8005[/cyan]"
         )
         console.print()
 
         # Remove service file to allow regeneration
         self.service_manager.remove_service_file(
-            "sys-services-model-proxy.service", dry_run=False
+            "sys-services-abacus-proxy.service", dry_run=False
         )
         console.print()
 
@@ -457,34 +459,38 @@ class ModelReinitFlow:
             return False
         console.print()
 
-        # Enable and start sys-services-model-proxy using systemctl
+        # Enable and start sys-services-abacus-proxy using systemctl
         enable_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(
-            f"[green]{enable_timestamp} | Enabling sys-services-model-proxy...[/green]"
+            f"[green]{enable_timestamp} | Enabling sys-services-abacus-proxy...[/green]"
         )
         verbose_print(
-            "[cyan]exec: sudo systemctl enable sys-services-model-proxy.service[/cyan]"
+            "[cyan]exec: sudo systemctl enable sys-services-abacus-proxy.service[/cyan]"
         )
         self.service_manager.enable_service(
-            "sys-services-model-proxy.service", "sys-services-model-proxy", quiet=False
+            "sys-services-abacus-proxy.service",
+            "sys-services-abacus-proxy",
+            quiet=False,
         )
         console.print()
 
         start_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(
-            f"[green]{start_timestamp} | Restarting sys-services-model-proxy...[/green]"
+            f"[green]{start_timestamp} | Restarting sys-services-abacus-proxy...[/green]"
         )
         start_result = self.service_manager.start_service(
-            "sys-services-model-proxy.service", "sys-services-model-proxy", quiet=False
+            "sys-services-abacus-proxy.service",
+            "sys-services-abacus-proxy",
+            quiet=False,
         )
         started_timestamp = datetime.now().strftime("%H:%M:%S")
         if start_result.returncode == 0:
             console.print(
-                f"[green]{started_timestamp} |   Restarted sys-services-model-proxy[/green]"
+                f"[green]{started_timestamp} |   Restarted sys-services-abacus-proxy[/green]"
             )
         else:
             console.print(
-                f"[red]{started_timestamp} |   Failed to restart sys-services-model-proxy[/red]"
+                f"[red]{started_timestamp} |   Failed to restart sys-services-abacus-proxy[/red]"
             )
             return False
         console.print()

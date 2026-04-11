@@ -86,7 +86,7 @@ class HealthChecker:
 
             # Check systemctl status
             result = subprocess.run(
-                ["systemctl", "--user", "status", service_name],
+                ["sudo", "systemctl", "status", service_name],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -201,7 +201,7 @@ class HealthChecker:
         try:
             # Check ports based on specific service types
             if "vllm" in target.lower() and target not in [
-                "model-proxy",
+                "abacus-proxy",
                 "mcp-vllm-delegator",
             ]:
                 import socket
@@ -219,21 +219,21 @@ class HealthChecker:
                             "status": "good",
                             "details": "vLLM model port 8005 available",
                         }
-            elif target == "model-proxy":
+            elif target == "abacus-proxy":
                 import socket
 
-                # model-proxy uses port 8002
+                # abacus-proxy uses port 8003
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    result = s.connect_ex(("localhost", 8002))
+                    result = s.connect_ex(("localhost", 8003))
                     if result == 0:
                         return {
                             "status": "info",
-                            "details": "vLLM proxy port 8002 in use",
+                            "details": "abacus proxy port 8003 in use",
                         }
                     else:
                         return {
                             "status": "good",
-                            "details": "vLLM proxy port 8002 available",
+                            "details": "abacus proxy port 8003 available",
                         }
             elif target == "mcp-model-delegator":
                 import socket
@@ -315,7 +315,7 @@ class HealthChecker:
                 service_name = target
 
             result = subprocess.run(
-                ["systemctl", "--user", "is-active", service_name],
+                ["sudo", "systemctl", "is-active", service_name],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -368,7 +368,7 @@ class HealthChecker:
                             "details": "MCP model delegator running (health check unavailable)",
                         }
                 elif "vllm" in target.lower() and target not in [
-                    "model-proxy",
+                    "abacus-proxy",
                     "mcp-model-delegator",
                 ]:
                     try:
@@ -393,27 +393,27 @@ class HealthChecker:
                             "status": "info",
                             "details": "vLLM model service running (health check unavailable)",
                         }
-                elif target == "model-proxy":
+                elif target == "abacus-proxy":
                     try:
                         import requests
 
                         response = requests.get(
-                            "http://localhost:8002/health", timeout=5
+                            "http://localhost:8003/health", timeout=5
                         )
                         if response.status_code == 200:
                             return {
                                 "status": "good",
-                                "details": "vLLM proxy healthy and responding",
+                                "details": "abacus proxy healthy and responding",
                             }
                         else:
                             return {
                                 "status": "warning",
-                                "details": "vLLM proxy running but not responding",
+                                "details": "abacus proxy running but not responding",
                             }
                     except Exception:
                         return {
                             "status": "info",
-                            "details": "vLLM proxy running (health check unavailable)",
+                            "details": "abacus proxy running (health check unavailable)",
                         }
                 else:
                     return {"status": "good", "details": "Container running normally"}

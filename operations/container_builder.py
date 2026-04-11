@@ -158,7 +158,7 @@ class ContainerBuilder:
                 "target": target,
             }
 
-            # Run AI analysis (model-proxy). Use configured assistant model.
+            # Run AI analysis (abacus-proxy). Use configured assistant model.
             result = analyzer.ai_analyze(
                 analysis_type="build_failure",
                 target=target,
@@ -248,17 +248,17 @@ class ContainerBuilder:
                     text=True,
                 )
 
-                # Stop container using systemctl --user (safer for Quadlet services)
+                # Stop container using sudo systemctl (rootful Quadlet services)
                 if (
                     inspect_result.returncode == 0
                     and inspect_result.stdout.strip() == "true"
                 ):
                     service_name = f"{container_name}.service"
                     verbose_print(
-                        f"[cyan]exec: systemctl --user stop {service_name}[/cyan]"
+                        f"[cyan]exec: sudo systemctl stop {service_name}[/cyan]"
                     )
                     subprocess.run(
-                        ["systemctl", "--user", "stop", service_name],
+                        ["sudo", "systemctl", "stop", service_name],
                         capture_output=True,
                         text=True,
                     )
@@ -1326,12 +1326,12 @@ class ContainerBuilder:
                 )
                 return result.returncode == 0 and result.stdout.strip() == "true"
 
-            # Stop existing container using systemctl --user (safer for Quadlet services)
+            # Stop existing container using sudo systemctl (rootful Quadlet services)
             if container_exists():
                 if container_running():
                     service_name = f"{CONTAINER_NAME}.service"
                     subprocess.run(
-                        ["systemctl", "--user", "stop", service_name],
+                        ["sudo", "systemctl", "stop", service_name],
                         capture_output=True,
                         text=True,
                     )
@@ -1436,7 +1436,7 @@ class ContainerBuilder:
                 if container_running():
                     service_name = f"{CONTAINER_NAME}.service"
                     subprocess.run(
-                        ["systemctl", "--user", "stop", service_name],
+                        ["sudo", "systemctl", "stop", service_name],
                         capture_output=True,
                         text=True,
                     )

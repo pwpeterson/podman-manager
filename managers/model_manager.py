@@ -38,15 +38,15 @@ class ModelManger:
     def __init__(self, manager):
         self.manager = manager
         self.model_port = 8005  # Both VLLM and llama.cpp use port 8005
-        self.proxy_container = "sys-services-model-proxy"
-        self.proxy_port = 8002
+        self.proxy_container = "sys-services-abacus-proxy"
+        self.proxy_port = 8003
         self.network_name = "local-ai-network"
         self.proxy_image = (
-            "sys-services-model-proxy:latest"  # Default, can be configured
+            "sys-services-abacus-proxy:latest"  # Default, can be configured
         )
         self._startup_monitor = None
         # self._port_detector = PortContainerDetector(
-        #     excluded_containers=["sys-services-model-proxy", "mcp-model-delegator"]
+        #     excluded_containers=["sys-services-abacus-proxy", "mcp-model-delegator"]
         # )
         self._port_detector = None  # Fallback to built-in methods
 
@@ -670,7 +670,7 @@ class ModelManger:
             return False
 
     def get_available_model_models(self) -> list:
-        """Get list of available model containers (VLLM and llama.cpp, excluding sys-services-model-proxy)"""
+        """Get list of available model containers (VLLM and llama.cpp, excluding sys-services-abacus-proxy)"""
         try:
             # Get containers with vllm in the name
             vllm_cmd = [
@@ -701,9 +701,9 @@ class ModelManger:
             if vllm_result.returncode == 0:
                 for line in vllm_result.stdout.strip().split("\n"):
                     container_name = line.strip()
-                    # Exclude sys-services-model-proxy and mcp-model-delegator as they are not model containers
+                    # Exclude sys-services-abacus-proxy and mcp-model-delegator as they are not model containers
                     if container_name and container_name not in [
-                        "sys-services-model-proxy",
+                        "sys-services-abacus-proxy",
                         "mcp-model-delegator",
                     ]:
                         containers.append(container_name)
@@ -713,7 +713,7 @@ class ModelManger:
                 for line in llama_result.stdout.strip().split("\n"):
                     container_name = line.strip()
                     if container_name and container_name not in [
-                        "sys-services-model-proxy",
+                        "sys-services-abacus-proxy",
                         "mcp-model-delegator",
                     ]:
                         containers.append(container_name)
@@ -983,7 +983,7 @@ class ModelManger:
                         or "llama" in container_name.lower()
                     )
                     and container_name
-                    not in ["sys-services-model-proxy", "mcp-model-delegator"]
+                    not in ["sys-services-abacus-proxy", "mcp-model-delegator"]
                 ):
                     # Check if this container is using port 8005
                     if self._container_uses_port(container_name, self.model_port):
@@ -1021,10 +1021,10 @@ class ModelManger:
                         container_name = parts[0].strip()
                         container_id = parts[1].strip()
 
-                        # Check if this container contains our process (exclude sys-services-model-proxy)
+                        # Check if this container contains our process (exclude sys-services-abacus-proxy)
                         if (
                             "vllm" in container_name.lower()
-                            and container_name != "sys-services-model-proxy"
+                            and container_name != "sys-services-abacus-proxy"
                         ):
                             inspect_cmd = [
                                 "podman",
@@ -1060,7 +1060,7 @@ class ModelManger:
             return False
 
     def _find_vllm_container_by_inspection(self) -> Optional[str]:
-        """Find model container by inspecting all model containers (VLLM and llama.cpp, excluding sys-services-model-proxy)"""
+        """Find model container by inspecting all model containers (VLLM and llama.cpp, excluding sys-services-abacus-proxy)"""
         try:
             # Get all containers (running and stopped) with vllm or llama in the name
             vllm_cmd = [
@@ -1098,10 +1098,10 @@ class ModelManger:
                         container_name = parts[0].strip()
                         status = parts[1].strip()
 
-                        # Exclude sys-services-model-proxy as it's not a model container (uses port 8002, not 8005)
+                        # Exclude sys-services-abacus-proxy as it's not a model container (uses port 8003, not 8005)
                         if (
                             "Up" in status or "running" in status.lower()
-                        ) and container_name != "sys-services-model-proxy":
+                        ) and container_name != "sys-services-abacus-proxy":
                             running_vllm_containers.append(container_name)
 
             # Process llama.cpp containers
@@ -1112,10 +1112,10 @@ class ModelManger:
                         container_name = parts[0].strip()
                         status = parts[1].strip()
 
-                        # Exclude sys-services-model-proxy as it's not a model container (uses port 8002, not 8005)
+                        # Exclude sys-services-abacus-proxy as it's not a model container (uses port 8003, not 8005)
                         if (
                             "Up" in status or "running" in status.lower()
-                        ) and container_name != "sys-services-model-proxy":
+                        ) and container_name != "sys-services-abacus-proxy":
                             running_vllm_containers.append(container_name)
 
             # Check each container to see which one is actually using port 8005
@@ -1194,9 +1194,9 @@ class ModelManger:
         self, target: str, new_model_model: str, build_type: Optional[str] = None
     ) -> bool:
         """Reinit a service and switch model if it's a model-related service (VLLM or llama.cpp)"""
-        # First perform the model switch if this is a model service (exclude sys-services-model-proxy)
+        # First perform the model switch if this is a model service (exclude sys-services-abacus-proxy)
         if ("vllm" in target.lower() or "llama" in target.lower()) and target not in [
-            "sys-services-model-proxy",
+            "sys-services-abacus-proxy",
             "vllm-stack",
             "models-stack",
         ]:

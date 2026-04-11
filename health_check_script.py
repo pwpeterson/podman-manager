@@ -57,7 +57,7 @@ def main():
     # Define endpoints to check
     endpoints = [
         ("Model Service Port", "127.0.0.1", 8005, True),  # Model services
-        ("Proxy Service Port", "127.0.0.1", 8002, True),  # Proxy service
+        ("Proxy Service Port", "127.0.0.1", 8003, True),  # Proxy service (abacus-proxy)
         ("Alternative Health Port", "127.0.0.1", 8001, False),  # Sometimes used
     ]
 
@@ -101,13 +101,13 @@ def main():
         print("\n❌ Some services have issues. Check the details above.")
         print("\n🔧 TROUBLESHOOTING SUGGESTIONS:")
         print("   1. Check if vllm-glm4-9b-chat service is running:")
-        print("      systemctl --user status vllm-glm4-9b-chat")
+        print("      sudo systemctl status vllm-glm4-9b-chat")
         print("   2. Check service logs:")
-        print("      journalctl --user -u vllm-glm4-9b-chat -f")
+        print("      sudo journalctl -u vllm-glm4-9b-chat -f")
         print("   3. Try restarting the service:")
-        print("      systemctl --user restart vllm-glm4-9b-chat")
+        print("      sudo systemctl restart vllm-glm4-9b-chat")
         print("   4. Check if proxy service is running:")
-        print("      systemctl --user status sys-services-model-proxy")
+        print("      sudo systemctl status sys-services-abacus-proxy")
         return 1
 
 

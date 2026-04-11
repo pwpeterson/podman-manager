@@ -14,7 +14,7 @@ class ValidationUtils:
 
     def __init__(self):
         self.quadlets_dir = Path("/etc/containers/systemd")
-        self.quadlet_generator = "/usr/lib/systemd/user-generators/podman-quadlet"
+        self.quadlet_generator = "/usr/lib/systemd/system-generators/podman-quadlet"
 
     def validate_prerequisites(self) -> bool:
         """Validate that required tools exist."""
@@ -25,11 +25,13 @@ class ValidationUtils:
             logger.error("Required command 'systemctl' not found!")
             return False
 
-        # Check if we can run systemctl --user
+        # Check if we can run sudo systemctl
         result = systemctl_user(["--help"])
         if result.returncode != 0:
-            logger.error("'systemctl --user' is not available!")
-            console.print("[dim]Make sure systemd user services are enabled[/dim]")
+            logger.error("'sudo systemctl' is not available!")
+            console.print(
+                "[dim]Make sure systemd is running and sudo access is available[/dim]"
+            )
             return False
 
         logger.success("Prerequisites validation complete")
@@ -224,41 +226,37 @@ class ValidationUtils:
         return formatted_errors
 
     def check_systemd_user_session(self) -> bool:
-        """Check systemd user session health."""
-        console.print("[green]Checking systemd user session health...[/green]")
+        """Check systemd health."""
+        console.print("[green]Checking systemd health...[/green]")
 
         try:
-            # Check if systemd user session is running
-            verbose_print("  [cyan]exec: systemctl --user status[/cyan]")
+            # Check if systemd is running
+            verbose_print("  [cyan]exec: sudo systemctl status[/cyan]")
             result = systemctl_user(["status"], timeout=10)
 
             if result.returncode != 0:
-                console.print(
-                    "[yellow]Systemd user session appears to be disconnected[/yellow]"
-                )
+                console.print("[yellow]Systemd appears to be unavailable[/yellow]")
                 console.print("[blue]This may cause daemon-reload to fail[/blue]")
                 console.print(
-                    "[blue]Consider restarting your user session if issues persist[/blue]"
+                    "[blue]Check that systemd is running and sudo access is available[/blue]"
                 )
                 return False
 
             # Check if we can communicate with systemd
             verbose_print(
-                "  [cyan]exec: systemctl --user list-units --type=service --state=loaded[/cyan]"
+                "  [cyan]exec: sudo systemctl list-units --type=service --state=loaded[/cyan]"
             )
             result = systemctl_user(
                 ["list-units", "--type=service", "--state=loaded"], timeout=10
             )
 
             if result.returncode != 0:
-                console.print(
-                    "[yellow]Cannot communicate with systemd user session[/yellow]"
-                )
+                console.print("[yellow]Cannot communicate with systemd[/yellow]")
                 console.print("[blue]Transport endpoint may be disconnected[/blue]")
                 return False
 
             console.print()
-            console.print("[green]Systemd user session is healthy[/green]")
+            console.print("[green]Systemd is healthy[/green]")
             return True
 
         except Exception as e:

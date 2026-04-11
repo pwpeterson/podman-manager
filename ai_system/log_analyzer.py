@@ -415,7 +415,7 @@ class LogAnalyzer:
         console.print()
 
         # Check systemd service status
-        status_cmd = ["systemctl", "--user", "status", service_name, "--no-pager", "-l"]
+        status_cmd = ["sudo", "systemctl", "status", service_name, "--no-pager", "-l"]
         if _verbose_enabled:
             console.print(f"[cyan]exec: {' '.join(status_cmd)}[/cyan]")
         console.print("\n[green]Service Status:[/green]")
@@ -447,7 +447,7 @@ class LogAnalyzer:
                     "--network",
                     "host",
                     "--env",
-                    "VLLM_API_URL=http://localhost:8002/v1/chat/completions",
+                    "VLLM_API_URL=http://localhost:8003/v1/chat/completions",
                     "--env",
                     "model_model=Qwen/Qwen2.5-Coder-32B-Instruct-AWQ",
                     "--env",
@@ -529,8 +529,8 @@ class LogAnalyzer:
         console.print("2. Verify all required files/configs are present")
         console.print("3. Check if ports are already in use")
         console.print("4. Verify environment variables are correct")
-        console.print(f"5. Try: systemctl --user reset-failed {service_name}")
-        console.print(f"6. Then: systemctl --user start {service_name}")
+        console.print(f"5. Try: sudo systemctl reset-failed {service_name}")
+        console.print(f"6. Then: sudo systemctl start {service_name}")
 
         # Special troubleshooting for vllm-delegator stdio/TCP mode issue
         if target == "vllm-delegator":
@@ -784,7 +784,7 @@ class LogAnalyzer:
                     "--network",
                     "host",
                     "--env",
-                    "VLLM_API_URL=http://localhost:8002/v1/chat/completions",
+                    "VLLM_API_URL=http://localhost:8003/v1/chat/completions",
                     "--env",
                     "model_model=Qwen/Qwen2.5-Coder-32B-Instruct-AWQ",
                     "--env",
@@ -969,7 +969,7 @@ class LogAnalyzer:
             f"[green]  View podman logs:[/green] [white]pm logs {target}[/white]"
         )
         console.print(
-            f"[green]  View service config:[/green] [white]systemctl --user cat {service_name}[/white]"
+            f"[green]  View service config:[/green] [white]sudo systemctl cat {service_name}[/white]"
         )
         console.print(
             f"[green]  Diagnose the issue:[/green] [white]pm diagnose {target}[/white]"

@@ -15,10 +15,18 @@ class ServiceManager:
         self.manager = manager
 
     def remove_service_file(self, service_name: str, dry_run: bool = False) -> bool:
-        """Remove systemd service file with proper error handling"""
-        service_file_path = os.path.expanduser(f"~/.config/systemd/user/{service_name}")
-        if not service_name.endswith(".service"):
-            service_file_path += ".service"
+        """Remove quadlet container file with proper error handling"""
+        # Rootful quadlets live in /etc/containers/systemd/
+        # Strip .service suffix to get the base name, then look for .container file
+        base_name = service_name
+        if base_name.endswith(".service"):
+            base_name = base_name[:-8]
+        service_file_path = f"/etc/containers/systemd/{base_name}.container"
+        if not os.path.exists(service_file_path):
+            # Fall back to checking for .service file directly
+            service_file_path = f"/etc/containers/systemd/{service_name}"
+            if not service_name.endswith(".service"):
+                service_file_path += ".service"
 
         service_file_name = os.path.basename(service_file_path)
 
@@ -49,7 +57,7 @@ class ServiceManager:
         """Check if a service is a model service (vLLM or llama.cpp).
 
         Legacy behavior used a local agent config file to detect model services. That
-        approach has been removed in favor of model-proxy, so we use a simple name-based
+        approach has been removed in favor of abacus-proxy, so we use a simple name-based
         heuristic.
         """
         try:

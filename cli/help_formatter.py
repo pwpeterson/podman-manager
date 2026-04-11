@@ -233,12 +233,12 @@ def show_rich_help():
         "  💡 [light_blue]Provides root cause analysis and step-by-step solutions[/light_blue]"
     )
     console.print()
-    console.print("[bold]AI MODEL SELECTION (model-proxy):[/bold]")
+    console.print("[bold]AI MODEL SELECTION (abacus-proxy):[/bold]")
     console.print(
-        "  When AI analysis runs, PM will use the local model-proxy (OpenAI-compatible)."
+        "  When AI analysis runs, PM will use the local abacus-proxy (OpenAI-compatible)."
     )
     console.print(
-        "  You may be prompted to select a troubleshooting model from the model-proxy model list."
+        "  You may be prompted to select a troubleshooting model from the abacus-proxy model list."
     )
     console.print()
     console.print("  Optional override:")

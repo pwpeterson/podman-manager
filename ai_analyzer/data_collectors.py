@@ -31,7 +31,7 @@ class DataCollector(ABC):
 
         try:
             # Use appropriate secure wrapper based on command type
-            if cmd[0] == "systemctl" and "--user" in cmd:
+            if cmd[0] == "sudo" and len(cmd) > 1 and cmd[1] == "systemctl":
                 result = systemctl_user(cmd[2:], timeout=timeout)
             elif cmd[0] == "podman":
                 result = podman_cmd(cmd[1:], timeout=timeout)
@@ -63,7 +63,7 @@ class SystemdDataCollector(DataCollector):
 
         # Get service status - use resolved service name
         status_result = self._run_command(
-            ["systemctl", "--user", "status", service_name, "--no-pager", "-l"],
+            ["sudo", "systemctl", "status", service_name, "--no-pager", "-l"],
             timeout=15,
         )
 
@@ -75,7 +75,7 @@ class SystemdDataCollector(DataCollector):
 
         # Get unit file content - use resolved service name
         cat_result = self._run_command(
-            ["systemctl", "--user", "cat", service_name], timeout=10
+            ["sudo", "systemctl", "cat", service_name], timeout=10
         )
 
         if cat_result["success"]:

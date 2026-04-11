@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ruff: noqa: E402
-"""Smoke test for local model-proxy integration.
+"""Smoke test for local abacus-proxy integration.
 
 Validates:
 - /health reachable
@@ -51,11 +51,11 @@ def _pick_default_model(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Smoke test for model-proxy")
+    parser = argparse.ArgumentParser(description="Smoke test for abacus-proxy")
     parser.add_argument(
         "--base-url",
         default=None,
-        help="Override model-proxy base URL (default: MODEL_PROXY_URL env or http://localhost:8002)",
+        help="Override abacus-proxy base URL (default: MODEL_PROXY_URL env or http://localhost:8003)",
     )
     parser.add_argument(
         "--model",
@@ -90,7 +90,7 @@ def main() -> int:
 
     try:
         health = mp.health()
-        console.print(f"[green]✓[/green] model-proxy health: {health}")
+        console.print(f"[green]✓[/green] abacus-proxy health: {health}")
 
         models = mp.list_models()
         if not models:
@@ -158,7 +158,7 @@ def main() -> int:
         return 0
 
     except ModelProxyError as e:
-        console.print(f"[red]✗[/red] model-proxy error: {e}")
+        console.print(f"[red]✗[/red] abacus-proxy error: {e}")
         return 1
     except Exception as e:
         console.print(f"[red]✗[/red] unexpected error: {e}")

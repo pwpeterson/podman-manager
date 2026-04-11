@@ -562,7 +562,7 @@ Provide a focused analysis with:
             f"""
 Service: {service_name}
 Target: {display_target}
-Start Command: {data.get('start_command', 'systemctl --user start <service>')}
+Start Command: {data.get('start_command', 'sudo systemctl start <service>')}
 Error Code: {data.get('error_code', 'Unknown')}
 """
         )
@@ -813,21 +813,21 @@ Symptoms Observed:
 ```bash
 # Use timeout prefixes and non-blocking operations
 timeout 5s podman version || echo "Podman unresponsive"
-timeout 3s systemctl --user is-active podman.socket || echo "Podman socket inactive"
+timeout 3s sudo systemctl is-active podman.socket || echo "Podman socket inactive"
 ```
 
 ### 3. Progressive Recovery Strategy
 **Phase 1 - Service Level** (Risk: low)
 ```bash
 # Reset specific service
-systemctl --user reset-failed {target}.service
-systemctl --user daemon-reload
+sudo systemctl reset-failed {target}.service
+sudo systemctl daemon-reload
 ```
 
 **Phase 2 - Container Runtime** (Risk: medium)
 ```bash
 # Reset container runtime
-systemctl --user restart podman.socket
+sudo systemctl restart podman.socket
 podman system reset --force
 ```
 

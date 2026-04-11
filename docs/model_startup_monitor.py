@@ -26,7 +26,7 @@ class ModelStartupMonitor:
         """Load model configurations.
 
         Legacy behavior loaded model metadata from a local agent config file. That approach
-        has been removed in favor of model-proxy, so we avoid any file-based configuration
+        has been removed in favor of abacus-proxy, so we avoid any file-based configuration
         here and infer model type from container naming conventions.
         """
         return {}

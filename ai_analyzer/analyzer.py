@@ -18,7 +18,7 @@ from .display import DisplayFormatterFactory
 from .prompts import PromptGeneratorFactory
 from .spinner_manager import SpinnerManager, safe_spinner
 
-# Legacy multi-agent config system removed; model selection uses model-proxy
+# Legacy multi-agent config system removed; model selection uses abacus-proxy
 
 
 class AIAnalyzer:
@@ -141,7 +141,7 @@ class AIAnalyzer:
                     )
                     console.print()
 
-            # AI agent event: choose assistant model for troubleshooting via model-proxy
+            # AI agent event: choose assistant model for troubleshooting via abacus-proxy
             selected_model: Optional[str] = None
 
             if ai_model:
@@ -165,7 +165,7 @@ class AIAnalyzer:
                 )
                 selected_model = selection.selected_model
 
-            # Get AI analysis using model-proxy
+            # Get AI analysis using abacus-proxy
             # Use safe spinner for non-verbose modes (except reinit_failure which handles its own display)
             spinner_text = "Analyzing..." if analysis_type != "reinit_failure" else None
             show_spinner = not verbose and analysis_type != "reinit_failure"
@@ -389,12 +389,12 @@ class AIAnalyzer:
         target: Optional[str] = None,
         selected_model: Optional[str] = None,
     ) -> Optional[str]:
-        """Analyze using model-proxy (OpenAI-compatible).
+        """Analyze using abacus-proxy (OpenAI-compatible).
 
-        We rely on model-proxy for provider routing and credentials. The model to
+        We rely on abacus-proxy for provider routing and credentials. The model to
         use is either:
         - the explicitly selected model (preferred), or
-        - the current assistant model configured in model-proxy.
+        - the current assistant model configured in abacus-proxy.
         """
         _ = target  # reserved for future prompt tailoring
 
@@ -405,13 +405,13 @@ class AIAnalyzer:
             model_id = selected_model or mp.get_assistant_model()
             if not model_id:
                 console.print(
-                    "[yellow]No assistant model is configured in model-proxy. Select a model when prompted.[/yellow]"
+                    "[yellow]No assistant model is configured in abacus-proxy. Select a model when prompted.[/yellow]"
                 )
                 return None
 
             if verbose:
                 verbose_print(
-                    f"  [cyan]exec: Using model-proxy model: {model_id}[/cyan]"
+                    f"  [cyan]exec: Using abacus-proxy model: {model_id}[/cyan]"
                 )
 
             # If no spinner is active (e.g., verbose mode disables the outer spinner,
@@ -436,6 +436,6 @@ class AIAnalyzer:
                 )
         except (ModelProxyError, Exception) as e:
             if verbose:
-                verbose_print(f"  [cyan]exec: model-proxy analysis failed: {e}[/cyan]")
-            console.print(f"[red]AI analysis failed (model-proxy): {e}[/red]")
+                verbose_print(f"  [cyan]exec: abacus-proxy analysis failed: {e}[/cyan]")
+            console.print(f"[red]AI analysis failed (abacus-proxy): {e}[/red]")
             return None

@@ -13,7 +13,7 @@ class AIDiagnostics:
         self,
         target: str,
         lines: int = 50,
-        vllm_url: str = "http://localhost:8002",
+        vllm_url: str = "http://localhost:8003",
         verbose: bool = False,
         ai_model: str | None = None,
     ) -> None:
@@ -23,7 +23,7 @@ class AIDiagnostics:
         # Prepare context data for log analysis
         context_data = {"lines": lines}
 
-        # Use unified AI analyzer (model-proxy)
+        # Use unified AI analyzer (abacus-proxy)
         analyzer.ai_analyze(
             analysis_type="logs",
             target=target,

@@ -285,7 +285,7 @@ class ReinitMonitor:
         try:
             # Check systemctl status
             result = subprocess.run(
-                ["systemctl", "--user", "status", service_name],
+                ["sudo", "systemctl", "status", service_name],
                 capture_output=True,
                 text=True,
                 timeout=5,

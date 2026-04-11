@@ -270,10 +270,10 @@ class ContainerManager:
             return success
 
     def stop_container_with_message(self, container_name: str) -> bool:
-        """Stop a container using systemctl --user (safer for Quadlet services)"""
+        """Stop a container using sudo systemctl (rootful Quadlet services)"""
         try:
             service_name = f"{container_name}.service"
-            stop_cmd = ["systemctl", "--user", "stop", service_name]
+            stop_cmd = ["sudo", "systemctl", "stop", service_name]
             verbose_print(f"[cyan]exec: {' '.join(stop_cmd)}[/cyan]")
             result = subprocess.run(
                 stop_cmd, capture_output=True, text=True, timeout=30
@@ -284,7 +284,7 @@ class ContainerManager:
 
     def remove_container_with_message(self, container_name: str) -> bool:
         """Remove a container - with systemctl, this is handled automatically"""
-        # When using systemctl --user, container removal is handled automatically
+        # When using sudo systemctl, container removal is handled automatically
         # by the service lifecycle. We just return True since systemctl stop
         # already handles proper cleanup.
         verbose_print(

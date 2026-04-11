@@ -27,7 +27,9 @@ class CommandRouter:
         self.display = display
         self.selected_mode = "quadlet"  # Always quadlet mode
         self.detector = detector  # Keep for compatibility but not used
-        self.ai_model = None  # Store AI model selection (model-proxy model id override)
+        self.ai_model = (
+            None  # Store AI model selection (abacus-proxy model id override)
+        )
         self.common_actions = (
             CommonActionsFormatter()
         )  # Initialize common actions formatter
@@ -121,7 +123,7 @@ class CommandRouter:
             if command_type in ["reinit", "start", "restart"]:
                 context_data["start_error"] = "Service failed to start/restart"
 
-            # Optional model override (interpreted as a model-proxy model id)
+            # Optional model override (interpreted as an abacus-proxy model id)
             resolved_ai_model = ai_model
 
             # Run AI analysis with verbose mode from global config
@@ -671,7 +673,7 @@ class CommandRouter:
                     "--plain",
                     "--no-legend",
                 ],
-                "description": f"systemctl --user status {container_name} --no-pager -l --plain --no-legend",
+                "description": f"sudo systemctl status {container_name} --no-pager -l --plain --no-legend",
             },
             {
                 "name": "Systemd Service Logs",
@@ -780,7 +782,7 @@ class CommandRouter:
 
             analyzer = get_ai_analyzer(self.manager)
 
-            # Optional model override (interpreted as a model-proxy model id)
+            # Optional model override (interpreted as an abacus-proxy model id)
             resolved_ai_model = ai_model
 
             # Trigger AI analysis for diagnostics

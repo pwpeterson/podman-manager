@@ -18,11 +18,11 @@
       "context": "/home/pwp/srv/mcps/mcp-toolbox",
       "image_name": "localhost/mcp-toolbox:latest"
     },
-    "model-proxy": {
-      "build_dir": "/home/pwp/srv/apps/model-proxy",
-      "dockerfile": "Dockerfile.model-proxy",
-      "context": "/home/pwp/srv/apps",
-      "image_name": "localhost/model-proxy:latest"
+    "abacus-proxy": {
+      "build_dir": "/home/pwp/srv/apps/abacus-proxy",
+      "dockerfile": "Dockerfile.abacus-proxy",
+      "context": "/home/pwp/srv/apps/abacus-proxy",
+      "image_name": "localhost/abacus-proxy:latest"
     },
     "mcp-git-tools": {
       "build_dir": "/home/pwp/srv/mcps/mcp-git-tools",
@@ -46,7 +46,7 @@
   "podman_build_services": [
     "mcp-crawl4ai-rag",
     "mcp-toolbox",
-    "model-proxy",
+    "abacus-proxy",
     "mcp-git-tools",
     "crawl4ai",
     "mindscape-ai-api",

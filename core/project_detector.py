@@ -19,7 +19,7 @@ class ProjectTypeDetector:
         self.quadlet_services = {
             # vLLM services
             "vllm-qwen25": "vllm-qwen25-coder-32b-instruct-awq.service",
-            "model-proxy": "model-proxy.service",
+            "abacus-proxy": "abacus-proxy.service",
             "vllm-delegator": "vllm-delegator-mcp.service",
             "vllm-stack": "vllm-stack.target",
             # Taskflow services

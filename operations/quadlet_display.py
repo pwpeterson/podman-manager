@@ -573,7 +573,7 @@ class QuadletDisplayManager:
         console.print(f"[bold cyan]Service Details: {service_name}[/bold cyan]")
 
         # Show systemctl status
-        cmd = ["systemctl", "--user", "status", service_name, "--no-pager"]
+        cmd = ["sudo", "systemctl", "status", service_name, "--no-pager"]
         console.print(f"[cyan]exec: {' '.join(cmd)}[/cyan]")
 
         result = secure_run(cmd)

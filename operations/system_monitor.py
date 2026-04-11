@@ -468,7 +468,7 @@ class SystemMonitor:
         if target == "vllm-proxy":
             # Check if proxy is responding
             try:
-                response = requests.get("http://localhost:8002/health", timeout=5)
+                response = requests.get("http://localhost:8003/health", timeout=5)
                 if response.status_code == 200:
                     console.print("[green]✓ vLLM proxy is responding[/green]")
                 else:

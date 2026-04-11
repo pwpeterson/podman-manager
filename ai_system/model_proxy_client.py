@@ -1,6 +1,6 @@
-"""HTTP client for the local model-proxy service.
+"""HTTP client for the local abacus-proxy service.
 
-This client targets the FastAPI model-proxy instance (default: http://localhost:8002)
+This client targets the FastAPI abacus-proxy instance (default: http://localhost:8003)
 which exposes OpenAI-compatible endpoints:
 - GET  /v1/models
 - POST /v1/chat/completions
@@ -44,7 +44,7 @@ class ModelProxyModel:
 
 
 class ModelProxyClient:
-    """Thin HTTP client for model-proxy.
+    """Thin HTTP client for abacus-proxy.
 
     Timeout behavior:
     - Uses separate connect/read timeouts by default: (5s connect, 180s read).
@@ -65,7 +65,7 @@ class ModelProxyClient:
         timeout: float | tuple[float, float] | None = None,
     ) -> None:
         self.base_url = (
-            base_url or os.getenv("MODEL_PROXY_URL") or "http://localhost:8002"
+            base_url or os.getenv("MODEL_PROXY_URL") or "http://localhost:8003"
         ).rstrip("/")
         self.timeout = timeout if timeout is not None else self._default_timeout()
 
@@ -112,10 +112,10 @@ class ModelProxyClient:
                 timeout=self.timeout,
             )
         except Exception as e:  # requests.* exceptions
-            raise ModelProxyError(f"model-proxy request failed: {e}") from e
+            raise ModelProxyError(f"abacus-proxy request failed: {e}") from e
 
         if resp.status_code >= 400:
-            # model-proxy returns JSON error objects with {"detail": ...}
+            # abacus-proxy returns JSON error objects with {"detail": ...}
             detail: str
             try:
                 payload = resp.json()
@@ -123,7 +123,7 @@ class ModelProxyClient:
             except Exception:
                 detail = resp.text.strip() or f"HTTP {resp.status_code}"
 
-            raise ModelProxyError(f"model-proxy error {resp.status_code}: {detail}")
+            raise ModelProxyError(f"abacus-proxy error {resp.status_code}: {detail}")
 
         if not resp.content:
             return None

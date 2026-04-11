@@ -608,7 +608,7 @@ class QuadletManager:
             except Exception:
                 pass  # Ignore resource collection errors
 
-            # Run AI analysis with service start failure type (model-proxy)
+            # Run AI analysis with service start failure type (abacus-proxy)
             result = analyzer.ai_analyze(
                 analysis_type="service_start_failure",
                 target=target,
@@ -1150,7 +1150,7 @@ class QuadletManager:
                         f"[cyan]Found containers: {', '.join(containers_found)}[/cyan]"
                     )
 
-                # Stop all found containers using systemctl --user (safer for Quadlet services)
+                # Stop all found containers using sudo systemctl (rootful Quadlet services)
                 for actual_container_name in containers_found:
                     if not quiet:
                         console.print(

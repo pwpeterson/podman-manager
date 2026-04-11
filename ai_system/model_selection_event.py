@@ -1,7 +1,7 @@
 """Interactive model selection "event" for troubleshooting.
 
 When a PM command hits an error path that triggers AI troubleshooting, we want to:
-- list available models from the local model-proxy
+- list available models from the local abacus-proxy
 - show which model is currently configured as the assistant
 - optionally prompt the user to select a model for this troubleshooting session
 
@@ -39,9 +39,9 @@ def run_model_selection_event(
     """Run an interactive model selection flow.
 
     Behavior:
-    - If model-proxy is unavailable, returns (None, None, False).
+    - If abacus-proxy is unavailable, returns (None, None, False).
     - If user presses Enter, keeps current assistant model (no changes).
-    - If user chooses a different model, updates assistant model via model-proxy.
+    - If user chooses a different model, updates assistant model via abacus-proxy.
 
     Returns:
         ModelSelectionResult(selected_model, current_assistant_model, changed)
@@ -54,7 +54,7 @@ def run_model_selection_event(
         assistant = mp.get_assistant_model()
     except ModelProxyError as e:
         console.print(
-            f"[yellow]AI agent event unavailable (model-proxy not reachable): {e}[/yellow]"
+            f"[yellow]AI agent event unavailable (abacus-proxy not reachable): {e}[/yellow]"
         )
         return ModelSelectionResult(
             selected_model=None, current_assistant_model=None, changed=False
@@ -62,7 +62,7 @@ def run_model_selection_event(
 
     if not models:
         console.print(
-            "[yellow]AI agent event unavailable: model-proxy returned no models.[/yellow]"
+            "[yellow]AI agent event unavailable: abacus-proxy returned no models.[/yellow]"
         )
         return ModelSelectionResult(
             selected_model=None, current_assistant_model=assistant, changed=False
@@ -129,7 +129,7 @@ def run_model_selection_event(
             mp.set_assistant_model(selected)
         except ModelProxyError as e:
             console.print(
-                f"[yellow]Failed to set assistant model via model-proxy: {e}[/yellow]"
+                f"[yellow]Failed to set assistant model via abacus-proxy: {e}[/yellow]"
             )
             return ModelSelectionResult(
                 selected_model=assistant,

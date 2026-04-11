@@ -51,11 +51,11 @@ class ServiceLifecycle:
                 return False
             console.print()
 
-        # Handle vLLM model services with enhanced startup monitoring (exclude model-proxy)
+        # Handle vLLM model services with enhanced startup monitoring (exclude abacus-proxy)
         is_vllm_service = (
             "vllm" in target.lower()
             and not target.endswith("-stack")
-            and target != "model-proxy"
+            and target != "abacus-proxy"
         )
 
         if is_vllm_service:
@@ -192,9 +192,9 @@ class ServiceLifecycle:
                 return False
             console.print()
 
-        # Handle vLLM model switching if specified, or detect vLLM model services automatically (exclude model-proxy)
+        # Handle vLLM model switching if specified, or detect vLLM model services automatically (exclude abacus-proxy)
         is_vllm_service = "vllm" in target.lower() and target not in [
-            "model-proxy",
+            "abacus-proxy",
             "vllm-stack",
         ]
 
