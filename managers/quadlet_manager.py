@@ -696,9 +696,7 @@ class QuadletManager:
                         and "Failed to connect to bus" in result.stderr
                     ):
                         # Bus connection issue - show friendly message
-                        console.print(
-                            "[yellow]Cannot connect to systemd user session[/yellow]"
-                        )
+                        console.print("[yellow]Cannot connect to systemd[/yellow]")
                         console.print("[dim]Try: sudo systemctl daemon-reload[/dim]")
                         logger.debug(
                             "Bus connection failed (code {}) in {:.2f}s: {}",

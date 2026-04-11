@@ -426,15 +426,15 @@ class SystemMonitor:
         """Comprehensive system health check"""
         console.print("[yellow]🏥 System health check...[/yellow]")
 
-        # Check systemd user session
+        # Check systemd
         console.print("\n[cyan]Systemd User Session:[/cyan]")
         systemd_result = systemctl_user(["is-system-running"])
 
         if systemd_result.returncode == 0:
-            console.print("[green]✓ Systemd user session is running[/green]")
+            console.print("[green]✓ Systemd is running[/green]")
         else:
             console.print(
-                f"[red]✗ Systemd user session issues: {systemd_result.stdout.strip()}[/red]"
+                f"[red]✗ Systemd issues: {systemd_result.stdout.strip()}[/red]"
             )
 
         # Check podman
@@ -569,7 +569,7 @@ class SystemMonitor:
 
         console.print(f"Python: {sys.version.split()[0]}")
 
-        # Systemd user session
+        # Systemd
         systemd_result = systemctl_user(["is-system-running"])
         console.print(f"Systemd: {systemd_result.stdout.strip()}")
 

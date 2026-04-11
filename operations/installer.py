@@ -4,7 +4,6 @@ Refactored installer for quadlet stacks with improved separation of concerns.
 """
 
 import json
-import os
 import shutil
 import subprocess
 import time
@@ -481,24 +480,22 @@ class SystemdManager:
     """Handles systemd operations and service management."""
 
     def check_user_session(self) -> bool:
-        """Check systemd user session health."""
+        """Check systemd health."""
         if is_verbose():
             console.print()
-        console.print("[green]Checking systemd user session health...[/green]")
+        console.print("[green]Checking systemd health...[/green]")
 
         try:
-            # Check if systemd user session is running
+            # Check if systemd is running
             cmd = ["sudo", "systemctl", "status"]
             verbose_print(f"  [cyan]exec: {' '.join(cmd)}[/cyan]")
             result = secure_run(cmd, timeout=10)
 
             if result.returncode != 0:
-                console.print(
-                    "[yellow]Systemd user session appears to be disconnected[/yellow]"
-                )
+                console.print("[yellow]Systemd appears to be unavailable[/yellow]")
                 console.print("[blue]This may cause daemon-reload to fail[/blue]")
                 console.print(
-                    "[blue]Consider restarting your user session if issues persist[/blue]"
+                    "[blue]Check that systemd is running and sudo access is available[/blue]"
                 )
                 return False
 
@@ -514,14 +511,12 @@ class SystemdManager:
             result = secure_run(cmd, timeout=10)
 
             if result.returncode != 0:
-                console.print(
-                    "[yellow]Cannot communicate with systemd user session[/yellow]"
-                )
+                console.print("[yellow]Cannot communicate with systemd[/yellow]")
                 console.print("[blue]Transport endpoint may be disconnected[/blue]")
                 return False
 
             console.print()
-            console.print("[green]Systemd user session is healthy[/green]")
+            console.print("[green]Systemd is healthy[/green]")
             console.print()
             console.print("[green]Creating the required system directory[/green]")
             verbose_print("  [cyan]exec: mkdir -p .../systemd[/cyan]")
@@ -681,11 +676,11 @@ class SystemdManager:
                     self._show_manual_reload_instructions()
                     return False
             else:
-                console.print("[yellow]Could not reset systemd user session[/yellow]")
+                console.print("[yellow]Could not reload systemd daemon[/yellow]")
                 self._show_manual_reload_instructions()
                 return False
         except SecureSubprocessError:
-            console.print("[yellow]Could not reset systemd user session[/yellow]")
+            console.print("[yellow]Could not reload systemd daemon[/yellow]")
             self._show_manual_reload_instructions()
             return False
 
@@ -695,9 +690,7 @@ class SystemdManager:
             "[yellow]Daemon reload still failing. Manual intervention may be required.[/yellow]"
         )
         console.print("[blue]Try: sudo systemctl daemon-reload[/blue]")
-        console.print(
-            f"[blue]Or restart user session: loginctl terminate-user {os.getenv('USER')}[/blue]"
-        )
+        console.print("[blue]Or run: sudo systemctl daemon-reload[/blue]")
 
 
 class ValidationManager:
@@ -1917,7 +1910,7 @@ class QuadletInstaller:
         return is_valid and service_file is None
 
     def check_systemd_user_session(self) -> bool:
-        """Check systemd user session health."""
+        """Check systemd health."""
         return self.systemd_manager.check_user_session()
 
     def install_stack(
