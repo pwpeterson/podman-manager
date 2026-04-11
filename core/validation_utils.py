@@ -124,9 +124,9 @@ class ValidationUtils:
         self, container_file: str, use_sudo: bool = False
     ) -> List[str]:
         """Validate a single container file."""
-        quadlet_cmd = [self.quadlet_generator, "--user", "--dryrun"]
+        quadlet_cmd = ["sudo", self.quadlet_generator, "--dryrun"]
         if use_sudo:
-            quadlet_cmd = [self.quadlet_generator, "--dryrun"]
+            quadlet_cmd = ["sudo", self.quadlet_generator, "--dryrun"]
 
         grep_cmd = ["grep", container_file]
         full_cmd = " | ".join([" ".join(quadlet_cmd), " ".join(grep_cmd)])

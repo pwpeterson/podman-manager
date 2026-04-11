@@ -740,7 +740,7 @@ class ValidationManager:
         for container_file in container_files:
 
             # Build command with grep filtering
-            quadlet_cmd = [self.quadlet_generator, "--dryrun"]
+            quadlet_cmd = ["sudo", self.quadlet_generator, "--dryrun"]
 
             grep_cmd = ["grep", container_file]
             full_cmd = " | ".join([" ".join(quadlet_cmd), " ".join(grep_cmd)])
@@ -1132,7 +1132,7 @@ class ValidationManager:
 
         for container_file in container_files:
             # Build command with grep filtering
-            quadlet_cmd = [self.quadlet_generator, "--dryrun"]
+            quadlet_cmd = ["sudo", self.quadlet_generator, "--dryrun"]
 
             grep_cmd = ["grep", container_file]
 
@@ -1533,7 +1533,7 @@ class FileManager:
             return
 
         # Build command with grep filtering
-        quadlet_cmd = [quadlet_generator, "--dryrun"]
+        quadlet_cmd = ["sudo", quadlet_generator, "--dryrun"]
 
         grep_cmd = ["grep", container_file]
         full_cmd = " | ".join([" ".join(quadlet_cmd), " ".join(grep_cmd)])
