@@ -1365,9 +1365,9 @@ class QuadletManager:
             return False
 
     def _check_journalctl_errors_after_reload(self) -> None:
-        """Check journalctl logs for unsupported key errors after daemon-reload"""
+        """Check journalctl logs for quadlet/systemd configuration errors after daemon-reload"""
         try:
-            # Check for unsupported key errors in quadlet/systemd configuration
+            # Check for quadlet and systemd unit errors after daemon-reload
             journal_cmd = [
                 "sudo",
                 "journalctl",
@@ -1376,7 +1376,11 @@ class QuadletManager:
                 "3 min ago",
                 "--no-pager",
             ]
-            grep_cmd = ["grep", "-iE", "unsupported key"]
+            grep_cmd = [
+                "grep",
+                "-iE",
+                "unsupported key|more than one ExecStart|refusing|not a key-value pair|error loading|converting.*container",
+            ]
 
             logger.debug(
                 "Checking journalctl for unsupported key errors: %s | %s",
@@ -1409,21 +1413,27 @@ class QuadletManager:
             grep_output, _ = grep_process.communicate(timeout=10)
             journal_process.wait()
 
+            _ERROR_PATTERNS = [
+                "unsupported key",
+                "more than one execstart",
+                "refusing",
+                "not a key-value pair",
+                "error loading",
+            ]
+
             # grep returns 0 if matches found, 1 if no matches, >1 for errors
             if grep_process.returncode == 0 and grep_output.strip():
                 # Found matching log entries
                 log_lines = grep_output.strip().split("\n")
 
-                # All "unsupported key" messages are configuration errors
-                # Categorize them for display
+                # Categorize lines for display
                 error_lines = []
                 warning_lines = []
                 info_lines = []
 
                 for line in log_lines:
                     line_lower = line.lower()
-                    # Treat all unsupported key messages as errors
-                    if "unsupported key" in line_lower:
+                    if any(pat in line_lower for pat in _ERROR_PATTERNS):
                         error_lines.append(line)
                     elif any(
                         keyword in line_lower
@@ -1438,13 +1448,13 @@ class QuadletManager:
                 # Display results if any errors or warnings found
                 if error_lines or warning_lines:
                     console.print(
-                        "\n[yellow]⚠ Found unsupported key errors in quadlet configuration:[/yellow]"
+                        "\n[yellow]⚠ Found configuration errors in quadlet/systemd after daemon-reload:[/yellow]"
                     )
                     console.print("[dim]" + "─" * 80 + "[/dim]")
 
                     # Show errors first
                     if error_lines:
-                        console.print("[red bold]UNSUPPORTED KEY ERRORS:[/red bold]")
+                        console.print("[red bold]CONFIGURATION ERRORS:[/red bold]")
                         for line in error_lines[:5]:  # Show max 5 error lines
                             console.print(f"[red]{line}[/red]")
                         if len(error_lines) > 5:
@@ -1466,23 +1476,32 @@ class QuadletManager:
 
                     console.print("[dim]" + "─" * 80 + "[/dim]")
                     console.print(
-                        "[yellow]Hint: Remove unsupported keys from quadlet files in /etc/containers/systemd/[/yellow]"
+                        "[yellow]Hint: Check quadlet files in /etc/containers/systemd/ for:[/yellow]"
                     )
                     console.print(
-                        "[yellow]      Check Podman Quadlet documentation for valid keys[/yellow]"
+                        "[yellow]  • Unsupported keys (wrong section or key name)[/yellow]"
+                    )
+                    console.print(
+                        "[yellow]  • Duplicate ExecStart= (remove manual [Service] ExecStart= — Quadlet generates it)[/yellow]"
+                    )
+                    console.print(
+                        "[yellow]  • Invalid syntax (missing [Container] section header)[/yellow]"
+                    )
+                    console.print(
+                        "[yellow]  Check Podman Quadlet documentation for valid keys[/yellow]"
                     )
 
                     logger.warning(
-                        f"Found {len(error_lines)} unsupported key errors and {len(warning_lines)} warnings "
-                        "in quadlet configuration"
+                        f"Found {len(error_lines)} configuration errors and {len(warning_lines)} warnings "
+                        "in quadlet/systemd after daemon-reload"
                     )
                 elif info_lines:
                     # Only info messages, log but don't display
                     logger.debug(
-                        f"Found {len(info_lines)} log entries with 'unsupported key' (no errors)"
+                        f"Found {len(info_lines)} log entries matching error patterns (no actionable errors)"
                     )
                 else:
-                    logger.debug("No unsupported key issues found in recent logs")
+                    logger.debug("No configuration errors found in recent logs")
             elif grep_process.returncode == 1:
                 # No matches found (grep returns 1 when no matches)
                 logger.debug("No unsupported key errors found in recent logs")

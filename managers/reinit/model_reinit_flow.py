@@ -448,17 +448,6 @@ class ModelReinitFlow:
         )
         console.print()
 
-        # Remove service file to allow regeneration
-        self.service_manager.remove_service_file(
-            "sys-services-abacus-proxy.service", dry_run=False
-        )
-        console.print()
-
-        # Reload systemd daemon
-        if not self.service_manager.reload_daemon():
-            return False
-        console.print()
-
         # Enable and start sys-services-abacus-proxy using systemctl
         enable_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(
@@ -512,17 +501,6 @@ class ModelReinitFlow:
             console.print(
                 f"[yellow]{stopped_timestamp2} |   mcp-model-delegator was not running or failed to stop[/yellow]"
             )
-        console.print()
-
-        # Remove mcp-model-delegator service file to allow regeneration
-        self.service_manager.remove_service_file(
-            "mcp-model-delegator.service", dry_run=False
-        )
-        console.print()
-
-        # Reload systemd daemon again after removing mcp-model-delegator service file
-        if not self.service_manager.reload_daemon():
-            return False
         console.print()
 
         # Enable and start mcp-model-delegator using systemctl

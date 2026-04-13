@@ -68,7 +68,7 @@ class ModelStartupMonitor:
                 "description": "Unknown model type",
             }
 
-    def monitor_model_startup(self, container_name: str, timeout: int = 660) -> bool:
+    def monitor_model_startup(self, container_name: str, timeout: int = 300) -> bool:
         """Monitor model startup with direct internal health checks on port 8005."""
         model_config = self.get_model_config(container_name)
         model_type = model_config["model_type"]
@@ -98,7 +98,15 @@ class ModelStartupMonitor:
 
             start_time = time.time()
             consecutive_failures = 0
-            max_failures = 3
+            # Allow up to 90 consecutive error checks (~180s) before giving up.
+            # vLLM services can briefly show "error" status during early startup
+            # while the container image is being pulled / GPU memory is allocated.
+            # Large models (e.g. Gemma-4-31B) can take 3+ minutes to fully start.
+            max_failures = 90
+            # Don't declare failure until at least this many seconds have elapsed,
+            # so transient early-startup errors are ignored.
+            # 180s = 3 minutes matches observed vLLM startup time.
+            min_elapsed_before_fail = 180
 
             while time.time() - start_time < timeout:
                 elapsed = time.time() - start_time
@@ -107,7 +115,10 @@ class ModelStartupMonitor:
                 container_status = self._get_container_status(container_name)
                 if container_status in ["error", "exited", "dead"]:
                     consecutive_failures += 1
-                    if consecutive_failures >= max_failures:
+                    if (
+                        consecutive_failures >= max_failures
+                        and elapsed >= min_elapsed_before_fail
+                    ):
                         console.print(
                             f"  ❌ {container_name} container failed to start (status: {container_status})"
                         )

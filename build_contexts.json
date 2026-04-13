@@ -41,6 +41,18 @@
       "dockerfile": "Dockerfile.mindscape-ai-web",
       "context": "/home/pwp/srv/apps/mindscape-ai",
       "image_name": "localhost/mindscape-ai-web:latest"
+    },
+    "vllm-gemma-4": {
+      "build_dir": "/home/pwp/srv/local-ai-packaged/quadlets/models-stack",
+      "dockerfile": "Dockerfile.vllm-gemma4",
+      "context": "/home/pwp/srv/local-ai-packaged/quadlets/models-stack",
+      "image_name": "localhost/vllm-gemma-4:latest"
+    },
+    "vllm-llmcompressor": {
+      "build_dir": "/home/pwp/srv/local-ai-packaged/quadlets/models-stack",
+      "dockerfile": "Dockerfile.vllm-llmcompressor",
+      "context": "/home/pwp/srv/local-ai-packaged/quadlets/models-stack",
+      "image_name": "localhost/vllm-llmcompressor:latest"
     }
   },
   "podman_build_services": [

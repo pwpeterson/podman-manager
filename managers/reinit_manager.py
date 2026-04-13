@@ -247,16 +247,13 @@ class ReinitManager:
             )
         console.print()
 
-        # Step 2: Remove service file (method handles its own messaging)
-        self.service_manager.remove_service_file(service_name, dry_run=False)
-        console.print()
-
-        # Step 3: Reload systemd daemon
-        if not self.service_manager.reload_daemon():
-            return False
-        console.print()
-
-        # Step 4: Restart the service
+        # Step 2: Restart the service
+        # NOTE: We do NOT remove the .container file or run daemon-reload here.
+        # A plain reinit is stop → restart only. The .container source file in
+        # /etc/containers/systemd/ must never be deleted during a normal reinit —
+        # it is the persistent quadlet definition and removing it would destroy the
+        # service configuration. daemon-reload is also unnecessary unless the
+        # .container file has been externally modified (handled by install/build flows).
         start_timestamp = datetime.now().strftime("%H:%M:%S")
         console.print(
             f"[green]{start_timestamp} | Restarting {display_name}...[/green]"

@@ -215,48 +215,41 @@ class EnvironmentManager:
 
     def _setup_networks(self, target_dir: Optional[Path] = None) -> None:
         """Setup Podman networks from networks.config.json and remove any undefined networks."""
+        if target_dir is None:
+            target_dir = self.system_env_target.parent
+
+        # Ensure config file exists first; skip silently if source is not present
+        # (e.g. during reinit flows where the local-ai-packaged tree is absent).
+        if not self._ensure_network_config_file():
+            return
+
+        console.print("[green]Setting up required podman networks.[/green]")
+        if not is_verbose():
+            console.print()
+
+        # Do the work silently even in verbose mode (suppress chatter)
         try:
-            if target_dir is None:
-                target_dir = self.system_env_target.parent
+            # Validate Podman is available
+            self._validate_podman()
 
-            # Ensure config file exists first, so any "Copying from ..." output appears
-            # before the "Setting up required podman networks." header.
-            self._ensure_network_config_file()
+            # Load networks from config file (single source of truth)
+            config_data = self._load_network_config()
+            networks = config_data.get("networks", [])
 
-            console.print("[green]Setting up required podman networks.[/green]")
-            if not is_verbose():
-                console.print()
+            # Get list of network names that should exist
+            expected_network_names = {n.get("name") for n in networks if n.get("name")}
 
-            # Do the work silently even in verbose mode (suppress chatter)
-            try:
-                # Validate Podman is available
-                self._validate_podman()
+            # Clean up networks not in config (AFTER loading expected networks)
+            self._cleanup_undefined_networks(expected_network_names)
 
-                # Load networks from config file (single source of truth)
-                config_data = self._load_network_config()
-                networks = config_data.get("networks", [])
-
-                # Get list of network names that should exist
-                expected_network_names = {
-                    n.get("name") for n in networks if n.get("name")
-                }
-
-                # Clean up networks not in config (AFTER loading expected networks)
-                self._cleanup_undefined_networks(expected_network_names)
-
-                if networks:
-                    for network_config in networks:
-                        name = network_config.get("name", "unknown")
-                        if not self._network_exists(name):
-                            self._create_network(network_config)
-            except Exception:
-                # Silently continue if network setup fails
-                pass
-
-        except Exception as e:
-            if is_verbose():
-                console.print(f"[yellow]Warning: Network setup failed: {e}[/yellow]")
-                verbose_print(f"  [cyan]exec: Network setup error details: {e}[/cyan]")
+            if networks:
+                for network_config in networks:
+                    name = network_config.get("name", "unknown")
+                    if not self._network_exists(name):
+                        self._create_network(network_config)
+        except Exception:
+            # Silently continue if network setup fails
+            pass
 
     def _cleanup_undefined_networks(self, expected_network_names: set) -> None:
         """Remove Podman networks that are not defined in networks.config.json."""
@@ -328,10 +321,15 @@ class EnvironmentManager:
         except (SecureSubprocessError, FileNotFoundError):
             raise Exception("Podman is required but not found in PATH")
 
-    def _ensure_network_config_file(self) -> None:
-        """Always copy fresh config file from source to ensure it's up to date."""
+    def _ensure_network_config_file(self) -> bool:
+        """Always copy fresh config file from source to ensure it's up to date.
+
+        Returns:
+            True if the config file was copied successfully, False if source is missing
+            (caller should skip network setup silently).
+        """
         if not self.source_config.exists():
-            raise Exception(f"Source config file not found at {self.source_config}")
+            return False
 
         if is_verbose():
             console.print()
@@ -353,6 +351,8 @@ class EnvironmentManager:
             console.print()
         except Exception as e:
             raise Exception(f"Failed to copy config file: {e}")
+
+        return True
 
     def _load_network_config(self) -> Dict:
         """Load and validate the JSON configuration file."""
@@ -567,17 +567,30 @@ class SystemdManager:
             return False
 
     def _check_journalctl_for_unsupported_keys(self) -> None:
-        """Check journalctl logs for unsupported key errors after daemon-reload."""
+        """Check journalctl logs for quadlet/systemd configuration errors after daemon-reload."""
         if is_verbose():
             console.print()
         console.print("[green]Checking journalctl for configuration errors...[/green]")
 
+        _ERROR_PATTERNS = [
+            "unsupported key",
+            "more than one execstart",
+            "refusing",
+            "not a key-value pair",
+            "error loading",
+        ]
+
         try:
-            # Build the command
-            cmd = ["sudo", "journalctl", "-b", "--since", "3 min ago", "--no-pager"]
+            # Compute an absolute timestamp 3 minutes ago (journalctl relative
+            # timestamps like "3 min ago" are not supported on all systemd versions).
+            from datetime import timedelta
+
+            since_dt = datetime.now() - timedelta(minutes=3)
+            since_str = since_dt.strftime("%Y-%m-%d %H:%M:%S")
+            cmd = ["sudo", "journalctl", "-b", "--since", since_str, "--no-pager"]
 
             verbose_print(
-                f"  [cyan]exec: {' '.join(cmd)} | grep -iE 'unsupported key'[/cyan]"
+                f"  [cyan]exec: {' '.join(cmd)} | grep -iE 'unsupported key|more than one ExecStart|refusing|not a key-value pair|error loading'[/cyan]"
             )
 
             # Run journalctl using secure_run
@@ -588,20 +601,21 @@ class SystemdManager:
                 console.print()
                 return
 
-            # Filter for unsupported key errors
+            # Filter for quadlet/systemd unit errors
             log_lines = []
             for line in result.stdout.split("\n"):
-                if "unsupported key" in line.lower():
+                line_lower = line.lower()
+                if any(pat in line_lower for pat in _ERROR_PATTERNS):
                     log_lines.append(line.strip())
 
             if log_lines:
                 # Found matching log entries - display ALL of them
                 console.print()
                 console.print(
-                    "[yellow]⚠ Found unsupported key errors in quadlet configuration:[/yellow]"
+                    "[yellow]⚠ Found configuration errors in quadlet/systemd after daemon-reload:[/yellow]"
                 )
                 console.print("[dim]" + "─" * 80 + "[/dim]")
-                console.print("[red bold]UNSUPPORTED KEY ERRORS:[/red bold]")
+                console.print("[red bold]CONFIGURATION ERRORS:[/red bold]")
 
                 # Display all error lines
                 for line in log_lines:
@@ -609,16 +623,25 @@ class SystemdManager:
 
                 console.print("[dim]" + "─" * 80 + "[/dim]")
                 console.print(
-                    "[yellow]Hint: Remove unsupported keys from quadlet files in /etc/containers/systemd/[/yellow]"
+                    "[yellow]Hint: Check quadlet files in /etc/containers/systemd/ for:[/yellow]"
                 )
                 console.print(
-                    "[yellow]      Check Podman Quadlet documentation for valid keys[/yellow]"
+                    "[yellow]  • Unsupported keys (wrong section or key name)[/yellow]"
+                )
+                console.print(
+                    "[yellow]  • Duplicate ExecStart= (remove manual [Service] ExecStart= — Quadlet generates it)[/yellow]"
+                )
+                console.print(
+                    "[yellow]  • Invalid syntax (missing [Container] section header)[/yellow]"
+                )
+                console.print(
+                    "[yellow]  Check Podman Quadlet documentation for valid keys[/yellow]"
                 )
                 console.print()
             else:
                 # No errors found
                 verbose_print(
-                    "  [cyan]No unsupported key errors found in journalctl[/cyan]"
+                    "  [cyan]No configuration errors found in journalctl[/cyan]"
                 )
 
         except SecureSubprocessError as e:

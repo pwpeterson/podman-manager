@@ -15,41 +15,45 @@ class ServiceManager:
         self.manager = manager
 
     def remove_service_file(self, service_name: str, dry_run: bool = False) -> bool:
-        """Remove quadlet container file with proper error handling"""
-        # Rootful quadlets live in /etc/containers/systemd/
-        # Strip .service suffix to get the base name, then look for .container file
+        """Remove the systemd-generated .service file from /run/systemd/generator/.
+
+        IMPORTANT: This method NEVER touches the source .container file in
+        /etc/containers/systemd/ — that is the persistent quadlet definition and
+        must not be deleted during a reinit.  Deleting the generated .service file
+        and then running daemon-reload causes systemd to regenerate it cleanly from
+        the .container source, which is the correct way to force a quadlet refresh.
+        """
         base_name = service_name
         if base_name.endswith(".service"):
             base_name = base_name[:-8]
-        service_file_path = f"/etc/containers/systemd/{base_name}.container"
-        if not os.path.exists(service_file_path):
-            # Fall back to checking for .service file directly
-            service_file_path = f"/etc/containers/systemd/{service_name}"
-            if not service_name.endswith(".service"):
-                service_file_path += ".service"
 
-        service_file_name = os.path.basename(service_file_path)
+        # Target the ephemeral generated file, NOT the source .container
+        generated_service_path = f"/run/systemd/generator/{base_name}.service"
+        service_file_name = os.path.basename(generated_service_path)
 
         if dry_run:
-            console.print(f"[yellow]Would remove {service_file_name}[/yellow]")
             console.print(
-                f"[yellow]  Would execute: rm -f {service_file_path}[/yellow]"
+                f"[yellow]Would remove generated {service_file_name}[/yellow]"
+            )
+            console.print(
+                f"[yellow]  Would execute: rm -f {generated_service_path}[/yellow]"
             )
             return True
         else:
-            console.print(f"[green]Removing {service_file_name}...[/green]")
-            verbose_print(f"[cyan]exec: rm -f {service_file_name}[/cyan]")
+            console.print(f"[green]Removing generated {service_file_name}...[/green]")
+            verbose_print(f"[cyan]exec: rm -f {generated_service_path}[/cyan]")
             try:
-                if os.path.exists(service_file_path):
-                    os.remove(service_file_path)
+                if os.path.exists(generated_service_path):
+                    os.remove(generated_service_path)
                     console.print(f"[green]  Removed {service_file_name}[/green]")
                 else:
-                    console.print(f"[green]  Removed {service_file_name}[/green]")
-                    # Don't show the "does not exist" message as it's confusing
+                    console.print(
+                        f"[green]  {service_file_name} already absent[/green]"
+                    )
                 return True
             except Exception as e:
                 console.print(
-                    f"[yellow]Warning: Could not remove service file: {e}[/yellow]"
+                    f"[yellow]Warning: Could not remove generated service file: {e}[/yellow]"
                 )
                 return False
 
